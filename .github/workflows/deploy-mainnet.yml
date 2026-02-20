@@ -1,0 +1,263 @@
+name: Deploy to Mainnet
+
+on:
+  workflow_dispatch:
+    inputs:
+      contract:
+        description: 'Contract to deploy (leave empty for all)'
+        required: false
+        type: string
+      confirm:
+        description: 'Type "DEPLOY" to confirm mainnet deployment'
+        required: true
+        type: string
+
+env:
+  RUST_VERSION: "1.92.0"
+  SOROBAN_VERSION: "23.1.4"
+  NETWORK: "mainnet"
+
+jobs:
+  # Safety check
+  safety-check:
+    name: Safety Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify confirmation
+        run: |
+          if [ "${{ inputs.confirm }}" != "DEPLOY" ]; then
+            echo "❌ Deployment not confirmed. Type 'DEPLOY' in the confirm field to proceed."
+            exit 1
+          fi
+          echo "✅ Mainnet deployment confirmed"
+
+  # Run comprehensive tests
+  pre-deploy-tests:
+    name: Pre-deployment Tests
+    runs-on: ubuntu-latest
+    needs: [safety-check]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: wasm32-unknown-unknown
+
+      - name: Install Soroban CLI
+        run: |
+          cargo install --locked --version ${{ env.SOROBAN_VERSION }} soroban-cli
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Run all tests
+        run: cargo test --all
+
+      - name: Run security audit
+        run: |
+          cargo install cargo-audit --features=fix || true
+          cargo audit || echo "Audit completed with warnings"
+
+  # Build contracts
+  build:
+    name: Build Contracts
+    runs-on: ubuntu-latest
+    needs: [pre-deploy-tests]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: wasm32-unknown-unknown
+
+      - name: Install Soroban CLI
+        run: |
+          cargo install --locked --version ${{ env.SOROBAN_VERSION }} soroban-cli
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build optimized contracts
+        run: |
+          mkdir -p dist
+          for contract in contracts/*/; do
+            if [ -d "$contract" ]; then
+              contract_name=$(basename "$contract")
+              echo "Building contract: $contract_name"
+              cd "$contract"
+              cargo build --target wasm32-unknown-unknown --release
+              cd - > /dev/null
+              
+              wasm_file="$contract/target/wasm32-unknown-unknown/release/${contract_name}.wasm"
+              if [ -f "$wasm_file" ]; then
+                cp "$wasm_file" "dist/${contract_name}.wasm"
+                echo "Copied: ${contract_name}.wasm"
+              fi
+            fi
+          done
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-contracts-mainnet
+          path: dist/*.wasm
+          retention-days: 30
+
+  # Deploy to mainnet
+  deploy:
+    name: Deploy to Mainnet
+    runs-on: ubuntu-latest
+    needs: [build]
+    environment:
+      name: mainnet
+      url: https://soroban-rpc.stellar.org
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: wasm32-unknown-unknown
+
+      - name: Install Soroban CLI
+        run: |
+          cargo install --locked --version ${{ env.SOROBAN_VERSION }} soroban-cli
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-contracts-mainnet
+          path: dist/
+
+      - name: Configure Soroban network
+        run: |
+          soroban config network add mainnet \
+            --rpc-url https://soroban-rpc.stellar.org:443 \
+            --network-passphrase "Public Global Stellar Network ; September 2015" || true
+
+      - name: Setup deployment identity
+        env:
+          SOROBAN_SECRET_KEY: ${{ secrets.MAINNET_DEPLOYER_SECRET_KEY }}
+        run: |
+          # Add identity from secret key (required for mainnet)
+          if [ -z "$SOROBAN_SECRET_KEY" ]; then
+            echo "❌ MAINNET_DEPLOYER_SECRET_KEY secret is required for mainnet deployment"
+            exit 1
+          fi
+          echo "$SOROBAN_SECRET_KEY" > /tmp/secret_key.txt
+          soroban config identity add deployer-mainnet --secret-key /tmp/secret_key.txt || {
+            echo "Failed to add identity from secret key"
+            rm -f /tmp/secret_key.txt
+            exit 1
+          }
+          rm -f /tmp/secret_key.txt
+
+      - name: Deploy contracts
+        id: deploy
+        run: |
+          mkdir -p deployments
+          deployment_log="deployments/mainnet_$(date +%Y%m%d_%H%M%S).json"
+          echo "[]" > "$deployment_log"
+          
+          # Determine which contracts to deploy
+          if [ -n "${{ inputs.contract }}" ]; then
+            contracts="${{ inputs.contract }}"
+          else
+            contracts=$(ls -d contracts/*/ | xargs -n1 basename)
+          fi
+          
+          for contract_name in $contracts; do
+            wasm_file="dist/${contract_name}.wasm"
+            if [ ! -f "$wasm_file" ]; then
+              echo "Warning: $wasm_file not found, skipping"
+              continue
+            fi
+            
+            echo "⚠️  Deploying $contract_name to MAINNET..."
+            
+            # Deploy contract
+            contract_id=$(soroban contract deploy \
+              --wasm "$wasm_file" \
+              --source deployer-mainnet \
+              --network mainnet \
+              --output json | jq -r '.contract_id' || echo "")
+            
+            if [ -z "$contract_id" ] || [ "$contract_id" = "null" ]; then
+              echo "Error: Failed to deploy $contract_name"
+              exit 1
+            fi
+            
+            echo "✅ Deployed $contract_name: $contract_id"
+            
+            # Save deployment info
+            jq --arg name "$contract_name" \
+               --arg id "$contract_id" \
+               --arg network "mainnet" \
+               --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+               --arg commit "${{ github.sha }}" \
+               '. += [{
+                 "contract_name": $name,
+                 "contract_id": $id,
+                 "network": $network,
+                 "deployed_at": $timestamp,
+                 "commit_sha": $commit,
+                 "deployer": "deployer-mainnet"
+               }]' "$deployment_log" > "${deployment_log}.tmp" && mv "${deployment_log}.tmp" "$deployment_log"
+          done
+          
+          echo "deployment_log=$deployment_log" >> $GITHUB_OUTPUT
+          cat "$deployment_log"
+
+      - name: Upload deployment artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-info-mainnet
+          path: deployments/*.json
+          retention-days: 365
+
+      - name: Create deployment summary
+        run: |
+          echo "## 🚀 Mainnet Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**⚠️ PRODUCTION DEPLOYMENT**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployed at:** $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployed by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployed Contracts" >> $GITHUB_STEP_SUMMARY
+          cat "${{ steps.deploy.outputs.deployment_log }}" | jq -r '.[] | "- **\(.contract_name)**: `\(.contract_id)`"' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ⚠️ Important" >> $GITHUB_STEP_SUMMARY
+          echo "- Verify all contracts are functioning correctly" >> $GITHUB_STEP_SUMMARY
+          echo "- Monitor contract health: \`./scripts/monitor_deployments.sh mainnet\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Keep deployment logs for audit purposes" >> $GITHUB_STEP_SUMMARY
+

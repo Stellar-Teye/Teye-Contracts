@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+env:
+  RUST_VERSION: "1.92.0"
+  SOROBAN_VERSION: "23.1.4"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+
+      - name: Install Soroban CLI
+        run: |
+          cargo install --locked --version ${{ env.SOROBAN_VERSION }} soroban-cli
+
+      - name: Build optimized contracts
+        run: |
+          mkdir -p dist/
+          for contract in contracts/*/; do
+            if [ -d "$contract" ]; then
+              contract_name=$(basename "$contract")
+              echo "Building contract: $contract_name"
+              cd "$contract"
+              cargo build --target wasm32-unknown-unknown --release
+              wasm_file="target/wasm32-unknown-unknown/release/$contract_name.wasm"
+              if [ -f "$wasm_file" ]; then
+                cp "$wasm_file" "../../dist/$contract_name.wasm"
+                echo "Copied: $contract_name.wasm"
+              fi
+              cd - > /dev/null
+            fi
+          done
+
+      - name: Generate checksums
+        run: |
+          cd dist/
+          sha256sum *.wasm > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/*.wasm
+            dist/SHA256SUMS.txt
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
