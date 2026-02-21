@@ -1,6 +1,8 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, contracterror, symbol_short, Address, Env, String, Symbol, Vec};
+
+pub mod patient;
 
 /// Storage keys for the contract
 const ADMIN: Symbol = symbol_short!("ADMIN");
@@ -74,17 +76,18 @@ pub struct AccessGrant {
 }
 
 /// Contract errors
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
 pub enum ContractError {
-    NotInitialized,
-    AlreadyInitialized,
-    Unauthorized,
-    UserNotFound,
-    RecordNotFound,
-    InvalidInput,
-    AccessDenied,
-    Paused,
+    NotInitialized = 1,
+    AlreadyInitialized = 2,
+    Unauthorized = 3,
+    UserNotFound = 4,
+    RecordNotFound = 5,
+    InvalidInput = 6,
+    AccessDenied = 7,
+    Paused = 8,
 }
 
 #[contract]
