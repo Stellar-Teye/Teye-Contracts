@@ -1,6 +1,14 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol, Vec};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String,
+    Symbol, Vec,
+};
+pub mod emergency;
+mod test;
+pub use emergency::{
+    EmergencyAccess, EmergencyAuditEntry, EmergencyCondition, EmergencyStatus, EMRG_CTR,
+};
 
 /// Storage keys for the contract
 const ADMIN: Symbol = symbol_short!("ADMIN");
@@ -73,18 +81,18 @@ pub struct AccessGrant {
     pub expires_at: u64,
 }
 
-/// Contract errors
-#[contracttype]
+// Contract errors
+#[contracterror]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ContractError {
-    NotInitialized,
-    AlreadyInitialized,
-    Unauthorized,
-    UserNotFound,
-    RecordNotFound,
-    InvalidInput,
-    AccessDenied,
-    Paused,
+    NotInitialized = 1,
+    AlreadyInitialized = 2,
+    Unauthorized = 3,
+    UserNotFound = 4,
+    RecordNotFound = 5,
+    InvalidInput = 6,
+    AccessDenied = 7,
+    Paused = 8,
 }
 
 #[contract]
@@ -152,6 +160,7 @@ impl VisionRecordsContract {
     }
 
     /// Add a vision record
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn add_record(
         env: Env,
         patient: Address,
@@ -163,12 +172,7 @@ impl VisionRecordsContract {
 
         // Generate record ID
         let counter_key = symbol_short!("REC_CTR");
-        let record_id: u64 = env
-            .storage()
-            .instance()
-            .get(&counter_key)
-            .unwrap_or(0)
-            + 1;
+        let record_id: u64 = env.storage().instance().get(&counter_key).unwrap_or(0) + 1;
         env.storage().instance().set(&counter_key, &record_id);
 
         let record = VisionRecord {
@@ -192,7 +196,9 @@ impl VisionRecordsContract {
             .get(&patient_key)
             .unwrap_or(Vec::new(&env));
         patient_records.push_back(record_id);
-        env.storage().persistent().set(&patient_key, &patient_records);
+        env.storage()
+            .persistent()
+            .set(&patient_key, &patient_records);
 
         Ok(record_id)
     }
@@ -216,6 +222,7 @@ impl VisionRecordsContract {
     }
 
     /// Grant access to a user
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn grant_access(
         env: Env,
         patient: Address,
@@ -242,18 +249,22 @@ impl VisionRecordsContract {
     /// Check access level
     pub fn check_access(env: Env, patient: Address, grantee: Address) -> AccessLevel {
         let key = (symbol_short!("ACCESS"), patient, grantee);
-        
+
         if let Some(grant) = env.storage().persistent().get::<_, AccessGrant>(&key) {
             if grant.expires_at > env.ledger().timestamp() {
                 return grant.level;
             }
         }
-        
+
         AccessLevel::None
     }
 
     /// Revoke access
-    pub fn revoke_access(env: Env, patient: Address, grantee: Address) -> Result<(), ContractError> {
+    pub fn revoke_access(
+        env: Env,
+        patient: Address,
+        grantee: Address,
+    ) -> Result<(), ContractError> {
         patient.require_auth();
 
         let key = (symbol_short!("ACCESS"), patient, grantee);
@@ -272,98 +283,162 @@ impl VisionRecordsContract {
     pub fn version() -> u32 {
         1
     }
-}
 
-#[cfg(test)]
-mod test {
-    use super::*;
-    use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::Env;
+    // ── Emergency Access ──────────────────────────────────────────
 
-    #[test]
-    fn test_initialize() {
-        let env = Env::default();
-        env.mock_all_auths();
+    /// Request emergency access. Requester must attest to the condition.
+    /// `emergency_contacts` are notified by recording them in the grant.
+    /// Default window: 4 hours (14_400 seconds); caller may pass shorter.
+    #[allow(clippy::arithmetic_side_effects)]
+    pub fn request_emergency_access(
+        env: Env,
+        requester: Address,
+        patient: Address,
+        condition: EmergencyCondition,
+        attestation: String,
+        emergency_contacts: Vec<Address>,
+        duration_seconds: u64, // recommend ≤ 14_400 (4 h)
+    ) -> Result<u64, ContractError> {
+        requester.require_auth();
 
-        let contract_id = env.register(VisionRecordsContract, ());
-        let client = VisionRecordsContractClient::new(&env, &contract_id);
+        // Attestation must not be empty
+        if attestation.is_empty() {
+            return Err(ContractError::InvalidInput);
+        }
 
-        let admin = Address::generate(&env);
-        client.initialize(&admin);
+        // Assign ID
+        let id: u64 = env.storage().instance().get(&EMRG_CTR).unwrap_or(0) + 1;
+        env.storage().instance().set(&EMRG_CTR, &id);
 
-        assert!(client.is_initialized());
-        assert_eq!(client.get_admin(), admin);
+        let now = env.ledger().timestamp();
+
+        let grant = EmergencyAccess {
+            id,
+            patient: patient.clone(),
+            requester: requester.clone(),
+            condition,
+            attestation,
+            granted_at: now,
+            expires_at: now + duration_seconds,
+            status: EmergencyStatus::Active,
+            notified_contacts: emergency_contacts,
+        };
+
+        let key = (symbol_short!("EMRG"), id);
+        env.storage().persistent().set(&key, &grant);
+
+        // Write audit entry
+        Self::write_emergency_audit(&env, id, requester, String::from_str(&env, "GRANTED"), now);
+
+        Ok(id)
     }
 
-    #[test]
-    fn test_register_user() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let contract_id = env.register(VisionRecordsContract, ());
-        let client = VisionRecordsContractClient::new(&env, &contract_id);
-
-        let admin = Address::generate(&env);
-        client.initialize(&admin);
-
-        let user = Address::generate(&env);
-        let name = String::from_str(&env, "Dr. Smith");
-        
-        client.register_user(&user, &Role::Optometrist, &name);
-        
-        let user_data = client.get_user(&user);
-        assert_eq!(user_data.role, Role::Optometrist);
-        assert!(user_data.is_active);
+    /// Retrieve an emergency access grant.
+    pub fn get_emergency_access(
+        env: Env,
+        access_id: u64,
+    ) -> Result<EmergencyAccess, ContractError> {
+        let key = (symbol_short!("EMRG"), access_id);
+        env.storage()
+            .persistent()
+            .get(&key)
+            .ok_or(ContractError::RecordNotFound)
     }
 
-    #[test]
-    fn test_add_and_get_record() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let contract_id = env.register(VisionRecordsContract, ());
-        let client = VisionRecordsContractClient::new(&env, &contract_id);
-
-        let admin = Address::generate(&env);
-        client.initialize(&admin);
-
-        let patient = Address::generate(&env);
-        let provider = Address::generate(&env);
-        let data_hash = String::from_str(&env, "QmHash123");
-
-        let record_id = client.add_record(&patient, &provider, &RecordType::Examination, &data_hash);
-        
-        assert_eq!(record_id, 1);
-        
-        let record = client.get_record(&record_id);
-        assert_eq!(record.patient, patient);
-        assert_eq!(record.provider, provider);
+    /// Check whether an emergency grant is currently valid.
+    pub fn is_emergency_access_valid(env: Env, access_id: u64) -> bool {
+        let key = (symbol_short!("EMRG"), access_id);
+        if let Some(grant) = env.storage().persistent().get::<_, EmergencyAccess>(&key) {
+            return grant.status == EmergencyStatus::Active
+                && grant.expires_at > env.ledger().timestamp();
+        }
+        false
     }
 
-    #[test]
-    fn test_access_control() {
-        let env = Env::default();
-        env.mock_all_auths();
+    /// Revoke an active emergency grant. Only the original patient or admin may do this.
+    pub fn revoke_emergency_access(
+        env: Env,
+        caller: Address,
+        access_id: u64,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
 
-        let contract_id = env.register(VisionRecordsContract, ());
-        let client = VisionRecordsContractClient::new(&env, &contract_id);
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&ADMIN)
+            .ok_or(ContractError::NotInitialized)?;
 
-        let admin = Address::generate(&env);
-        client.initialize(&admin);
+        let key = (symbol_short!("EMRG"), access_id);
+        let mut grant: EmergencyAccess = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(ContractError::RecordNotFound)?;
 
-        let patient = Address::generate(&env);
-        let doctor = Address::generate(&env);
+        if caller != grant.patient && caller != admin {
+            return Err(ContractError::Unauthorized);
+        }
 
-        // Initially no access
-        assert_eq!(client.check_access(&patient, &doctor), AccessLevel::None);
+        grant.status = EmergencyStatus::Revoked;
+        env.storage().persistent().set(&key, &grant);
 
-        // Grant access
-        client.grant_access(&patient, &doctor, &AccessLevel::Read, &86400);
-        
-        assert_eq!(client.check_access(&patient, &doctor), AccessLevel::Read);
+        Self::write_emergency_audit(
+            &env,
+            access_id,
+            caller,
+            String::from_str(&env, "REVOKED"),
+            env.ledger().timestamp(),
+        );
 
-        // Revoke access
-        client.revoke_access(&patient, &doctor);
-        assert_eq!(client.check_access(&patient, &doctor), AccessLevel::None);
+        Ok(())
+    }
+
+    /// Record that a requester actually accessed a record under emergency authority.
+    /// Call this every time a record is read under an emergency grant.
+    pub fn log_emergency_record_access(
+        env: Env,
+        requester: Address,
+        access_id: u64,
+    ) -> Result<(), ContractError> {
+        requester.require_auth();
+
+        if !Self::is_emergency_access_valid(env.clone(), access_id) {
+            return Err(ContractError::AccessDenied);
+        }
+
+        Self::write_emergency_audit(
+            &env,
+            access_id,
+            requester,
+            String::from_str(&env, "ACCESSED"),
+            env.ledger().timestamp(),
+        );
+
+        Ok(())
+    }
+
+    fn write_emergency_audit(
+        env: &Env,
+        access_id: u64,
+        actor: Address,
+        action: String,
+        timestamp: u64,
+    ) {
+        let audit_key = (symbol_short!("EMRG_LOG"), access_id);
+        let mut log: Vec<EmergencyAuditEntry> = env
+            .storage()
+            .persistent()
+            .get(&audit_key)
+            .unwrap_or(Vec::new(env));
+
+        log.push_back(EmergencyAuditEntry {
+            access_id,
+            actor,
+            action,
+            timestamp,
+        });
+
+        env.storage().persistent().set(&audit_key, &log);
     }
 }
