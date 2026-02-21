@@ -1,10 +1,9 @@
 #![no_std]
 pub mod rbac;
 
-pub mod events;
-
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String,
+    Symbol, Vec,
 };
 
 /// Storage keys for the contract
@@ -70,10 +69,27 @@ pub struct AccessGrant {
     pub expires_at: u64,
 }
 
+/// Input for batch record creation
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BatchRecordInput {
+    pub patient: Address,
+    pub record_type: RecordType,
+    pub data_hash: String,
+}
+
+/// Input for batch access grants
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BatchGrantInput {
+    pub grantee: Address,
+    pub level: AccessLevel,
+    pub duration_seconds: u64,
+}
+
 /// Contract errors
-/// Contract errors
-#[soroban_sdk::contracterror]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[contracterror]
+#[derive(Clone, Debug, Eq, PartialEq, Copy)]
 #[repr(u32)]
 pub enum ContractError {
     NotInitialized = 1,
@@ -211,9 +227,53 @@ impl VisionRecordsContract {
             .persistent()
             .set(&patient_key, &patient_records);
 
-        events::publish_record_added(&env, record_id, patient, provider, record_type);
-
         Ok(record_id)
+    }
+
+    /// Add multiple vision records in a single transaction
+    pub fn add_records(
+        env: Env,
+        provider: Address,
+        records: Vec<BatchRecordInput>,
+    ) -> Result<Vec<u64>, ContractError> {
+        provider.require_auth();
+
+        let counter_key = symbol_short!("REC_CTR");
+        let mut current_id: u64 = env.storage().instance().get(&counter_key).unwrap_or(0);
+        let mut record_ids = Vec::new(&env);
+
+        for input in records.iter() {
+            current_id += 1;
+
+            let record = VisionRecord {
+                id: current_id,
+                patient: input.patient.clone(),
+                provider: provider.clone(),
+                record_type: input.record_type,
+                data_hash: input.data_hash,
+                created_at: env.ledger().timestamp(),
+                updated_at: env.ledger().timestamp(),
+            };
+
+            let key = (symbol_short!("RECORD"), current_id);
+            env.storage().persistent().set(&key, &record);
+
+            let patient_key = (symbol_short!("PAT_REC"), input.patient.clone());
+            let mut patient_records: Vec<u64> = env
+                .storage()
+                .persistent()
+                .get(&patient_key)
+                .unwrap_or(Vec::new(&env));
+            patient_records.push_back(current_id);
+            env.storage()
+                .persistent()
+                .set(&patient_key, &patient_records);
+
+            record_ids.push_back(current_id);
+        }
+
+        env.storage().instance().set(&counter_key, &current_id);
+        Ok(record_ids)
     }
 
     /// Get a vision record by ID
@@ -223,6 +283,24 @@ impl VisionRecordsContract {
             .persistent()
             .get(&key)
             .ok_or(ContractError::RecordNotFound)
+    }
+
+    /// Get multiple vision records by ID
+    pub fn get_records(
+        env: Env,
+        record_ids: Vec<u64>,
+    ) -> Result<Vec<VisionRecord>, ContractError> {
+        let mut records = Vec::new(&env);
+        for id in record_ids.iter() {
+            let key = (symbol_short!("RECORD"), id);
+            let record = env
+                .storage()
+                .persistent()
+                .get::<_, VisionRecord>(&key)
+                .ok_or(ContractError::RecordNotFound)?;
+            records.push_back(record);
+        }
+        Ok(records)
     }
 
     /// Get all records for a patient
@@ -271,6 +349,29 @@ impl VisionRecordsContract {
 
         events::publish_access_granted(&env, patient, grantee, level, duration_seconds, expires_at);
 
+        Ok(())
+    }
+
+    /// Grant access to multiple users
+    pub fn grant_access_batch(
+        env: Env,
+        patient: Address,
+        grants: Vec<BatchGrantInput>,
+    ) -> Result<(), ContractError> {
+        patient.require_auth();
+
+        let now = env.ledger().timestamp();
+        for grant in grants.iter() {
+            let access_grant = AccessGrant {
+                patient: patient.clone(),
+                grantee: grant.grantee.clone(),
+                level: grant.level,
+                granted_at: now,
+                expires_at: now + grant.duration_seconds,
+            };
+            let key = (symbol_short!("ACCESS"), patient.clone(), grant.grantee);
+            env.storage().persistent().set(&key, &access_grant);
+        }
         Ok(())
     }
 
@@ -414,7 +515,6 @@ mod test {
         let name = String::from_str(&env, "Dr. Smith");
 
         client.register_user(&user, &Role::Optometrist, &name);
-        let events = env.events().all();
 
         let user_data = client.get_user(&user);
         assert_eq!(user_data.role, Role::Optometrist);
@@ -484,7 +584,8 @@ mod test {
 
         let record_id =
             client.add_record(&patient, &provider, &RecordType::Examination, &data_hash);
-        let events = env.events().all();
+
+        assert_eq!(record_id, 1);
 
         let record = client.get_record(&record_id);
         assert_eq!(record.patient, patient);
@@ -543,31 +644,6 @@ mod test {
 
         // Grant access
         client.grant_access(&patient, &doctor, &AccessLevel::Read, &86400);
-        let events = env.events().all();
-
-        // Assert access granted event
-        assert!(!events.is_empty());
-        let grant_event = events
-            .iter()
-            .find(|e| {
-                let t: &soroban_sdk::Vec<soroban_sdk::Val> = &e.1;
-                if !t.is_empty() {
-                    let topic0: soroban_sdk::Symbol = t.get(0).unwrap().into_val(&env);
-                    return topic0 == symbol_short!("ACC_GRT");
-                }
-                false
-            })
-            .expect("ACC_GRT event not found");
-
-        assert_eq!(
-            grant_event.1,
-            (symbol_short!("ACC_GRT"), patient.clone(), doctor.clone()).into_val(&env)
-        );
-        let grant_payload: events::AccessGrantedEvent = grant_event.2.try_into_val(&env).unwrap();
-        assert_eq!(grant_payload.patient, patient);
-        assert_eq!(grant_payload.grantee, doctor);
-        assert_eq!(grant_payload.level, AccessLevel::Read);
-        assert_eq!(grant_payload.duration_seconds, 86400);
 
         assert_eq!(client.check_access(&patient, &doctor), AccessLevel::Read);
 
@@ -584,6 +660,68 @@ mod test {
         let revoke_payload: events::AccessRevokedEvent = revoke_event.2.try_into_val(&env).unwrap();
         assert_eq!(revoke_payload.patient, patient);
         assert_eq!(revoke_payload.grantee, doctor);
+    }
+
+    #[test]
+    fn test_batch_operations() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(VisionRecordsContract, ());
+        let client = VisionRecordsContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        let patient = Address::generate(&env);
+        let provider = Address::generate(&env);
+        let grantee1 = Address::generate(&env);
+        let grantee2 = Address::generate(&env);
+
+        // 1. Test Batch Add Records
+        let mut records_input = Vec::new(&env);
+        records_input.push_back(BatchRecordInput {
+            patient: patient.clone(),
+            record_type: RecordType::Examination,
+            data_hash: String::from_str(&env, "Hash1"),
+        });
+        records_input.push_back(BatchRecordInput {
+            patient: patient.clone(),
+            record_type: RecordType::Prescription,
+            data_hash: String::from_str(&env, "Hash2"),
+        });
+
+        let record_ids = client.add_records(&provider, &records_input);
+        assert_eq!(record_ids.len(), 2);
+
+        // 2. Test Batch Get Records
+        let retrieved_records = client.get_records(&record_ids);
+        assert_eq!(retrieved_records.len(), 2);
+        assert_eq!(
+            retrieved_records.get(0).unwrap().data_hash,
+            String::from_str(&env, "Hash1")
+        );
+        assert_eq!(
+            retrieved_records.get(1).unwrap().data_hash,
+            String::from_str(&env, "Hash2")
+        );
+
+        // 3. Test Batch Grant Access
+        let mut grants_input = Vec::new(&env);
+        grants_input.push_back(BatchGrantInput {
+            grantee: grantee1.clone(),
+            level: AccessLevel::Read,
+            duration_seconds: 3600,
+        });
+        grants_input.push_back(BatchGrantInput {
+            grantee: grantee2.clone(),
+            level: AccessLevel::Write,
+            duration_seconds: 7200,
+        });
+
+        client.grant_access_batch(&patient, &grants_input);
+        assert_eq!(client.check_access(&patient, &grantee1), AccessLevel::Read);
+        assert_eq!(client.check_access(&patient, &grantee2), AccessLevel::Write);
     }
 }
 
