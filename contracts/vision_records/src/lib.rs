@@ -145,6 +145,7 @@ impl VisionRecordsContract {
 
         let key = (symbol_short!("USER"), user.clone());
         env.storage().persistent().set(&key, &user_data);
+        rbac::assign_role(&env, user.clone(), role.clone(), 0);
 
         rbac::assign_role(&env, user.clone(), role.clone(), 0);
 
@@ -363,5 +364,8 @@ impl VisionRecordsContract {
 
     pub fn check_permission(env: Env, user: Address, permission: Permission) -> bool {
         rbac::has_permission(&env, &user, &permission)
+    }
+}
+
 #[cfg(test)]
 mod test_rbac;
