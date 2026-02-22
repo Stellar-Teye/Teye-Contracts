@@ -34,12 +34,7 @@ fn register(
     role: Role,
 ) -> Address {
     let user = Address::generate(env);
-    client.register_user(
-        caller,
-        &user,
-        &role,
-        &String::from_str(env, "Test User"),
-    );
+    client.register_user(caller, &user, &role, &String::from_str(env, "Test User"));
     user
 }
 

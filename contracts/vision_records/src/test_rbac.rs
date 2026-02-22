@@ -1,4 +1,4 @@
-#![cfg(test)]
+
 
 use super::{Permission, Role, VisionRecordsContract, VisionRecordsContractClient};
 use soroban_sdk::{testutils::Address as _, testutils::Ledger as _, Address, Env, String};

@@ -1,8 +1,8 @@
 #![cfg(test)]
 
-use soroban_sdk::{testutils::Address as _, testutils::Events, Address, BytesN, Env, IntoVal, Vec};
-use zk_verifier::{AccessRequest, AuditRecord, ZkVerifierContract, ZkVerifierContractClient};
-use zk_verifier::{Proof, ZkAccessHelper};
+use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
+use zk_verifier::{ZkVerifierContract, ZkVerifierContractClient};
+use zk_verifier::ZkAccessHelper;
 
 #[test]
 fn test_valid_proof_verification_and_audit() {
@@ -45,8 +45,6 @@ fn test_valid_proof_verification_and_audit() {
     assert_eq!(record.user, user);
     assert_eq!(record.resource_id.to_array(), resource_id);
     assert_eq!(record.timestamp, env.ledger().timestamp());
-
-
 }
 
 #[test]
