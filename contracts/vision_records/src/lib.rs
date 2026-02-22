@@ -1,5 +1,6 @@
 #![no_std]
 pub mod rbac;
+pub mod validation;
 
 pub mod events;
 
@@ -138,6 +139,8 @@ impl VisionRecordsContract {
             return Err(ContractError::Unauthorized);
         }
 
+        validation::validate_name(&name)?;
+
         let user_data = User {
             address: user.clone(),
             role: role.clone(),
@@ -180,6 +183,8 @@ impl VisionRecordsContract {
         data_hash: String,
     ) -> Result<u64, ContractError> {
         caller.require_auth();
+
+        validation::validate_data_hash(&data_hash)?;
 
         let has_perm = if caller == provider {
             rbac::has_permission(&env, &caller, &Permission::WriteRecord)
@@ -255,6 +260,8 @@ impl VisionRecordsContract {
         duration_seconds: u64,
     ) -> Result<(), ContractError> {
         caller.require_auth();
+
+        validation::validate_duration(duration_seconds)?;
 
         let has_perm = if caller == patient {
             true // Patient manages own access
@@ -373,12 +380,8 @@ impl VisionRecordsContract {
     }
 }
 
-
-
-
 #[cfg(test)]
 mod test;
-
 
 #[cfg(test)]
 mod test_rbac;
