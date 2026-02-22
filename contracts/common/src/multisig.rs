@@ -21,13 +21,18 @@ pub struct MultisigManager {
 
 impl MultisigManager {
     pub fn add_policy(&mut self, name: &str, m: usize, keys: Vec<String>) {
-        self.policies.insert(name.to_string(), MultisigPolicy { m, keys });
+        self.policies
+            .insert(name.to_string(), MultisigPolicy { m, keys });
     }
 
     pub fn create_pending(&mut self, tx_id: &str, required: usize) {
         self.pending.insert(
             tx_id.to_string(),
-            PendingTx { id: tx_id.to_string(), signer_set: BTreeSet::new(), required },
+            PendingTx {
+                id: tx_id.to_string(),
+                signer_set: BTreeSet::new(),
+                required,
+            },
         );
     }
 
@@ -40,6 +45,9 @@ impl MultisigManager {
     }
 
     pub fn is_executable(&self, tx_id: &str) -> bool {
-        self.pending.get(tx_id).map(|p| p.signer_set.len() >= p.required).unwrap_or(false)
+        self.pending
+            .get(tx_id)
+            .map(|p| p.signer_set.len() >= p.required)
+            .unwrap_or(false)
     }
 }

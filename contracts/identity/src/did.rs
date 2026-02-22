@@ -16,7 +16,11 @@ pub struct DIDDocument {
 
 impl DIDDocument {
     pub fn new(id: &str) -> Self {
-        Self { id: id.to_string(), controller: None, verification_methods: HashMap::new() }
+        Self {
+            id: id.to_string(),
+            controller: None,
+            verification_methods: HashMap::new(),
+        }
     }
 
     pub fn add_verification_method(&mut self, vm: VerificationMethod) {

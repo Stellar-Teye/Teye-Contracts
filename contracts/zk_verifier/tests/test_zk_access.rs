@@ -45,8 +45,6 @@ fn test_valid_proof_verification_and_audit() {
     assert_eq!(record.user, user);
     assert_eq!(record.resource_id.to_array(), resource_id);
     assert_eq!(record.timestamp, env.ledger().timestamp());
-
-
 }
 
 #[test]

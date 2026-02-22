@@ -15,8 +15,16 @@ pub struct AuditLog {
 
 impl AuditLog {
     pub fn record(&mut self, actor: &str, action: &str, target: &str) {
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-        self.entries.push(AuditEntry { actor: actor.to_string(), action: action.to_string(), target: target.to_string(), timestamp: now });
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        self.entries.push(AuditEntry {
+            actor: actor.to_string(),
+            action: action.to_string(),
+            target: target.to_string(),
+            timestamp: now,
+        });
     }
 
     pub fn query(&self) -> &[AuditEntry] {

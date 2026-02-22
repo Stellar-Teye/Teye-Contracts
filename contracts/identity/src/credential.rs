@@ -11,7 +11,13 @@ pub struct Credential {
 
 impl Credential {
     pub fn new(id: &str, issuer: &str, subject: &str) -> Self {
-        Self { id: id.to_string(), issuer: issuer.to_string(), subject: subject.to_string(), claims: HashMap::new(), signature: None }
+        Self {
+            id: id.to_string(),
+            issuer: issuer.to_string(),
+            subject: subject.to_string(),
+            claims: HashMap::new(),
+            signature: None,
+        }
     }
 
     pub fn add_claim(&mut self, key: &str, value: &str) {

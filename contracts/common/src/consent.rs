@@ -24,10 +24,30 @@ pub struct ConsentManager {
 }
 
 impl ConsentManager {
-    pub fn grant(&mut self, id: &str, subject: &str, grantee: &str, ctype: ConsentType, ttl_secs: Option<u64>) {
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    pub fn grant(
+        &mut self,
+        id: &str,
+        subject: &str,
+        grantee: &str,
+        ctype: ConsentType,
+        ttl_secs: Option<u64>,
+    ) {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let expires = ttl_secs.map(|t| now + t);
-        self.records.insert(id.to_string(), ConsentRecord { subject: subject.to_string(), grantee: grantee.to_string(), consent_type: ctype, granted_at: now, expires_at: expires, revoked: false });
+        self.records.insert(
+            id.to_string(),
+            ConsentRecord {
+                subject: subject.to_string(),
+                grantee: grantee.to_string(),
+                consent_type: ctype,
+                granted_at: now,
+                expires_at: expires,
+                revoked: false,
+            },
+        );
     }
 
     pub fn revoke(&mut self, id: &str) {
@@ -38,8 +58,16 @@ impl ConsentManager {
 
     pub fn is_active(&self, id: &str) -> bool {
         if let Some(r) = self.records.get(id) {
-            if r.revoked { return false; }
-            if let Some(exp) = r.expires_at { return SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() < exp; }
+            if r.revoked {
+                return false;
+            }
+            if let Some(exp) = r.expires_at {
+                return SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+                    < exp;
+            }
             return true;
         }
         false

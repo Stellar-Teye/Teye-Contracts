@@ -17,12 +17,26 @@ pub struct KeyManager {
 
 impl KeyManager {
     pub fn new(master: Vec<u8>) -> Self {
-        Self { master, data_keys: HashMap::new() }
+        Self {
+            master,
+            data_keys: HashMap::new(),
+        }
     }
 
     pub fn create_data_key(&mut self, id: &str, key: Vec<u8>, ttl: Option<u64>) {
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-        self.data_keys.insert(id.to_string(), DataKey { id: id.to_string(), key, created: now, expires: ttl.map(|t| now + t) });
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        self.data_keys.insert(
+            id.to_string(),
+            DataKey {
+                id: id.to_string(),
+                key,
+                created: now,
+                expires: ttl.map(|t| now + t),
+            },
+        );
     }
 
     pub fn rotate_master(&mut self, new_master: Vec<u8>) {

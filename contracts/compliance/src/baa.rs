@@ -7,6 +7,10 @@ pub struct BAATemplate {
 
 impl BAATemplate {
     pub fn default_template() -> Self {
-        BAATemplate { provider: "Provider".into(), covered_data: "PHI".into(), terms: "Standard BAA terms placeholder".into() }
+        BAATemplate {
+            provider: "Provider".into(),
+            covered_data: "PHI".into(),
+            terms: "Standard BAA terms placeholder".into(),
+        }
     }
 }

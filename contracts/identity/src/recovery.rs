@@ -19,7 +19,8 @@ impl RecoveryManager {
 
     pub fn request_recovery(&mut self, did: &str, agent_id: &str) {
         // In a full implementation, validation and multi-party checks would be required.
-        self.recovery_claims.insert(did.to_string(), agent_id.to_string());
+        self.recovery_claims
+            .insert(did.to_string(), agent_id.to_string());
     }
 
     pub fn execute_recovery(&mut self, did: &str) -> Option<String> {
