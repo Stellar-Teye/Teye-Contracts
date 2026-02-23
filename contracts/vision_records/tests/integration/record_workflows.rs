@@ -19,7 +19,7 @@ fn test_record_creation_workflow() {
     );
 
     // Provider creates record
-    let data_hash = String::from_str(&ctx.env, "QmHash123456");
+    let data_hash = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     let record_id = ctx.client.add_record(
         &provider,
         &patient,
@@ -36,7 +36,6 @@ fn test_record_creation_workflow() {
     assert_eq!(record.provider, provider);
     assert_eq!(record.record_type, RecordType::Examination);
     assert_eq!(record.data_hash, data_hash);
-    assert!(record.created_at >= 0);
 }
 
 /// Test record access by different users
@@ -63,7 +62,7 @@ fn test_record_access_workflow() {
     );
 
     // Create record
-    let data_hash = String::from_str(&ctx.env, "QmHash789");
+    let data_hash = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     let record_id = ctx.client.add_record(
         &provider,
         &patient,
@@ -120,7 +119,7 @@ fn test_multiple_record_types_workflow() {
     );
 
     // Create different record types
-    let exam_hash = String::from_str(&ctx.env, "exam_hash");
+    let exam_hash = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     let exam_id = ctx.client.add_record(
         &provider,
         &patient,
@@ -129,7 +128,7 @@ fn test_multiple_record_types_workflow() {
         &exam_hash,
     );
 
-    let presc_hash = String::from_str(&ctx.env, "presc_hash");
+    let presc_hash = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdH");
     let presc_id = ctx.client.add_record(
         &provider,
         &patient,
@@ -138,7 +137,7 @@ fn test_multiple_record_types_workflow() {
         &presc_hash,
     );
 
-    let diag_hash = String::from_str(&ctx.env, "diag_hash");
+    let diag_hash = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdI");
     let diag_id = ctx.client.add_record(
         &provider,
         &patient,
@@ -147,7 +146,7 @@ fn test_multiple_record_types_workflow() {
         &diag_hash,
     );
 
-    let treat_hash = String::from_str(&ctx.env, "treat_hash");
+    let treat_hash = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdJ");
     let treat_id = ctx.client.add_record(
         &provider,
         &patient,
@@ -202,7 +201,7 @@ fn test_record_access_levels_workflow() {
     );
 
     // Create record
-    let data_hash = String::from_str(&ctx.env, "QmHashAccess");
+    let data_hash = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdH");
     let record_id = ctx.client.add_record(
         &provider,
         &patient,
@@ -269,7 +268,7 @@ fn test_record_access_expiration_workflow() {
     );
 
     // Create record
-    let data_hash = String::from_str(&ctx.env, "QmHashExpire");
+    let data_hash = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdI");
     let record_id = ctx.client.add_record(
         &provider,
         &patient,
@@ -278,21 +277,21 @@ fn test_record_access_expiration_workflow() {
         &data_hash,
     );
 
-    // Grant access with short duration
+    // Grant access with short duration (minimum 3600 seconds)
     ctx.client.grant_access(
         &patient,
         &patient,
         &doctor,
         &AccessLevel::Read,
-        &10u64, // 10 seconds
+        &3600u64, // 1 hour (minimum allowed)
     );
 
     // Doctor can read
     let record = ctx.client.get_record(&doctor, &record_id);
     assert_eq!(record.id, record_id);
 
-    // Advance time past expiration
-    ctx.env.ledger().set_timestamp(100011);
+    // Advance time past expiration (3600 seconds + 1 second buffer)
+    ctx.env.ledger().set_timestamp(100000 + 3600 + 1);
 
     // Doctor can no longer read (access expired)
     let result = ctx.client.try_get_record(&doctor, &record_id);
@@ -322,7 +321,7 @@ fn test_record_access_revocation_workflow() {
     );
 
     // Create record
-    let data_hash = String::from_str(&ctx.env, "QmHashRevoke");
+    let data_hash = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdJ");
     let record_id = ctx.client.add_record(
         &provider,
         &patient,
@@ -368,7 +367,7 @@ fn test_multiple_providers_workflow() {
     );
 
     // Provider 1 creates record
-    let hash1 = String::from_str(&ctx.env, "hash1");
+    let hash1 = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     let record_id1 = ctx.client.add_record(
         &provider1,
         &patient,
@@ -378,7 +377,7 @@ fn test_multiple_providers_workflow() {
     );
 
     // Provider 2 creates record
-    let hash2 = String::from_str(&ctx.env, "hash2");
+    let hash2 = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdH");
     let record_id2 = ctx.client.add_record(
         &provider2,
         &patient,
@@ -428,7 +427,7 @@ fn test_record_audit_workflow() {
     );
 
     // Create record
-    let data_hash = String::from_str(&ctx.env, "QmHashAudit");
+    let data_hash = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdK");
     let record_id = ctx.client.add_record(
         &provider,
         &patient,

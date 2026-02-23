@@ -12,7 +12,7 @@ fn create_test_record(ctx: &TestContext, provider: &Address, patient: &Address) 
         &patient,
         &provider,
         &RecordType::Examination,
-        &soroban_sdk::String::from_str(&ctx.env, "QmHash123"),
+        &soroban_sdk::String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG"),
     )
 }
 

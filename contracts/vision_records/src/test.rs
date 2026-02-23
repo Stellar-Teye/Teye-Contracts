@@ -51,7 +51,7 @@ fn test_add_and_get_record() {
 
     let patient = Address::generate(&env);
     let provider = Address::generate(&env);
-    let data_hash = String::from_str(&env, "QmHash123");
+    let data_hash = String::from_str(&env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
 
     let record_id = client.add_record(
         &admin, // Use admin since they have SystemAdmin permission
@@ -93,4 +93,63 @@ fn test_access_control() {
     // Revoke access
     client.revoke_access(&patient, &patient, &doctor);
     assert_eq!(client.check_access(&patient, &doctor), AccessLevel::None);
+}
+
+#[test]
+#[should_panic(expected = "HostError: Error(Contract, #6)")]
+fn test_invalid_register_user() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(VisionRecordsContract, ());
+    let client = VisionRecordsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let user = Address::generate(&env);
+    // Invalid name: too short
+    let invalid_name = String::from_str(&env, "A");
+
+    // ContractError::InvalidInput = 6
+    client.register_user(&admin, &user, &Role::Optometrist, &invalid_name);
+}
+
+#[test]
+#[should_panic(expected = "HostError: Error(Contract, #6)")]
+fn test_invalid_add_record() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(VisionRecordsContract, ());
+    let client = VisionRecordsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let patient = Address::generate(&env);
+    let provider = Address::generate(&env);
+    // Invalid hash: too short
+    let invalid_data_hash = String::from_str(&env, "short_hash");
+
+    client.add_record(
+        &admin,
+        &patient,
+        &provider,
+        &RecordType::Examination,
+        &invalid_data_hash,
+    );
+}
+
+#[test]
+#[should_panic(expected = "HostError: Error(Contract, #6)")]
+fn test_invalid_grant_access() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(VisionRecordsContract, ());
+    let client = VisionRecordsContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let patient = Address::generate(&env);
+    let doctor = Address::generate(&env);
+
+    // Invalid duration: 0 seconds (too short)
+    client.grant_access(&patient, &patient, &doctor, &AccessLevel::Read, &0);
 }

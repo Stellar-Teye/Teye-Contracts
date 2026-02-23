@@ -32,7 +32,7 @@ fn test_complete_patient_journey() {
     let certifications = Vec::new(&ctx.env);
     let locations = Vec::new(&ctx.env);
 
-    let provider_id = ctx.client.register_provider(
+    let _provider_id = ctx.client.register_provider(
         &ctx.admin,
         &provider,
         &String::from_str(&ctx.env, "Dr. John Smith"),
@@ -52,7 +52,7 @@ fn test_complete_patient_journey() {
         &vision_records::Permission::WriteRecord,
     );
 
-    let hash1 = String::from_str(&ctx.env, "exam_hash_1");
+    let hash1 = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     let record_id1 = ctx.client.add_record(
         &provider,
         &patient,
@@ -61,7 +61,7 @@ fn test_complete_patient_journey() {
         &hash1,
     );
 
-    let hash2 = String::from_str(&ctx.env, "presc_hash_1");
+    let hash2 = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdH");
     let record_id2 = ctx.client.add_record(
         &provider,
         &patient,
@@ -129,7 +129,7 @@ fn test_complete_provider_workflow() {
     let certifications = Vec::new(&ctx.env);
     let locations = Vec::new(&ctx.env);
 
-    let provider_id = ctx.client.register_provider(
+    let _provider_id = ctx.client.register_provider(
         &ctx.admin,
         &provider,
         &String::from_str(&ctx.env, "Dr. Provider"),
@@ -154,7 +154,7 @@ fn test_complete_provider_workflow() {
     let patient1 = create_test_user(&ctx, Role::Patient, "Patient 1");
     let patient2 = create_test_user(&ctx, Role::Patient, "Patient 2");
 
-    let hash1 = String::from_str(&ctx.env, "hash1");
+    let hash1 = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     let record_id1 = ctx.client.add_record(
         &provider,
         &patient1,
@@ -163,7 +163,7 @@ fn test_complete_provider_workflow() {
         &hash1,
     );
 
-    let hash2 = String::from_str(&ctx.env, "hash2");
+    let hash2 = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdH");
     let record_id2 = ctx.client.add_record(
         &provider,
         &patient2,
@@ -200,7 +200,7 @@ fn test_complete_emergency_workflow() {
         &vision_records::Permission::WriteRecord,
     );
 
-    let hash = String::from_str(&ctx.env, "regular_record");
+    let hash = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     let record_id = ctx.client.add_record(
         &regular_provider,
         &patient,
@@ -295,7 +295,7 @@ fn test_multi_provider_collaboration() {
     );
 
     // Optometrist creates initial examination
-    let exam_hash = String::from_str(&ctx.env, "exam_hash");
+    let exam_hash = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     let exam_id = ctx.client.add_record(
         &optometrist,
         &patient,
@@ -316,7 +316,7 @@ fn test_multi_provider_collaboration() {
     // Ophthalmologist reviews and creates diagnosis
     let _exam_record = ctx.client.get_record(&ophthalmologist, &exam_id);
 
-    let diag_hash = String::from_str(&ctx.env, "diag_hash");
+    let diag_hash = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdI");
     let diag_id = ctx.client.add_record(
         &ophthalmologist,
         &patient,
@@ -378,7 +378,7 @@ fn test_appointment_integration_workflow() {
     ctx.client.complete_appointment(&provider, &appointment_id);
 
     // Create record from appointment
-    let hash = String::from_str(&ctx.env, "appointment_record");
+    let hash = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     let record_id = ctx.client.add_record(
         &provider,
         &patient,
@@ -411,7 +411,7 @@ fn test_rate_limiting_integration() {
     );
 
     // First two requests should succeed
-    let hash1 = String::from_str(&ctx.env, "hash1");
+    let hash1 = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     let result1 = ctx.client.try_add_record(
         &provider,
         &patient,
@@ -421,7 +421,7 @@ fn test_rate_limiting_integration() {
     );
     assert!(result1.is_ok());
 
-    let hash2 = String::from_str(&ctx.env, "hash2");
+    let hash2 = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdH");
     let result2 = ctx.client.try_add_record(
         &provider,
         &patient,
@@ -432,7 +432,7 @@ fn test_rate_limiting_integration() {
     assert!(result2.is_ok());
 
     // Third request should fail (rate limit)
-    let hash3 = String::from_str(&ctx.env, "hash3");
+    let hash3 = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdI");
     let result3 = ctx.client.try_add_record(
         &provider,
         &patient,
@@ -458,7 +458,7 @@ fn test_audit_logging_integration() {
     );
 
     // Create record
-    let hash = String::from_str(&ctx.env, "audit_hash");
+    let hash = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     let record_id = ctx.client.add_record(
         &provider,
         &patient,

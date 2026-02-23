@@ -1,7 +1,7 @@
 // Integration tests for emergency access scenarios
 
 use super::{create_test_user, setup_test_env};
-use soroban_sdk::{testutils::Ledger, Address, String, Vec};
+use soroban_sdk::{testutils::Ledger, String, Vec};
 use vision_records::{EmergencyCondition, RecordType, Role};
 
 /// Test complete emergency access workflow
@@ -49,7 +49,7 @@ fn test_emergency_access_workflow() {
     );
 
     // Create some records for patient
-    let hash1 = String::from_str(&ctx.env, "hash1");
+    let hash1 = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     ctx.client.add_record(
         &provider,
         &patient,

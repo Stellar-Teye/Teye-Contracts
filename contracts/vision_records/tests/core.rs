@@ -43,7 +43,7 @@ fn test_add_and_get_record() {
         &patient,
         &provider,
         RecordType::Examination,
-        "QmHash123",
+        "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
     );
 
     assert_eq!(record_id, 1);
@@ -108,7 +108,7 @@ fn test_get_record_count_and_patient_records() {
         &patient,
         &provider,
         RecordType::Examination,
-        "Hash1",
+        "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
     );
     assert_eq!(ctx.client.get_record_count(), 1);
 
@@ -118,7 +118,7 @@ fn test_get_record_count_and_patient_records() {
         &patient,
         &provider,
         RecordType::Diagnosis,
-        "Hash2",
+        "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdH",
     );
     assert_eq!(ctx.client.get_record_count(), 2);
 
@@ -134,7 +134,7 @@ fn test_add_record_unauthorized_and_admin() {
     let ctx = setup_test_env();
     let patient = create_test_user(&ctx, Role::Patient, "Patient");
     let random_user = create_test_user(&ctx, Role::Patient, "Random");
-    let hash = String::from_str(&ctx.env, "Hash123");
+    let hash = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
 
     // Random user cannot add typical record
     let res = ctx.client.try_add_record(
@@ -187,7 +187,7 @@ fn test_events_and_version() {
 
     // Test add record event
     let provider = create_test_user(&ctx, Role::Optometrist, "Provider");
-    let hash = String::from_str(&ctx.env, "Hash123");
+    let hash = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     ctx.client
         .add_record(&provider, &user, &provider, &RecordType::Examination, &hash);
     // Should have record_added event and audit log event (2 events)

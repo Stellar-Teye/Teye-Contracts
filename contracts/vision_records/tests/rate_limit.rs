@@ -56,7 +56,8 @@ fn test_rate_limit_enforcement() {
         .set_rate_limit_config(&ctx.admin, &operation, &2u32, &3600u64);
 
     // First request should succeed
-    let data_hash1 = soroban_sdk::String::from_str(&ctx.env, "hash1");
+    let data_hash1 =
+        soroban_sdk::String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     let result1 = ctx.client.try_add_record(
         &provider,
         &patient,
@@ -67,7 +68,8 @@ fn test_rate_limit_enforcement() {
     assert!(result1.is_ok());
 
     // Second request should succeed
-    let data_hash2 = soroban_sdk::String::from_str(&ctx.env, "hash2");
+    let data_hash2 =
+        soroban_sdk::String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdH");
     let result2 = ctx.client.try_add_record(
         &provider,
         &patient,
@@ -78,7 +80,8 @@ fn test_rate_limit_enforcement() {
     assert!(result2.is_ok());
 
     // Third request should fail due to rate limit
-    let data_hash3 = soroban_sdk::String::from_str(&ctx.env, "hash3");
+    let data_hash3 =
+        soroban_sdk::String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdI");
     let result3 = ctx.client.try_add_record(
         &provider,
         &patient,
@@ -128,7 +131,8 @@ fn test_rate_limit_window_reset() {
     ctx.env.ledger().set_timestamp(1000);
 
     // First request should succeed (this sets window_start to 1000, window_end to 1010)
-    let data_hash1 = soroban_sdk::String::from_str(&ctx.env, "hash1");
+    let data_hash1 =
+        soroban_sdk::String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     let result1 = ctx.client.try_add_record(
         &provider,
         &patient,
@@ -139,7 +143,8 @@ fn test_rate_limit_window_reset() {
     assert!(result1.is_ok());
 
     // Second request should fail (within window, count = 1, max = 1)
-    let data_hash2 = soroban_sdk::String::from_str(&ctx.env, "hash2");
+    let data_hash2 =
+        soroban_sdk::String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdH");
     let result2 = ctx.client.try_add_record(
         &provider,
         &patient,
@@ -154,7 +159,8 @@ fn test_rate_limit_window_reset() {
     ctx.env.ledger().set_timestamp(1011);
 
     // Third request should succeed (window reset)
-    let data_hash3 = soroban_sdk::String::from_str(&ctx.env, "hash3");
+    let data_hash3 =
+        soroban_sdk::String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdI");
     let result3 = ctx.client.try_add_record(
         &provider,
         &patient,
@@ -208,7 +214,8 @@ fn test_rate_limit_bypass_for_verified_provider() {
     );
 
     // First request should succeed
-    let data_hash1 = soroban_sdk::String::from_str(&ctx.env, "hash1");
+    let data_hash1 =
+        soroban_sdk::String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     let result1 = ctx.client.try_add_record(
         &provider,
         &patient,
@@ -219,7 +226,8 @@ fn test_rate_limit_bypass_for_verified_provider() {
     assert!(result1.is_ok());
 
     // Second request should fail (rate limit)
-    let data_hash2 = soroban_sdk::String::from_str(&ctx.env, "hash2");
+    let data_hash2 =
+        soroban_sdk::String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdH");
     let result2 = ctx.client.try_add_record(
         &provider,
         &patient,
@@ -240,7 +248,8 @@ fn test_rate_limit_bypass_for_verified_provider() {
     assert!(ctx.client.has_rate_limit_bypass(&provider));
 
     // Third request should succeed (bypass enabled)
-    let data_hash3 = soroban_sdk::String::from_str(&ctx.env, "hash3");
+    let data_hash3 =
+        soroban_sdk::String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdI");
     let result3 = ctx.client.try_add_record(
         &provider,
         &patient,
@@ -251,7 +260,8 @@ fn test_rate_limit_bypass_for_verified_provider() {
     assert!(result3.is_ok());
 
     // Fourth request should also succeed (bypass)
-    let data_hash4 = soroban_sdk::String::from_str(&ctx.env, "hash4");
+    let data_hash4 =
+        soroban_sdk::String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdJ");
     let result4 = ctx.client.try_add_record(
         &provider,
         &patient,
@@ -301,7 +311,8 @@ fn test_rate_limit_status() {
     assert_eq!(stat.max_requests, 5);
 
     // Make a request
-    let data_hash = soroban_sdk::String::from_str(&ctx.env, "hash1");
+    let data_hash =
+        soroban_sdk::String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     ctx.client.add_record(
         &provider,
         &patient,
@@ -421,7 +432,8 @@ fn test_rate_limit_different_operations() {
         .set_rate_limit_config(&ctx.admin, &get_op, &10u32, &3600u64);
 
     // Exhaust add_record limit
-    let data_hash = soroban_sdk::String::from_str(&ctx.env, "hash1");
+    let data_hash =
+        soroban_sdk::String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     ctx.client.add_record(
         &provider,
         &patient,
@@ -431,7 +443,8 @@ fn test_rate_limit_different_operations() {
     );
 
     // Second add_record should fail
-    let data_hash2 = soroban_sdk::String::from_str(&ctx.env, "hash2");
+    let data_hash2 =
+        soroban_sdk::String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdH");
     let result = ctx.client.try_add_record(
         &provider,
         &patient,
@@ -478,7 +491,8 @@ fn test_rate_limit_events() {
         .set_rate_limit_config(&ctx.admin, &operation, &1u32, &3600u64);
 
     // Make first request
-    let data_hash1 = soroban_sdk::String::from_str(&ctx.env, "hash1");
+    let data_hash1 =
+        soroban_sdk::String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     ctx.client.add_record(
         &provider,
         &patient,
@@ -488,7 +502,8 @@ fn test_rate_limit_events() {
     );
 
     // Try second request (should fail and emit event)
-    let data_hash2 = soroban_sdk::String::from_str(&ctx.env, "hash2");
+    let data_hash2 =
+        soroban_sdk::String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdH");
     let result = ctx.client.try_add_record(
         &provider,
         &patient,

@@ -1,5 +1,6 @@
 #![no_std]
 pub mod rbac;
+pub mod validation;
 
 pub mod appointment;
 pub mod audit;
@@ -243,6 +244,8 @@ impl VisionRecordsContract {
             return Err(ContractError::Unauthorized);
         }
 
+        validation::validate_name(&name)?;
+
         let user_data = User {
             address: user.clone(),
             role: role.clone(),
@@ -333,6 +336,8 @@ impl VisionRecordsContract {
             events::publish_error(&env, ContractError::RateLimitExceeded as u32, context);
             return Err(ContractError::RateLimitExceeded);
         }
+
+        validation::validate_data_hash(&data_hash)?;
 
         let has_perm = if caller == provider {
             rbac::has_permission(&env, &caller, &Permission::WriteRecord)
@@ -588,6 +593,8 @@ impl VisionRecordsContract {
             events::publish_error(&env, ContractError::RateLimitExceeded as u32, context);
             return Err(ContractError::RateLimitExceeded);
         }
+
+        validation::validate_duration(duration_seconds)?;
 
         let has_perm = if caller == patient {
             true // Patient manages own access

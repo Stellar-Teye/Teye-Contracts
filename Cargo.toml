@@ -4,6 +4,10 @@ resolver = "2"
 members = [
     "contracts/vision_records",
     "contracts/staking",
+    "contracts/compliance",
+    "contracts/common",
+    "contracts/identity",
+    "contracts/zk_verifier",
 ]
 
 [workspace.package]

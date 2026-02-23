@@ -205,7 +205,7 @@ fn test_provider_create_records_workflow() {
     );
 
     // Provider creates examination record
-    let hash1 = String::from_str(&ctx.env, "exam_hash_123");
+    let hash1 = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     let record_id1 = ctx.client.add_record(
         &provider,
         &patient,
@@ -217,7 +217,7 @@ fn test_provider_create_records_workflow() {
     assert_eq!(record_id1, 1);
 
     // Provider creates prescription record
-    let hash2 = String::from_str(&ctx.env, "prescription_hash_456");
+    let hash2 = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdH");
     let record_id2 = ctx.client.add_record(
         &provider,
         &patient,
@@ -255,7 +255,7 @@ fn test_provider_search_patients() {
     );
 
     // Provider creates records for multiple patients
-    let hash1 = String::from_str(&ctx.env, "hash1");
+    let hash1 = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     ctx.client.add_record(
         &provider,
         &patient1,
@@ -264,7 +264,7 @@ fn test_provider_search_patients() {
         &hash1,
     );
 
-    let hash2 = String::from_str(&ctx.env, "hash2");
+    let hash2 = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdH");
     ctx.client.add_record(
         &provider,
         &patient2,
@@ -328,7 +328,7 @@ fn test_verified_provider_rate_limit_bypass() {
     let patient = create_test_user(&ctx, Role::Patient, "Patient");
 
     // Before verification, rate limit applies
-    let hash1 = String::from_str(&ctx.env, "hash1");
+    let hash1 = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     ctx.client.add_record(
         &provider,
         &patient,
@@ -338,7 +338,7 @@ fn test_verified_provider_rate_limit_bypass() {
     );
 
     // Second request should fail (rate limit)
-    let hash2 = String::from_str(&ctx.env, "hash2");
+    let hash2 = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdH");
     let result = ctx.client.try_add_record(
         &provider,
         &patient,
@@ -356,7 +356,7 @@ fn test_verified_provider_rate_limit_bypass() {
     assert!(ctx.client.has_rate_limit_bypass(&provider));
 
     // Now should be able to make multiple requests
-    let hash3 = String::from_str(&ctx.env, "hash3");
+    let hash3 = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdI");
     let result3 = ctx.client.try_add_record(
         &provider,
         &patient,
@@ -376,7 +376,7 @@ fn test_provider_has_default_permission() {
 
     // Optometrists have WriteRecord permission by default
     // So they should be able to create records
-    let hash = String::from_str(&ctx.env, "hash");
+    let hash = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     let result = ctx.client.try_add_record(
         &provider,
         &patient,

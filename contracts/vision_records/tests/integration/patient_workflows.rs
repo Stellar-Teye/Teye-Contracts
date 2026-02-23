@@ -26,7 +26,6 @@ fn test_patient_registration_workflow() {
     assert_eq!(user_data.role, vision_records::Role::Patient);
     assert_eq!(user_data.name, String::from_str(&ctx.env, "John Doe"));
     assert!(user_data.is_active);
-    assert!(user_data.registered_at >= 0);
 
     // Step 3: Patient can view their own profile
     let profile = ctx.client.get_user(&patient);
@@ -152,13 +151,13 @@ fn test_patient_access_expiration() {
     let patient = create_test_user(&ctx, vision_records::Role::Patient, "Patient");
     let doctor = create_test_user(&ctx, vision_records::Role::Optometrist, "Doctor");
 
-    // Grant access with short duration
+    // Grant access with short duration (minimum 3600 seconds)
     ctx.client.grant_access(
         &patient,
         &patient,
         &doctor,
         &AccessLevel::Read,
-        &10u64, // 10 seconds
+        &3600u64, // 1 hour (minimum allowed)
     );
 
     // Verify access is granted
@@ -167,8 +166,8 @@ fn test_patient_access_expiration() {
         AccessLevel::Read
     );
 
-    // Advance time past expiration
-    ctx.env.ledger().set_timestamp(100011);
+    // Advance time past expiration (3600 seconds + 1 second buffer)
+    ctx.env.ledger().set_timestamp(100000 + 3600 + 1);
 
     // Access should be expired
     assert_eq!(
@@ -192,7 +191,7 @@ fn test_patient_view_records() {
     );
 
     // Provider creates multiple records
-    let hash1 = String::from_str(&ctx.env, "hash1");
+    let hash1 = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     let record_id1 = ctx.client.add_record(
         &provider,
         &patient,
@@ -201,7 +200,7 @@ fn test_patient_view_records() {
         &hash1,
     );
 
-    let hash2 = String::from_str(&ctx.env, "hash2");
+    let hash2 = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdH");
     let record_id2 = ctx.client.add_record(
         &provider,
         &patient,
