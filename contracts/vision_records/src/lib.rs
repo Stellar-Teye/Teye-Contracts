@@ -7,7 +7,8 @@ pub mod events;
 pub mod provider;
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol, Vec,
+    contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, String,
+    Symbol, Vec,
 };
 
 pub use errors::{
@@ -113,6 +114,30 @@ pub struct AccessGrant {
     pub level: AccessLevel,
     pub granted_at: u64,
     pub expires_at: u64,
+}
+
+/// Signed meta-transaction for delegated access granting
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct SignedGrant {
+    pub patient: Address,
+    pub patient_pubkey: BytesN<32>,
+    pub grantee: Address,
+    pub grantee_id: BytesN<32>,
+    pub level: u32,
+    pub expires_at: u64,
+    pub nonce: u64,
+    pub signature: BytesN<64>,
+}
+
+fn level_from_u32(level: u32) -> Result<AccessLevel, ContractError> {
+    match level {
+        0 => Ok(AccessLevel::None),
+        1 => Ok(AccessLevel::Read),
+        2 => Ok(AccessLevel::Write),
+        3 => Ok(AccessLevel::Full),
+        _ => Err(ContractError::InvalidInput),
+    }
 }
 
 #[contract]
@@ -395,6 +420,81 @@ impl VisionRecordsContract {
         env.storage().persistent().remove(&key);
 
         events::publish_access_revoked(&env, patient, grantee);
+
+        Ok(())
+    }
+
+    /// Grant access via a signed meta-transaction.
+    ///
+    /// The patient signs the grant parameters off-chain and a relayer
+    /// submits the transaction on their behalf. The signature is verified
+    /// on-chain and nonces prevent replay attacks.
+    pub fn grant_access_meta(
+        env: Env,
+        relayer: Address,
+        signed_grant: SignedGrant,
+    ) -> Result<(), ContractError> {
+        relayer.require_auth();
+
+        let access_level = level_from_u32(signed_grant.level)?;
+
+        // Reject expired meta-transactions
+        if signed_grant.expires_at <= env.ledger().timestamp() {
+            return Err(ContractError::MetaTxExpired);
+        }
+
+        // Prevent nonce replay
+        let nonce_key = (symbol_short!("NONCE"), signed_grant.nonce);
+        if env.storage().persistent().has(&nonce_key) {
+            return Err(ContractError::NonceAlreadyUsed);
+        }
+
+        // Build the canonical message and verify the patient's signature
+        let message: Bytes = common::build_grant_message(
+            &env,
+            &signed_grant.patient_pubkey,
+            &signed_grant.grantee_id,
+            signed_grant.level,
+            signed_grant.expires_at,
+            signed_grant.nonce,
+        );
+        common::verify_meta_signature(
+            &env,
+            &signed_grant.patient_pubkey,
+            &message,
+            &signed_grant.signature,
+        );
+
+        // Mark nonce as used
+        env.storage().persistent().set(&nonce_key, &true);
+        extend_ttl_u64_key(&env, &nonce_key);
+
+        // Create the access grant
+        let grant = AccessGrant {
+            patient: signed_grant.patient.clone(),
+            grantee: signed_grant.grantee.clone(),
+            level: access_level.clone(),
+            granted_at: env.ledger().timestamp(),
+            expires_at: signed_grant.expires_at,
+        };
+
+        let key = (
+            symbol_short!("ACCESS"),
+            signed_grant.patient.clone(),
+            signed_grant.grantee.clone(),
+        );
+        env.storage().persistent().set(&key, &grant);
+        extend_ttl_access_key(&env, &key);
+
+        events::publish_meta_access_granted(
+            &env,
+            signed_grant.patient,
+            signed_grant.grantee,
+            access_level,
+            relayer,
+            signed_grant.expires_at,
+            signed_grant.nonce,
+        );
 
         Ok(())
     }
@@ -761,3 +861,6 @@ mod test;
 
 #[cfg(test)]
 mod test_rbac;
+
+#[cfg(test)]
+mod test_meta_tx;
