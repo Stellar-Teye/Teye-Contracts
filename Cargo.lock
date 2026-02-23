@@ -307,16 +307,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cross_chain"
-version = "1.2.2"
-dependencies = [
- "proptest",
- "proptest-derive",
- "soroban-sdk",
- "vision_records",
-]
-
-[[package]]
 name = "crypto-bigint"
 version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -621,13 +611,6 @@ checksum = "c0b50bfb653653f9ca9095b427bed08ab8d75a137839d9ad64eb11810d5b6393"
 dependencies = [
  "rand_core 0.6.4",
  "subtle",
-]
-
-[[package]]
-name = "fhir"
-version = "1.2.2"
-dependencies = [
- "soroban-sdk",
 ]
 
 [[package]]
