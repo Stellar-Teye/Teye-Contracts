@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 #![cfg(test)]
 
 use soroban_sdk::{testutils::Address as _, testutils::Ledger, Address, BytesN, Env};

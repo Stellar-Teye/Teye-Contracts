@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::arithmetic_side_effects)]
 //! Property-based state machine tests for the VisionRecords contract.
 //!
 //! These tests model the contract as a state machine and verify that

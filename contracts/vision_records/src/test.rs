@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::arithmetic_side_effects)]
 use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
 use crate::*;

@@ -329,7 +329,7 @@ impl VisionRecordsContract {
 
         // Generate record ID
         let counter_key = symbol_short!("REC_CTR");
-        let record_id: u64 = env.storage().instance().get(&counter_key).unwrap_or(0) + 1;
+        let record_id: u64 = env.storage().instance().get(&counter_key).unwrap_or(0u64).saturating_add(1u64);
         env.storage().instance().set(&counter_key, &record_id);
 
         let record = VisionRecord {

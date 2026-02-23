@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 use identity::credential::Credential;
 use identity::did::DIDDocument;
 use identity::did::DIDRegistry;
