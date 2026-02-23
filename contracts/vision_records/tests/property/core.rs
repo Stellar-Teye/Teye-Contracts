@@ -49,7 +49,7 @@ proptest! {
         let provider = Address::generate(&env);
 
         for expected_id in 1..=(n_records as u64) {
-            let hash = String::from_str(&env, "QmHashProperty");
+            let hash = String::from_str(&env, "0123456789abcdef0123456789abcdef");
             let id = client.add_record(
                 &_admin,
                 &patient,
@@ -69,7 +69,7 @@ proptest! {
         let patient = Address::generate(&env);
         let provider = Address::generate(&env);
         let rtype = record_type_from_u8(record_type_seed);
-        let hash = String::from_str(&env, "QmTestHash");
+        let hash = String::from_str(&env, "0123456789abcdef0123456789abcdef");
 
         let id = client.add_record(&_admin, &patient, &provider, &rtype, &hash);
         let record = client.get_record(&id);
@@ -87,7 +87,7 @@ proptest! {
         let (env, client, _admin) = setup();
         let patient = Address::generate(&env);
         let provider = Address::generate(&env);
-        let hash = String::from_str(&env, "QmHash");
+        let hash = String::from_str(&env, "0123456789abcdef0123456789abcdef");
 
         let mut added_ids: Vec<u64> = Vec::new();
 
@@ -123,7 +123,7 @@ proptest! {
         prop_assert_eq!(client.get_record_count(), 0u64);
 
         for i in 0..n_records {
-            let hash = String::from_str(&env, "QmCountHash");
+            let hash = String::from_str(&env, "0123456789abcdef0123456789abcdef");
             client.add_record(&_admin, &patient, &provider, &RecordType::Diagnosis, &hash);
             prop_assert_eq!(client.get_record_count(), i.saturating_add(1) as u64);
         }
@@ -136,7 +136,7 @@ proptest! {
         let patient_a = Address::generate(&env);
         let patient_b = Address::generate(&env);
         let provider = Address::generate(&env);
-        let hash = String::from_str(&env, "QmIsolation");
+        let hash = String::from_str(&env, "0123456789abcdef0123456789abcdef");
 
         let mut ids_a: Vec<u64> = Vec::new();
         let mut ids_b: Vec<u64> = Vec::new();

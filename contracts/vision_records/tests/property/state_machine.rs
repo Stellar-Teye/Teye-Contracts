@@ -96,7 +96,7 @@ proptest! {
         );
 
         // Provider adds a record for the patient
-        let hash = String::from_str(&env, "QmLifecycle");
+        let hash = String::from_str(&env, "0123456789abcdef0123456789abcdef");
         let record_id = client.add_record(
             &admin,
             &patient,

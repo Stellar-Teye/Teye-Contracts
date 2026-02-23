@@ -378,6 +378,70 @@ impl VisionRecordsContract {
     pub fn check_permission(env: Env, user: Address, permission: Permission) -> bool {
         rbac::has_permission(&env, &user, &permission)
     }
+
+    // ======================== ACL Group Endpoints ========================
+
+    pub fn create_acl_group(
+        env: Env,
+        caller: Address,
+        name: String,
+        permissions: Vec<Permission>,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+        if !rbac::has_permission(&env, &caller, &Permission::ManageUsers) {
+            return Err(ContractError::Unauthorized);
+        }
+        rbac::create_group(&env, name, permissions);
+        Ok(())
+    }
+
+    pub fn delete_acl_group(env: Env, caller: Address, name: String) -> Result<(), ContractError> {
+        caller.require_auth();
+        if !rbac::has_permission(&env, &caller, &Permission::ManageUsers) {
+            return Err(ContractError::Unauthorized);
+        }
+        rbac::delete_group(&env, name);
+        Ok(())
+    }
+
+    pub fn add_user_to_group(
+        env: Env,
+        caller: Address,
+        user: Address,
+        group_name: String,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+        if !rbac::has_permission(&env, &caller, &Permission::ManageUsers) {
+            return Err(ContractError::Unauthorized);
+        }
+        rbac::add_to_group(&env, user, group_name).map_err(|_| ContractError::InvalidInput)?;
+        Ok(())
+    }
+
+    pub fn remove_user_from_group(
+        env: Env,
+        caller: Address,
+        user: Address,
+        group_name: String,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+        if !rbac::has_permission(&env, &caller, &Permission::ManageUsers) {
+            return Err(ContractError::Unauthorized);
+        }
+        rbac::remove_from_group(&env, user, group_name);
+        Ok(())
+    }
+
+    pub fn get_user_groups(env: Env, user: Address) -> Vec<String> {
+        env.storage()
+            .persistent()
+            .get(&rbac::user_groups_key(&user))
+            .unwrap_or(Vec::new(&env))
+    }
+
+    pub fn get_acl_group_permissions(env: Env, group_name: String) -> Vec<Permission> {
+        rbac::get_group_permissions(&env, &group_name)
+    }
 }
 
 #[cfg(test)]
