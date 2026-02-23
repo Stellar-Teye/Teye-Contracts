@@ -170,8 +170,7 @@ fn test_rate_limit_add_record_and_grant_access() {
 
     let patient = Address::generate(&env);
     let provider = Address::generate(&env);
-    let data_hash =
-        String::from_str(&env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
+    let data_hash = String::from_str(&env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
 
     // First two record additions should succeed
     client.add_record(
@@ -219,12 +218,7 @@ fn test_rate_limit_add_record_and_grant_access() {
     let doctor = Address::generate(&env);
     client.grant_access(&patient, &patient, &doctor, &AccessLevel::Read, &86400);
     client.grant_access(&patient, &patient, &doctor, &AccessLevel::Read, &86400);
-    let rate_limited = client.try_grant_access(
-        &patient,
-        &patient,
-        &doctor,
-        &AccessLevel::Read,
-        &86400,
-    );
+    let rate_limited =
+        client.try_grant_access(&patient, &patient, &doctor, &AccessLevel::Read, &86400);
     assert!(rate_limited.is_err());
 }

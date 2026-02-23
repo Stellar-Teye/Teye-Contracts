@@ -154,11 +154,7 @@ impl VisionRecordsContract {
         let now = env.ledger().timestamp();
         let key = (RATE_TRACK, caller.clone());
 
-        let mut state: (u64, u64) = env
-            .storage()
-            .persistent()
-            .get(&key)
-            .unwrap_or((0, now));
+        let mut state: (u64, u64) = env.storage().persistent().get(&key).unwrap_or((0, now));
 
         let window_end = state.1.saturating_add(window_duration_seconds);
         if now >= window_end {
@@ -230,9 +226,10 @@ impl VisionRecordsContract {
             return Err(ContractError::Unauthorized);
         }
 
-        env.storage()
-            .instance()
-            .set(&RATE_CFG, &(max_requests_per_window, window_duration_seconds));
+        env.storage().instance().set(
+            &RATE_CFG,
+            &(max_requests_per_window, window_duration_seconds),
+        );
 
         Ok(())
     }

@@ -134,10 +134,7 @@ fn test_add_record_unauthorized_and_admin() {
     let ctx = setup_test_env();
     let patient = create_test_user(&ctx, Role::Patient, "Patient");
     let random_user = create_test_user(&ctx, Role::Patient, "Random");
-    let hash = String::from_str(
-        &ctx.env,
-        "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
-    );
+    let hash = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
 
     // Random user cannot add typical record
     let res = ctx.client.try_add_record(
@@ -190,10 +187,7 @@ fn test_events_and_version() {
 
     // Test add record event
     let provider = create_test_user(&ctx, Role::Optometrist, "Provider");
-    let hash = String::from_str(
-        &ctx.env,
-        "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
-    );
+    let hash = String::from_str(&ctx.env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     ctx.client
         .add_record(&provider, &user, &provider, &RecordType::Examination, &hash);
     assert_eq!(ctx.env.events().all().len(), 1); // Kills publish_record_added mutant
