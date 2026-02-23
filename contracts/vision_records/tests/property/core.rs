@@ -51,7 +51,7 @@ proptest! {
         for expected_id in 1..=(n_records as u64) {
             let hash = String::from_str(
                 &env,
-                "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
             );
             let id = client.add_record(
                 &_admin,
@@ -74,8 +74,7 @@ proptest! {
         let rtype = record_type_from_u8(record_type_seed);
         let hash = String::from_str(
             &env,
-            "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
-        );
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",        );
 
         let id = client.add_record(&_admin, &patient, &provider, &rtype, &hash);
         let record = client.get_record(&id);
@@ -95,8 +94,7 @@ proptest! {
         let provider = Address::generate(&env);
         let hash = String::from_str(
             &env,
-            "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
-        );
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",        );
 
         let mut added_ids: Vec<u64> = Vec::new();
 
@@ -134,8 +132,7 @@ proptest! {
         for i in 0..n_records {
             let hash = String::from_str(
                 &env,
-                "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
-            );
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",            );
             client.add_record(&_admin, &patient, &provider, &RecordType::Diagnosis, &hash);
             prop_assert_eq!(client.get_record_count(), i.saturating_add(1) as u64);
         }
@@ -150,8 +147,7 @@ proptest! {
         let provider = Address::generate(&env);
         let hash = String::from_str(
             &env,
-            "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
-        );
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",        );
 
         let mut ids_a: Vec<u64> = Vec::new();
         let mut ids_b: Vec<u64> = Vec::new();

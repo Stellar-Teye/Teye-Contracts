@@ -15,6 +15,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "analytics"
+version = "1.2.2"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -304,6 +311,16 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
+]
+
+[[package]]
+name = "cross_chain"
+version = "1.2.2"
+dependencies = [
+ "proptest",
+ "proptest-derive",
+ "soroban-sdk",
+ "vision_records",
 ]
 
 [[package]]
@@ -611,6 +628,13 @@ checksum = "c0b50bfb653653f9ca9095b427bed08ab8d75a137839d9ad64eb11810d5b6393"
 dependencies = [
  "rand_core 0.6.4",
  "subtle",
+]
+
+[[package]]
+name = "fhir"
+version = "1.2.2"
+dependencies = [
+ "soroban-sdk",
 ]
 
 [[package]]
@@ -1730,6 +1754,13 @@ checksum = "2e70e4c5a0e0a8a4823ad65dfe1a6930e4f4d756dcd9dd7939022b5e8c501215"
 dependencies = [
  "num-conv",
  "time-core",
+]
+
+[[package]]
+name = "treasury"
+version = "1.2.2"
+dependencies = [
+ "soroban-sdk",
 ]
 
 [[package]]

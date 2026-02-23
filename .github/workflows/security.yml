@@ -33,7 +33,6 @@ jobs:
 
       - name: Run cargo audit
         run: cargo audit
-        continue-on-error: true
 
       - name: Upload audit results
         uses: actions/upload-artifact@v4

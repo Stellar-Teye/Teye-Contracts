@@ -208,7 +208,7 @@ fn test_record_factory_creates_default_data() {
         &patient,
         &provider,
         vision_records::RecordType::Diagnosis,
-        "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
+        "e3b0c44298fc1c149afbf4c8996fb924",
     );
     let record = ctx.client.get_record(&id);
     assert_eq!(record.id, id);
@@ -218,8 +218,8 @@ fn test_record_factory_creates_default_data() {
 #[test]
 fn test_user_factory_returns_unique_users() {
     let ctx = setup_test_env();
-    let a = create_test_user(&ctx, Role::Staff, "User A");
-    let b = create_test_user(&ctx, Role::Staff, "User B");
+    let a = create_test_user(&ctx, Role::Staff, "UserA");
+    let b = create_test_user(&ctx, Role::Staff, "UserB");
     assert_ne!(a, b);
 }
 

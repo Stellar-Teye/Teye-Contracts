@@ -8,6 +8,10 @@ members = [
     "contracts/common",
     "contracts/identity",
     "contracts/zk_verifier",
+    "contracts/fhir",
+    "contracts/cross_chain",
+    "contracts/analytics",
+    "contracts/treasury",
 ]
 
 [workspace.package]
