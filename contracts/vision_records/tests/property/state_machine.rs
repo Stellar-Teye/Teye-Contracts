@@ -109,7 +109,7 @@ proptest! {
         prop_assert_eq!(record_id, 1u64);
 
         // Stored record must match inputs
-        let record = client.get_record(&record_id);
+        let record = client.get_record(&provider, &record_id);
         prop_assert_eq!(record.patient, patient.clone());
         prop_assert_eq!(record.provider, provider.clone());
         prop_assert_eq!(record.data_hash, hash);
@@ -120,7 +120,7 @@ proptest! {
         prop_assert_eq!(client.check_access(&patient, &doctor), AccessLevel::Read);
 
         // Patient revokes access
-        client.revoke_access(&patient, &doctor);
+        client.revoke_access(&patient, &patient, &doctor);
         prop_assert_eq!(client.check_access(&patient, &doctor), AccessLevel::None);
     }
 

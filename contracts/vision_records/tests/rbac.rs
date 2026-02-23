@@ -210,7 +210,7 @@ fn test_record_factory_creates_default_data() {
         vision_records::RecordType::Diagnosis,
         "QmFactory",
     );
-    let record = ctx.client.get_record(&id);
+    let record = ctx.client.get_record(&provider, &id);
     assert_eq!(record.id, id);
     assert_eq!(record.patient, patient);
 }

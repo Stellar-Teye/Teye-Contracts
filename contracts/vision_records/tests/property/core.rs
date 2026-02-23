@@ -72,7 +72,7 @@ proptest! {
         let hash = String::from_str(&env, "QmTestHash");
 
         let id = client.add_record(&_admin, &patient, &provider, &rtype, &hash);
-        let record = client.get_record(&id);
+        let record = client.get_record(&provider, &id);
 
         prop_assert_eq!(record.patient, patient);
         prop_assert_eq!(record.provider, provider);

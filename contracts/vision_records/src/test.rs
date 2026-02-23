@@ -63,7 +63,7 @@ fn test_add_and_get_record() {
 
     assert_eq!(record_id, 1);
 
-    let record = client.get_record(&record_id);
+    let record = client.get_record(&provider, &record_id);
     assert_eq!(record.patient, patient);
     assert_eq!(record.provider, provider);
 }
@@ -91,6 +91,6 @@ fn test_access_control() {
     assert_eq!(client.check_access(&patient, &doctor), AccessLevel::Read);
 
     // Revoke access
-    client.revoke_access(&patient, &doctor);
+    client.revoke_access(&patient, &patient, &doctor);
     assert_eq!(client.check_access(&patient, &doctor), AccessLevel::None);
 }

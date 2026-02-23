@@ -2,6 +2,7 @@
 pub mod rbac;
 
 pub mod appointment;
+pub mod audit;
 pub mod emergency;
 pub mod errors;
 pub mod events;
@@ -12,6 +13,7 @@ use soroban_sdk::{
 };
 
 pub use appointment::{Appointment, AppointmentHistoryEntry, AppointmentStatus, AppointmentType};
+pub use audit::{AccessAction, AccessResult, AuditEntry};
 pub use emergency::{EmergencyAccess, EmergencyAuditEntry, EmergencyCondition, EmergencyStatus};
 pub use errors::{
     create_error_context, log_error, ContractError, ErrorCategory, ErrorLogEntry, ErrorSeverity,
@@ -277,6 +279,19 @@ impl VisionRecordsContract {
         };
 
         if !has_perm && !rbac::has_permission(&env, &caller, &Permission::SystemAdmin) {
+            // Log failed write attempt
+            let audit_entry = audit::create_audit_entry(
+                &env,
+                caller.clone(),
+                patient.clone(),
+                None,
+                AccessAction::Write,
+                AccessResult::Denied,
+                Some(String::from_str(&env, "Insufficient permissions")),
+            );
+            audit::add_audit_entry(&env, &audit_entry);
+            events::publish_audit_log_entry(&env, &audit_entry);
+
             let context = create_error_context(
                 &env,
                 ContractError::Unauthorized,
@@ -320,17 +335,97 @@ impl VisionRecordsContract {
             .set(&patient_key, &patient_records);
         extend_ttl_address_key(&env, &patient_key);
 
+        // Log successful write
+        let audit_entry = audit::create_audit_entry(
+            &env,
+            caller.clone(),
+            patient.clone(),
+            Some(record_id),
+            AccessAction::Write,
+            AccessResult::Success,
+            None,
+        );
+        audit::add_audit_entry(&env, &audit_entry);
+        events::publish_audit_log_entry(&env, &audit_entry);
+
         events::publish_record_added(&env, record_id, patient, provider, record_type);
 
         Ok(record_id)
     }
 
     /// Get a vision record by ID
-    pub fn get_record(env: Env, record_id: u64) -> Result<VisionRecord, ContractError> {
+    /// Requires authentication and logs access attempt
+    pub fn get_record(
+        env: Env,
+        caller: Address,
+        record_id: u64,
+    ) -> Result<VisionRecord, ContractError> {
+        caller.require_auth();
+
         let key = (symbol_short!("RECORD"), record_id);
-        match env.storage().persistent().get(&key) {
-            Some(record) => Ok(record),
+        match env.storage().persistent().get::<_, VisionRecord>(&key) {
+            Some(record) => {
+                // Check access permissions
+                let has_access = if caller == record.patient || caller == record.provider {
+                    // Patient can always read their own records
+                    // Provider can read records they created
+                    true
+                } else {
+                    // Check if caller has ReadAnyRecord permission or has been granted access
+                    rbac::has_permission(&env, &caller, &Permission::ReadAnyRecord) || {
+                        let access_level =
+                            Self::check_access(env.clone(), record.patient.clone(), caller.clone());
+                        access_level != AccessLevel::None
+                    }
+                };
+
+                if !has_access {
+                    // Log failed access attempt
+                    let audit_entry = audit::create_audit_entry(
+                        &env,
+                        caller.clone(),
+                        record.patient.clone(),
+                        Some(record_id),
+                        AccessAction::Read,
+                        AccessResult::Denied,
+                        Some(String::from_str(&env, "Insufficient permissions")),
+                    );
+                    audit::add_audit_entry(&env, &audit_entry);
+                    events::publish_audit_log_entry(&env, &audit_entry);
+
+                    return Err(ContractError::Unauthorized);
+                }
+
+                // Log successful access
+                let audit_entry = audit::create_audit_entry(
+                    &env,
+                    caller.clone(),
+                    record.patient.clone(),
+                    Some(record_id),
+                    AccessAction::Read,
+                    AccessResult::Success,
+                    None,
+                );
+                audit::add_audit_entry(&env, &audit_entry);
+                events::publish_audit_log_entry(&env, &audit_entry);
+
+                Ok(record)
+            }
             None => {
+                // Log failed access attempt (record not found)
+                // We don't know the patient, so we'll use caller as placeholder
+                let audit_entry = audit::create_audit_entry(
+                    &env,
+                    caller.clone(),
+                    caller.clone(), // Placeholder since we don't know patient
+                    Some(record_id),
+                    AccessAction::Read,
+                    AccessResult::NotFound,
+                    Some(String::from_str(&env, "Record not found")),
+                );
+                audit::add_audit_entry(&env, &audit_entry);
+                events::publish_audit_log_entry(&env, &audit_entry);
+
                 let resource_id = String::from_str(&env, "get_record");
                 let context = create_error_context(
                     &env,
@@ -380,6 +475,18 @@ impl VisionRecordsContract {
         };
 
         if !has_perm {
+            // Log failed access grant attempt
+            let audit_entry = audit::create_audit_entry(
+                &env,
+                caller.clone(),
+                patient.clone(),
+                None,
+                AccessAction::GrantAccess,
+                AccessResult::Denied,
+                Some(String::from_str(&env, "Insufficient permissions")),
+            );
+            audit::add_audit_entry(&env, &audit_entry);
+            events::publish_audit_log_entry(&env, &audit_entry);
             return Err(ContractError::Unauthorized);
         }
 
@@ -395,6 +502,19 @@ impl VisionRecordsContract {
         let key = (symbol_short!("ACCESS"), patient.clone(), grantee.clone());
         env.storage().persistent().set(&key, &grant);
         extend_ttl_access_key(&env, &key);
+
+        // Log successful access grant
+        let audit_entry = audit::create_audit_entry(
+            &env,
+            caller.clone(),
+            patient.clone(),
+            None,
+            AccessAction::GrantAccess,
+            AccessResult::Success,
+            None,
+        );
+        audit::add_audit_entry(&env, &audit_entry);
+        events::publish_audit_log_entry(&env, &audit_entry);
 
         events::publish_access_granted(&env, patient, grantee, level, duration_seconds, expires_at);
 
@@ -417,13 +537,44 @@ impl VisionRecordsContract {
     /// Revoke access
     pub fn revoke_access(
         env: Env,
+        caller: Address,
         patient: Address,
         grantee: Address,
     ) -> Result<(), ContractError> {
-        patient.require_auth();
+        caller.require_auth();
+
+        // Verify caller has permission to revoke
+        if caller != patient && !rbac::has_permission(&env, &caller, &Permission::SystemAdmin) {
+            // Log failed revoke attempt
+            let audit_entry = audit::create_audit_entry(
+                &env,
+                caller.clone(),
+                patient.clone(),
+                None,
+                AccessAction::RevokeAccess,
+                AccessResult::Denied,
+                Some(String::from_str(&env, "Insufficient permissions")),
+            );
+            audit::add_audit_entry(&env, &audit_entry);
+            events::publish_audit_log_entry(&env, &audit_entry);
+            return Err(ContractError::Unauthorized);
+        }
 
         let key = (symbol_short!("ACCESS"), patient.clone(), grantee.clone());
         env.storage().persistent().remove(&key);
+
+        // Log successful access revoke
+        let audit_entry = audit::create_audit_entry(
+            &env,
+            caller.clone(),
+            patient.clone(),
+            None,
+            AccessAction::RevokeAccess,
+            AccessResult::Success,
+            None,
+        );
+        audit::add_audit_entry(&env, &audit_entry);
+        events::publish_audit_log_entry(&env, &audit_entry);
 
         events::publish_access_revoked(&env, patient, grantee);
 
@@ -1109,6 +1260,19 @@ impl VisionRecordsContract {
 
         // Verify access hasn't expired
         if emergency_access.expires_at <= env.ledger().timestamp() {
+            // Log failed emergency access attempt
+            let audit_entry = audit::create_audit_entry(
+                &env,
+                caller.clone(),
+                patient.clone(),
+                record_id,
+                AccessAction::EmergencyAccess,
+                AccessResult::Expired,
+                Some(String::from_str(&env, "Emergency access expired")),
+            );
+            audit::add_audit_entry(&env, &audit_entry);
+            events::publish_audit_log_entry(&env, &audit_entry);
+
             let context = create_error_context(
                 &env,
                 ContractError::EmergencyAccessExpired,
@@ -1126,14 +1290,27 @@ impl VisionRecordsContract {
             return Err(ContractError::EmergencyAccessExpired);
         }
 
-        // Create audit entry
-        let audit_entry = EmergencyAuditEntry {
+        // Create emergency audit entry
+        let emergency_audit_entry = EmergencyAuditEntry {
             access_id: emergency_access.id,
             actor: caller.clone(),
             action: String::from_str(&env, "ACCESSED"),
             timestamp: env.ledger().timestamp(),
         };
-        emergency::add_audit_entry(&env, &audit_entry);
+        emergency::add_audit_entry(&env, &emergency_audit_entry);
+
+        // Create general audit entry
+        let audit_entry = audit::create_audit_entry(
+            &env,
+            caller.clone(),
+            patient.clone(),
+            record_id,
+            AccessAction::EmergencyAccess,
+            AccessResult::Success,
+            None,
+        );
+        audit::add_audit_entry(&env, &audit_entry);
+        events::publish_audit_log_entry(&env, &audit_entry);
 
         // Publish event
         events::publish_emergency_access_used(
@@ -1921,6 +2098,65 @@ impl VisionRecordsContract {
                 Err(ContractError::AppointmentNotFound)
             }
         }
+    }
+
+    // ======================== Audit Logging Endpoints ========================
+
+    /// Retrieves an audit entry by ID.
+    pub fn get_audit_entry(env: Env, entry_id: u64) -> Result<AuditEntry, ContractError> {
+        match audit::get_audit_entry(&env, entry_id) {
+            Some(entry) => Ok(entry),
+            None => {
+                let context = create_error_context(
+                    &env,
+                    ContractError::RecordNotFound, // Reuse RecordNotFound for audit entries
+                    None,
+                    Some(String::from_str(&env, "get_audit_entry")),
+                );
+                log_error(&env, ContractError::RecordNotFound, None, None, None);
+                events::publish_error(&env, ContractError::RecordNotFound as u32, context);
+                Err(ContractError::RecordNotFound)
+            }
+        }
+    }
+
+    /// Retrieves all audit entries for a specific record.
+    pub fn get_record_audit_log(env: Env, record_id: u64) -> Vec<AuditEntry> {
+        audit::get_record_audit_log(&env, record_id)
+    }
+
+    /// Retrieves all audit entries for a specific user (actor).
+    pub fn get_user_audit_log(env: Env, user: Address) -> Vec<AuditEntry> {
+        audit::get_user_audit_log(&env, &user)
+    }
+
+    /// Retrieves all audit entries for a specific patient.
+    pub fn get_patient_audit_log(env: Env, patient: Address) -> Vec<AuditEntry> {
+        audit::get_patient_audit_log(&env, &patient)
+    }
+
+    /// Retrieves audit entries filtered by action type.
+    pub fn get_audit_log_by_action(env: Env, action: AccessAction) -> Vec<AuditEntry> {
+        audit::get_audit_log_by_action(&env, action)
+    }
+
+    /// Retrieves audit entries filtered by result.
+    pub fn get_audit_log_by_result(env: Env, result: AccessResult) -> Vec<AuditEntry> {
+        audit::get_audit_log_by_result(&env, result)
+    }
+
+    /// Retrieves audit entries within a time range.
+    pub fn get_audit_log_by_time_range(
+        env: Env,
+        start_time: u64,
+        end_time: u64,
+    ) -> Vec<AuditEntry> {
+        audit::get_audit_log_by_time_range(&env, start_time, end_time)
+    }
+
+    /// Retrieves recent audit entries (last N entries).
+    pub fn get_recent_audit_log(env: Env, limit: u64) -> Vec<AuditEntry> {
+        audit::get_recent_audit_log(&env, limit)
     }
 }
 

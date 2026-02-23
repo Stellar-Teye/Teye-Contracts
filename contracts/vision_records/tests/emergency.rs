@@ -1,9 +1,7 @@
 mod common;
 
 use common::setup_test_env;
-use soroban_sdk::{
-    testutils::Address as _, testutils::Ledger, Address, String, Vec,
-};
+use soroban_sdk::{testutils::Address as _, testutils::Ledger, Address, String, Vec};
 use vision_records::{
     Certification, EmergencyCondition, EmergencyStatus, License, Location, VerificationStatus,
 };

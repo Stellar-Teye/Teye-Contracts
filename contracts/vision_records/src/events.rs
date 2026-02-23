@@ -1,4 +1,5 @@
 use crate::appointment::AppointmentType;
+use crate::audit::{AccessAction, AccessResult, AuditEntry};
 use crate::emergency::EmergencyCondition;
 use crate::errors::{ErrorCategory, ErrorContext, ErrorSeverity};
 use crate::{AccessLevel, RecordType, Role, VerificationStatus};
@@ -586,6 +587,40 @@ pub fn publish_appointment_verified(
         provider,
         verifier,
         timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+/// Event published when an audit log entry is created.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuditLogEntryEvent {
+    pub entry_id: u64,
+    pub actor: Address,
+    pub patient: Address,
+    pub record_id: Option<u64>,
+    pub action: AccessAction,
+    pub result: AccessResult,
+    pub reason: Option<String>,
+    pub timestamp: u64,
+}
+
+/// Publishes an audit log entry event.
+pub fn publish_audit_log_entry(env: &Env, entry: &AuditEntry) {
+    let topics = (
+        symbol_short!("AUDIT"),
+        entry.actor.clone(),
+        entry.patient.clone(),
+    );
+    let data = AuditLogEntryEvent {
+        entry_id: entry.id,
+        actor: entry.actor.clone(),
+        patient: entry.patient.clone(),
+        record_id: entry.record_id,
+        action: entry.action.clone(),
+        result: entry.result.clone(),
+        reason: entry.reason.clone(),
+        timestamp: entry.timestamp,
     };
     env.events().publish(topics, data);
 }
