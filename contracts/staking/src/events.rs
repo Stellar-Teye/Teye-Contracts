@@ -1,0 +1,168 @@
+use soroban_sdk::{symbol_short, Address, Env};
+
+// ── Event payloads ──────────────────────────────────────────────────────────
+
+/// Fired once when the contract is bootstrapped.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InitializedEvent {
+    pub admin: Address,
+    pub stake_token: Address,
+    pub reward_token: Address,
+    pub reward_rate: i128,
+    pub lock_period: u64,
+    pub timestamp: u64,
+}
+
+/// Fired when a user deposits stake.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StakedEvent {
+    pub staker: Address,
+    pub amount: i128,
+    pub new_total_staked: i128,
+    pub timestamp: u64,
+}
+
+/// Fired when a user queues an unstake request.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UnstakeRequestedEvent {
+    pub request_id: u64,
+    pub staker: Address,
+    pub amount: i128,
+    pub unlock_at: u64,
+    pub timestamp: u64,
+}
+
+/// Fired when a user withdraws after the timelock expires.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WithdrawnEvent {
+    pub request_id: u64,
+    pub staker: Address,
+    pub amount: i128,
+    pub timestamp: u64,
+}
+
+/// Fired when a user claims accumulated rewards.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RewardClaimedEvent {
+    pub staker: Address,
+    pub amount: i128,
+    pub timestamp: u64,
+}
+
+/// Fired when the admin changes the reward rate.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RewardRateSetEvent {
+    pub new_rate: i128,
+    pub timestamp: u64,
+}
+
+/// Fired when the admin changes the lock period.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LockPeriodSetEvent {
+    pub new_period: u64,
+    pub timestamp: u64,
+}
+
+// ── Publishers ──────────────────────────────────────────────────────────────
+
+pub fn publish_initialized(
+    env: &Env,
+    admin: Address,
+    stake_token: Address,
+    reward_token: Address,
+    reward_rate: i128,
+    lock_period: u64,
+) {
+    env.events().publish(
+        (symbol_short!("INIT"),),
+        InitializedEvent {
+            admin,
+            stake_token,
+            reward_token,
+            reward_rate,
+            lock_period,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
+}
+
+pub fn publish_staked(env: &Env, staker: Address, amount: i128, new_total_staked: i128) {
+    env.events().publish(
+        (symbol_short!("STAKED"), staker.clone()),
+        StakedEvent {
+            staker,
+            amount,
+            new_total_staked,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
+}
+
+pub fn publish_unstake_requested(
+    env: &Env,
+    request_id: u64,
+    staker: Address,
+    amount: i128,
+    unlock_at: u64,
+) {
+    env.events().publish(
+        (symbol_short!("UNSTK_REQ"), staker.clone()),
+        UnstakeRequestedEvent {
+            request_id,
+            staker,
+            amount,
+            unlock_at,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
+}
+
+pub fn publish_withdrawn(env: &Env, request_id: u64, staker: Address, amount: i128) {
+    env.events().publish(
+        (symbol_short!("WITHDRAWN"), staker.clone()),
+        WithdrawnEvent {
+            request_id,
+            staker,
+            amount,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
+}
+
+pub fn publish_reward_claimed(env: &Env, staker: Address, amount: i128) {
+    env.events().publish(
+        (symbol_short!("CLMD"), staker.clone()),
+        RewardClaimedEvent {
+            staker,
+            amount,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
+}
+
+pub fn publish_reward_rate_set(env: &Env, new_rate: i128) {
+    env.events().publish(
+        (symbol_short!("RWD_RATE"),),
+        RewardRateSetEvent {
+            new_rate,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
+}
+
+pub fn publish_lock_period_set(env: &Env, new_period: u64) {
+    env.events().publish(
+        (symbol_short!("LOCK_SET"),),
+        LockPeriodSetEvent {
+            new_period,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
+}

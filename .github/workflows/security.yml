@@ -129,11 +129,10 @@ jobs:
           echo "- Dependency Audit: ${{ needs.audit.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Clippy Security: ${{ needs.clippy-security.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Secret Scanning: ${{ needs.secret-scanning.result }}" >> $GITHUB_STEP_SUMMARY
-          
+
           if [ "${{ needs.audit.result }}" != "success" ] || \
              [ "${{ needs.clippy-security.result }}" != "success" ] || \
              [ "${{ needs.secret-scanning.result }}" != "success" ]; then
             echo "⚠️ Security issues detected. Please review the results." >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
-

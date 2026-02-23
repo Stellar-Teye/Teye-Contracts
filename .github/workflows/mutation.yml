@@ -1,0 +1,34 @@
+name: Mutation Testing
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - '*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  mutation-test:
+    name: Run Mutation Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+
+      - name: Install cargo-mutants
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-mutants
+
+      - name: Run mutation testing
+        run: |
+          cargo mutants -d contracts/vision_records -vV --in-place

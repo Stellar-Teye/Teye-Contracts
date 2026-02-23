@@ -1,0 +1,18 @@
+## Description
+This PR implements the monitoring infrastructure for contract health as requested in Issue #37.
+
+It introduces a Docker-based monitoring stack with Prometheus, Alertmanager, and Grafana, along with health check scripts and detailed documentation.
+
+## Changes Included
+- **Docker Compose Stack:** `scripts/monitor/docker-compose.yml` to spin up Prometheus, Alertmanager, and Grafana.
+- **Prometheus Config & Alerts:** Configured scrape targets and alerting rules (`RPCDown`, `HighErrorRate`, `SlowRPCResponse`).
+- **Grafana Dashboard:** Pre-provisioned Grafana with a "Contract Health Dashboard" to visualize the newly collected metrics.
+- **Health Check Script:** Added `scripts/monitor/health_check.sh` to ping the Soroban RPC endpoint and check contract state.
+- **Documentation & Runbooks:** Added `docs/monitoring.md` containing setup instructions, architecture overview, and runbooks for configured alerts.
+
+Resolves #37
+
+## Verification
+- Validated monitoring configurations.
+- Verified Shell scripts using `shellcheck`.
+- Handled merging upstream changes, ensuring formatting, linting, and tests all successfully pass.

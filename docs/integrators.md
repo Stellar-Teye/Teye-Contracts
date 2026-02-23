@@ -13,7 +13,7 @@ Events provide a lightweight, queryable history of actions without needing to re
 Applications using `@stellar/stellar-sdk` or `@stellar/freighter-api` can retrieve events directly from the transaction receipt or by querying an RPC node for the contract's history.
 
 ### RPC Querying
-Send a `getEvents` JSON-RPC request to a Soroban RPC node matching the `VisionRecordsContract` ID. 
+Send a `getEvents` JSON-RPC request to a Soroban RPC node matching the `VisionRecordsContract` ID.
 Filter by `startLedger` and `topics` arrays. For instance, to get all "User Registered" events, set the `topics` filter to `[ "USR_REG" ]`.
 
 To get events for a specific patient, provide the patient's parsed `ScAddress` as the exact match on the second topic: `[ "REC_ADD", "CA...PATIENT_ID" ]`.

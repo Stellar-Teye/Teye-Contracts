@@ -134,6 +134,42 @@ jobs:
       - name: Run integration tests
         run: cargo test --test '*' --all
 
+  # Property-based tests
+  test-property:
+    name: Property Tests
+    runs-on: ubuntu-latest
+    needs: [fmt, clippy]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config libudev-dev libhidapi-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Run property tests
+        run: cargo test --test property
+        env:
+          PROPTEST_CASES: 256
+
   # Build contracts
   build:
     name: Build Contracts
@@ -220,7 +256,7 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [test-unit, test-integration, build]
+    needs: [test-unit, test-integration, test-property, build]
     if: always()
     steps:
       - name: Check test results
@@ -228,10 +264,12 @@ jobs:
           echo "## Test Summary" >> $GITHUB_STEP_SUMMARY
           echo "- Unit Tests: ${{ needs.test-unit.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Integration Tests: ${{ needs.test-integration.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Property Tests: ${{ needs.test-property.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Build: ${{ needs.build.result }}" >> $GITHUB_STEP_SUMMARY
-          
+
           if [ "${{ needs.test-unit.result }}" != "success" ] || \
              [ "${{ needs.test-integration.result }}" != "success" ] || \
+             [ "${{ needs.test-property.result }}" != "success" ] || \
              [ "${{ needs.build.result }}" != "success" ]; then
             exit 1
           fi

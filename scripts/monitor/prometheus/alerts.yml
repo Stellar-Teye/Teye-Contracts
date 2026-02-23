@@ -1,0 +1,29 @@
+groups:
+  - name: contract_alerts
+    rules:
+      - alert: RPCDown
+        expr: up{job="contract-health-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RPC Service is down"
+          description: "The Soroban RPC service or health exporter has been unreachable for more than 1 minute."
+
+      - alert: HighErrorRate
+        expr: rate(contract_transaction_errors_total[5m]) > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High contract transaction error rate"
+          description: "More than 5 transaction errors per second over the last 5 minutes."
+
+      - alert: SlowRPCResponse
+        expr: contract_rpc_latency_seconds > 2.0
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow RPC response time"
+          description: "Contract RPC calls are taking longer than 2.0 seconds on average."
