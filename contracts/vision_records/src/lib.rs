@@ -286,6 +286,26 @@ impl VisionRecordsContract {
         let key = (symbol_short!("ACCESS"), patient.clone(), grantee.clone());
         env.storage().persistent().set(&key, &grant);
 
+        // Track the grantee address in the patient's grantee list for purge iteration.
+        let list_key = (symbol_short!("ACC_LST"), patient.clone());
+        let mut grantees: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&list_key)
+            .unwrap_or(Vec::new(&env));
+        // Avoid duplicates: only append if not already present.
+        let mut found = false;
+        for i in 0..grantees.len() {
+            if grantees.get(i) == Some(grantee.clone()) {
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            grantees.push_back(grantee.clone());
+            env.storage().persistent().set(&list_key, &grantees);
+        }
+
         events::publish_access_granted(&env, patient, grantee, level, duration_seconds, expires_at);
 
         Ok(())
@@ -318,6 +338,72 @@ impl VisionRecordsContract {
         events::publish_access_revoked(&env, patient, grantee);
 
         Ok(())
+    }
+
+    /// Purge all expired access grants for a given patient.
+    ///
+    /// Only the patient themselves or a SystemAdmin may call this.
+    /// Returns the number of grants removed.
+    pub fn purge_expired_grants(
+        env: Env,
+        caller: Address,
+        patient: Address,
+    ) -> Result<u32, ContractError> {
+        caller.require_auth();
+
+        let is_patient = caller == patient;
+        let is_admin = rbac::has_permission(&env, &caller, &Permission::SystemAdmin);
+        if !is_patient && !is_admin {
+            return Err(ContractError::Unauthorized);
+        }
+
+        let list_key = (symbol_short!("ACC_LST"), patient.clone());
+        let grantees: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&list_key)
+            .unwrap_or(Vec::new(&env));
+
+        let now = env.ledger().timestamp();
+        let mut remaining = Vec::new(&env);
+        let mut purged: u32 = 0;
+
+        for i in 0..grantees.len() {
+            if let Some(grantee) = grantees.get(i) {
+                let access_key = (symbol_short!("ACCESS"), patient.clone(), grantee.clone());
+                let expired = match env.storage().persistent().get::<_, AccessGrant>(&access_key) {
+                    Some(grant) => grant.expires_at <= now,
+                    None => true, // already removed
+                };
+
+                if expired {
+                    // Fetch expires_at for the event before removing.
+                    if let Some(grant) =
+                        env.storage().persistent().get::<_, AccessGrant>(&access_key)
+                    {
+                        env.storage().persistent().remove(&access_key);
+                        events::publish_access_expired(
+                            &env,
+                            patient.clone(),
+                            grantee,
+                            grant.expires_at,
+                        );
+                    }
+                    purged += 1;
+                } else {
+                    remaining.push_back(grantee);
+                }
+            }
+        }
+
+        // Update the grantee list to only keep active entries.
+        if remaining.is_empty() {
+            env.storage().persistent().remove(&list_key);
+        } else {
+            env.storage().persistent().set(&list_key, &remaining);
+        }
+
+        Ok(purged)
     }
 
     /// Get the total number of records
