@@ -117,23 +117,6 @@ pub struct AccessGrant {
     pub expires_at: u64,
 }
 
-/// Contract errors
-/// Contract errors
-#[soroban_sdk::contracterror]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-#[repr(u32)]
-pub enum ContractError {
-    NotInitialized = 1,
-    AlreadyInitialized = 2,
-    Unauthorized = 3,
-    UserNotFound = 4,
-    RecordNotFound = 5,
-    InvalidInput = 6,
-    AccessDenied = 7,
-    Paused = 8,
-    RateLimited = 9,
-}
-
 #[contract]
 pub struct VisionRecordsContract;
 
@@ -164,7 +147,7 @@ impl VisionRecordsContract {
 
         let next = state.0.saturating_add(1);
         if next > max_requests_per_window {
-            return Err(ContractError::RateLimited);
+            return Err(ContractError::RateLimitExceeded);
         }
 
         state.0 = next;

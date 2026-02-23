@@ -198,7 +198,7 @@ fn test_rate_limit_add_record_and_grant_access() {
     );
     assert!(res.is_err());
     let err = res.unwrap_err();
-    assert!(matches!(err, Ok(ContractError::RateLimited)));
+    assert!(matches!(err, Ok(ContractError::RateLimitExceeded)));
 
     // Advance time beyond the window and ensure the limit resets
     use soroban_sdk::testutils::Ledger;

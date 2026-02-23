@@ -645,13 +645,13 @@ fn test_provider_events() {
     );
 
     let all_events = ctx.env.events().all();
-    assert!(all_events.len() > 0);
+    assert!(!all_events.is_empty());
 
     ctx.client
         .verify_provider(&ctx.admin, &provider, &VerificationStatus::Verified);
 
     let all_events2 = ctx.env.events().all();
-    assert!(all_events2.len() > 0);
+    assert!(!all_events2.is_empty());
 
     ctx.client.update_provider(
         &ctx.admin,
@@ -664,5 +664,5 @@ fn test_provider_events() {
     );
 
     let all_events3 = ctx.env.events().all();
-    assert!(all_events3.len() > 0);
+    assert!(!all_events3.is_empty());
 }

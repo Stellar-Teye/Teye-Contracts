@@ -1,7 +1,7 @@
-/// Simple, host-side rate limiting helpers that mirror the on-chain pattern.
-///
-/// This module is intentionally `std`-only and does not depend on `soroban_sdk`
-/// so it can be used from off-chain tooling or simulations.
+//! Simple, host-side rate limiting helpers that mirror the on-chain pattern.
+//!
+//! This module is intentionally `std`-only and does not depend on `soroban_sdk`
+//! so it can be used from off-chain tooling or simulations.
 
 /// Configuration for a fixed-window rate limiter.
 #[derive(Clone, Debug)]
