@@ -403,3 +403,50 @@ fn test_rewards_after_rate_set_to_zero() {
     env.ledger().set_timestamp(1_000);
     assert_eq!(client.get_pending_rewards(&staker), 500);
 }
+
+// Input Validation Tests
+
+#[test]
+fn test_initialize_same_token_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let same_token = env.register_stellar_asset_contract_v2(Address::generate(&env));
+    let token_id = same_token.address();
+
+    let contract_id = env.register(crate::StakingContract, ());
+    let client = StakingContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    // stake_token == reward_token must fail
+    let result = client.try_initialize(&admin, &token_id, &token_id, &10, &86_400);
+    match result {
+        Err(Ok(e)) => assert_eq!(e, ContractError::TokensIdentical),
+        _ => unreachable!("Expected TokensIdentical error"),
+    }
+}
+
+#[test]
+fn test_initialize_negative_reward_rate_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let stake_token = env.register_stellar_asset_contract_v2(Address::generate(&env));
+    let reward_token = env.register_stellar_asset_contract_v2(Address::generate(&env));
+
+    let contract_id = env.register(crate::StakingContract, ());
+    let client = StakingContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let result = client.try_initialize(
+        &admin,
+        &stake_token.address(),
+        &reward_token.address(),
+        &-1,
+        &86_400,
+    );
+    match result {
+        Err(Ok(e)) => assert_eq!(e, ContractError::InvalidInput),
+        _ => unreachable!("Expected InvalidInput error"),
+    }
+}
