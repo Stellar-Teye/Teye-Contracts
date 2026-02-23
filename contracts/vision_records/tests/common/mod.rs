@@ -22,6 +22,7 @@ pub fn setup_test_env() -> TestContext {
 }
 
 /// Creates and registers a user for tests and returns its address.
+#[allow(dead_code)]
 pub fn create_test_user(ctx: &TestContext, role: Role, name: &str) -> Address {
     let user = Address::generate(&ctx.env);
     let name = String::from_str(&ctx.env, name);
@@ -30,6 +31,7 @@ pub fn create_test_user(ctx: &TestContext, role: Role, name: &str) -> Address {
 }
 
 /// Creates a record and returns the generated record id.
+#[allow(dead_code)]
 pub fn create_test_record(
     ctx: &TestContext,
     caller: &Address,

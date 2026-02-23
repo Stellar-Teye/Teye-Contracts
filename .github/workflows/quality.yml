@@ -1,0 +1,80 @@
+name: Code Quality Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: |
+          npm install
+          npm install -g markdownlint-cli
+
+      - name: Run ESLint
+        run: |
+          npx eslint src/**/*.js src/**/*.ts || exit 1
+
+      - name: Run markdownlint
+        run: |
+          markdownlint docs/**/*.md || exit 1
+
+      - name: Run tests with coverage
+        run: |
+          npm test -- --coverage
+          COVERAGE=$(npx jest --coverage | grep "All files" | awk '{print $4}' | tr -d '%')
+          echo "Coverage is $COVERAGE%"
+          if [ $COVERAGE -lt 80 ]; then
+            echo "Code coverage below threshold!"
+            exit 1
+          fi
+
+      - name: Run cyclomatic complexity check
+        run: |
+          npx plato -r -d reports src || exit 1
+
+  rust-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Install Clippy
+        run: rustup component add clippy
+
+      - name: Lint Rust code
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run Rust tests
+        run: cargo test --all --verbose
+
+      - name: Check code coverage
+        run: |
+          cargo install cargo-tarpaulin
+          cargo tarpaulin --out Xml
+          COVERAGE=$(grep line-rate coverage.xml | head -1 | sed 's/.*line-rate="\([0-9.]*\)".*/\1/')
+          COVERAGE_PERCENT=$(echo "$COVERAGE * 100" | bc)
+          echo "Rust coverage: $COVERAGE_PERCENT%"
+          if (( $(echo "$COVERAGE_PERCENT < 80" | bc -l) )); then
+            echo "Coverage below 80%!"
+            exit 1
+          fi
