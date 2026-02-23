@@ -1,4 +1,5 @@
-use crate::{AccessLevel, RecordType, Role};
+use crate::errors::ErrorContext;
+use crate::{AccessLevel, RecordType, Role, VerificationStatus};
 use soroban_sdk::{symbol_short, Address, Env, String};
 
 /// Event published when the contract is initialized.
@@ -51,6 +52,8 @@ pub struct AccessRevokedEvent {
     pub timestamp: u64,
 }
 
+/// Publishes an event when the contract is initialized.
+/// This event includes the admin address and initialization timestamp.
 pub fn publish_initialized(env: &Env, admin: Address) {
     let topics = (symbol_short!("INIT"),);
     let data = InitializedEvent {
@@ -60,6 +63,8 @@ pub fn publish_initialized(env: &Env, admin: Address) {
     env.events().publish(topics, data);
 }
 
+/// Publishes an event when a new user is registered.
+/// This event includes the user address, role, name, and registration timestamp.
 pub fn publish_user_registered(env: &Env, user: Address, role: Role, name: String) {
     let topics = (symbol_short!("USR_REG"), user.clone());
     let data = UserRegisteredEvent {
@@ -71,6 +76,8 @@ pub fn publish_user_registered(env: &Env, user: Address, role: Role, name: Strin
     env.events().publish(topics, data);
 }
 
+/// Publishes an event when a new vision record is added.
+/// This event includes the record ID, patient, provider, record type, and timestamp.
 pub fn publish_record_added(
     env: &Env,
     record_id: u64,
@@ -89,6 +96,8 @@ pub fn publish_record_added(
     env.events().publish(topics, data);
 }
 
+/// Publishes an event when access is granted to a record.
+/// This event includes patient, grantee, access level, duration, expiration, and timestamp.
 pub fn publish_access_granted(
     env: &Env,
     patient: Address,
@@ -109,6 +118,8 @@ pub fn publish_access_granted(
     env.events().publish(topics, data);
 }
 
+/// Publishes an event when access to a record is revoked.
+/// This event includes the patient, grantee, and revocation timestamp.
 pub fn publish_access_revoked(env: &Env, patient: Address, grantee: Address) {
     let topics = (symbol_short!("ACC_REV"), patient.clone(), grantee.clone());
     let data = AccessRevokedEvent {
@@ -116,5 +127,100 @@ pub fn publish_access_revoked(env: &Env, patient: Address, grantee: Address) {
         grantee,
         timestamp: env.ledger().timestamp(),
     };
+    env.events().publish(topics, data);
+}
+
+/// Event published when a new provider is registered.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderRegisteredEvent {
+    pub provider: Address,
+    pub name: String,
+    pub provider_id: u64,
+    pub timestamp: u64,
+}
+
+/// Event published when a provider's verification status is updated.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderVerifiedEvent {
+    pub provider: Address,
+    pub verifier: Address,
+    pub status: VerificationStatus,
+    pub timestamp: u64,
+}
+
+/// Event published when provider information is updated.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderUpdatedEvent {
+    pub provider: Address,
+    pub timestamp: u64,
+}
+
+/// Publishes an event when a new provider is registered.
+/// This event includes the provider address, name, provider ID, and registration timestamp.
+pub fn publish_provider_registered(env: &Env, provider: Address, name: String, provider_id: u64) {
+    let topics = (symbol_short!("PROV_REG"), provider.clone());
+    let data = ProviderRegisteredEvent {
+        provider,
+        name,
+        provider_id,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+/// Publishes an event when a provider's verification status is updated.
+/// This event includes the provider, verifier, new status, and verification timestamp.
+pub fn publish_provider_verified(
+    env: &Env,
+    provider: Address,
+    verifier: Address,
+    status: VerificationStatus,
+) {
+    let topics = (
+        symbol_short!("PROV_VER"),
+        provider.clone(),
+        verifier.clone(),
+    );
+    let data = ProviderVerifiedEvent {
+        provider,
+        verifier,
+        status,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+/// Publishes an event when provider information is updated.
+/// This event includes the provider address and update timestamp.
+pub fn publish_provider_updated(env: &Env, provider: Address) {
+    let topics = (symbol_short!("PROV_UPD"), provider.clone());
+    let data = ProviderUpdatedEvent {
+        provider,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+/// Publishes an error event for monitoring and indexing.
+/// This event includes error code, category, severity, message, user, resource ID, retryable flag, and timestamp.
+pub fn publish_error(env: &Env, error_code: u32, context: ErrorContext) {
+    let topics = (
+        symbol_short!("ERROR"),
+        context.category.clone(),
+        context.severity.clone(),
+    );
+    let data = (
+        error_code,
+        context.category,
+        context.severity,
+        context.message,
+        context.user,
+        context.resource_id,
+        context.retryable,
+        context.timestamp,
+    );
     env.events().publish(topics, data);
 }

@@ -2,15 +2,49 @@
 pub mod rbac;
 pub mod validation;
 
+pub mod errors;
 pub mod events;
+pub mod provider;
 
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol, Vec,
 };
 
+pub use errors::{
+    create_error_context, log_error, ContractError, ErrorCategory, ErrorLogEntry, ErrorSeverity,
+};
+pub use provider::{Certification, License, Location, Provider, VerificationStatus};
+
 /// Storage keys for the contract
 const ADMIN: Symbol = symbol_short!("ADMIN");
 const INITIALIZED: Symbol = symbol_short!("INIT");
+
+const TTL_THRESHOLD: u32 = 5184000;
+const TTL_EXTEND_TO: u32 = 10368000;
+
+/// Extends the time-to-live (TTL) for a storage key containing an Address.
+/// This ensures the data remains accessible for the extended period.
+fn extend_ttl_address_key(env: &Env, key: &(Symbol, Address)) {
+    env.storage()
+        .persistent()
+        .extend_ttl(key, TTL_THRESHOLD, TTL_EXTEND_TO);
+}
+
+/// Extends the time-to-live (TTL) for a storage key containing a u64 value.
+/// This ensures the data remains accessible for the extended period.
+fn extend_ttl_u64_key(env: &Env, key: &(Symbol, u64)) {
+    env.storage()
+        .persistent()
+        .extend_ttl(key, TTL_THRESHOLD, TTL_EXTEND_TO);
+}
+
+/// Extends the time-to-live (TTL) for an access grant storage key.
+/// This ensures access grant data remains accessible for the extended period.
+fn extend_ttl_access_key(env: &Env, key: &(Symbol, Address, Address)) {
+    env.storage()
+        .persistent()
+        .extend_ttl(key, TTL_THRESHOLD, TTL_EXTEND_TO);
+}
 
 pub use rbac::{Permission, Role};
 
@@ -18,9 +52,13 @@ pub use rbac::{Permission, Role};
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum AccessLevel {
+    /// No access to the record
     None,
+    /// Read-only access to the record
     Read,
+    /// Write access to the record
     Write,
+    /// Full access including read, write, and delete
     Full,
 }
 
@@ -28,11 +66,17 @@ pub enum AccessLevel {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RecordType {
+    /// Eye examination record
     Examination,
+    /// Prescription record
     Prescription,
+    /// Diagnosis record
     Diagnosis,
+    /// Treatment record
     Treatment,
+    /// Surgery record
     Surgery,
+    /// Laboratory result record
     LabResult,
 }
 
@@ -69,22 +113,6 @@ pub struct AccessGrant {
     pub level: AccessLevel,
     pub granted_at: u64,
     pub expires_at: u64,
-}
-
-/// Contract errors
-/// Contract errors
-#[soroban_sdk::contracterror]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-#[repr(u32)]
-pub enum ContractError {
-    NotInitialized = 1,
-    AlreadyInitialized = 2,
-    Unauthorized = 3,
-    UserNotFound = 4,
-    RecordNotFound = 5,
-    InvalidInput = 6,
-    AccessDenied = 7,
-    Paused = 8,
 }
 
 #[contract]
@@ -136,6 +164,21 @@ impl VisionRecordsContract {
         caller.require_auth();
 
         if !rbac::has_permission(&env, &caller, &Permission::ManageUsers) {
+            let resource_id = String::from_str(&env, "register_user");
+            let context = create_error_context(
+                &env,
+                ContractError::Unauthorized,
+                Some(caller.clone()),
+                Some(resource_id.clone()),
+            );
+            log_error(
+                &env,
+                ContractError::Unauthorized,
+                Some(caller),
+                Some(resource_id),
+                None,
+            );
+            events::publish_error(&env, ContractError::Unauthorized as u32, context);
             return Err(ContractError::Unauthorized);
         }
 
@@ -151,6 +194,7 @@ impl VisionRecordsContract {
 
         let key = (symbol_short!("USER"), user.clone());
         env.storage().persistent().set(&key, &user_data);
+        extend_ttl_address_key(&env, &key);
         rbac::assign_role(&env, user.clone(), role.clone(), 0);
 
         rbac::assign_role(&env, user.clone(), role.clone(), 0);
@@ -165,11 +209,27 @@ impl VisionRecordsContract {
 
     /// Get user information
     pub fn get_user(env: Env, user: Address) -> Result<User, ContractError> {
-        let key = (symbol_short!("USER"), user);
-        env.storage()
-            .persistent()
-            .get(&key)
-            .ok_or(ContractError::UserNotFound)
+        let key = (symbol_short!("USER"), user.clone());
+        if let Some(user_data) = env.storage().persistent().get(&key) {
+            Ok(user_data)
+        } else {
+            let resource_id = String::from_str(&env, "get_user");
+            let context = create_error_context(
+                &env,
+                ContractError::UserNotFound,
+                Some(user.clone()),
+                Some(resource_id.clone()),
+            );
+            log_error(
+                &env,
+                ContractError::UserNotFound,
+                Some(user),
+                Some(resource_id),
+                None,
+            );
+            events::publish_error(&env, ContractError::UserNotFound as u32, context);
+            Err(ContractError::UserNotFound)
+        }
     }
 
     /// Add a vision record
@@ -213,6 +273,7 @@ impl VisionRecordsContract {
 
         let key = (symbol_short!("RECORD"), record_id);
         env.storage().persistent().set(&key, &record);
+        extend_ttl_u64_key(&env, &key);
 
         // Add to patient's record list
         let patient_key = (symbol_short!("PAT_REC"), patient.clone());
@@ -225,6 +286,7 @@ impl VisionRecordsContract {
         env.storage()
             .persistent()
             .set(&patient_key, &patient_records);
+        extend_ttl_address_key(&env, &patient_key);
 
         events::publish_record_added(&env, record_id, patient, provider, record_type);
 
@@ -234,10 +296,26 @@ impl VisionRecordsContract {
     /// Get a vision record by ID
     pub fn get_record(env: Env, record_id: u64) -> Result<VisionRecord, ContractError> {
         let key = (symbol_short!("RECORD"), record_id);
-        env.storage()
-            .persistent()
-            .get(&key)
-            .ok_or(ContractError::RecordNotFound)
+        if let Some(record) = env.storage().persistent().get(&key) {
+            Ok(record)
+        } else {
+            let resource_id = String::from_str(&env, "get_record");
+            let context = create_error_context(
+                &env,
+                ContractError::RecordNotFound,
+                None,
+                Some(resource_id.clone()),
+            );
+            log_error(
+                &env,
+                ContractError::RecordNotFound,
+                None,
+                Some(resource_id),
+                None,
+            );
+            events::publish_error(&env, ContractError::RecordNotFound as u32, context);
+            Err(ContractError::RecordNotFound)
+        }
     }
 
     /// Get all records for a patient
@@ -285,6 +363,7 @@ impl VisionRecordsContract {
 
         let key = (symbol_short!("ACCESS"), patient.clone(), grantee.clone());
         env.storage().persistent().set(&key, &grant);
+        extend_ttl_access_key(&env, &key);
 
         events::publish_access_granted(&env, patient, grantee, level, duration_seconds, expires_at);
 
@@ -333,6 +412,8 @@ impl VisionRecordsContract {
 
     // ======================== RBAC Endpoints ========================
 
+    /// Grants a custom permission to a user.
+    /// Requires the caller to have ManageUsers permission.
     pub fn grant_custom_permission(
         env: Env,
         caller: Address,
@@ -348,6 +429,8 @@ impl VisionRecordsContract {
         Ok(())
     }
 
+    /// Revokes a custom permission from a user.
+    /// Requires the caller to have ManageUsers permission.
     pub fn revoke_custom_permission(
         env: Env,
         caller: Address,
@@ -363,6 +446,8 @@ impl VisionRecordsContract {
         Ok(())
     }
 
+    /// Delegates a role to another user with an expiration timestamp.
+    /// The delegator must authenticate the transaction.
     pub fn delegate_role(
         env: Env,
         delegator: Address,
@@ -375,6 +460,8 @@ impl VisionRecordsContract {
         Ok(())
     }
 
+    /// Checks if a user has a specific permission.
+    /// Returns true if the user has the permission, false otherwise.
     pub fn check_permission(env: Env, user: Address, permission: Permission) -> bool {
         rbac::has_permission(&env, &user, &permission)
     }
