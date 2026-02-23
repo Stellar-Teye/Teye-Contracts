@@ -153,6 +153,43 @@ impl VisionRecordsContract {
         env.storage().instance().has(&INITIALIZED)
     }
 
+    /// Transfer admin privileges to a new address.
+    ///
+    /// The current admin must authenticate the call. After transfer:
+    /// - The new address becomes the contract admin with full Admin role.
+    /// - The old admin is downgraded to Patient role (no system permissions).
+    ///
+    /// This supports the least-privilege deployment pattern where a temporary
+    /// deployer key initializes the contract then hands off to a permanent admin.
+    pub fn transfer_admin(
+        env: Env,
+        current_admin: Address,
+        new_admin: Address,
+    ) -> Result<(), ContractError> {
+        current_admin.require_auth();
+
+        let stored_admin: Address = env
+            .storage()
+            .instance()
+            .get(&ADMIN)
+            .ok_or(ContractError::NotInitialized)?;
+
+        if current_admin != stored_admin {
+            return Err(ContractError::Unauthorized);
+        }
+
+        // Transfer the admin storage key
+        env.storage().instance().set(&ADMIN, &new_admin);
+
+        // Grant Admin role to the new admin
+        rbac::assign_role(&env, new_admin.clone(), Role::Admin, 0);
+
+        // Downgrade old admin to Patient (no system permissions)
+        rbac::assign_role(&env, current_admin, Role::Patient, 0);
+
+        Ok(())
+    }
+
     /// Register a new user
     pub fn register_user(
         env: Env,
