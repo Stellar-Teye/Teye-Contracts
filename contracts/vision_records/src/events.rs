@@ -51,6 +51,22 @@ pub struct AccessRevokedEvent {
     pub timestamp: u64,
 }
 
+/// Event published when a patient profile is created.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProfileCreatedEvent {
+    pub patient: Address,
+    pub timestamp: u64,
+}
+
+/// Event published when a patient profile is updated.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProfileUpdatedEvent {
+    pub patient: Address,
+    pub timestamp: u64,
+}
+
 pub fn publish_initialized(env: &Env, admin: Address) {
     let topics = (symbol_short!("INIT"),);
     let data = InitializedEvent {
@@ -114,6 +130,24 @@ pub fn publish_access_revoked(env: &Env, patient: Address, grantee: Address) {
     let data = AccessRevokedEvent {
         patient,
         grantee,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+pub fn publish_profile_created(env: &Env, patient: Address) {
+    let topics = (symbol_short!("PROF_CRT"), patient.clone());
+    let data = ProfileCreatedEvent {
+        patient,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+pub fn publish_profile_updated(env: &Env, patient: Address) {
+    let topics = (symbol_short!("PROF_UPD"), patient.clone());
+    let data = ProfileUpdatedEvent {
+        patient,
         timestamp: env.ledger().timestamp(),
     };
     env.events().publish(topics, data);
