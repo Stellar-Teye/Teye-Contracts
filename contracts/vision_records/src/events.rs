@@ -51,6 +51,16 @@ pub struct AccessRevokedEvent {
     pub timestamp: u64,
 }
 
+/// Event published when an expired access grant is purged from storage.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccessExpiredEvent {
+    pub patient: Address,
+    pub grantee: Address,
+    pub expired_at: u64,
+    pub purged_at: u64,
+}
+
 pub fn publish_initialized(env: &Env, admin: Address) {
     let topics = (symbol_short!("INIT"),);
     let data = InitializedEvent {
@@ -115,6 +125,22 @@ pub fn publish_access_revoked(env: &Env, patient: Address, grantee: Address) {
         patient,
         grantee,
         timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+pub fn publish_access_expired(
+    env: &Env,
+    patient: Address,
+    grantee: Address,
+    expired_at: u64,
+) {
+    let topics = (symbol_short!("ACC_EXP"), patient.clone(), grantee.clone());
+    let data = AccessExpiredEvent {
+        patient,
+        grantee,
+        expired_at,
+        purged_at: env.ledger().timestamp(),
     };
     env.events().publish(topics, data);
 }
