@@ -371,16 +371,9 @@ impl VisionRecordsContract {
         for i in 0..grantees.len() {
             if let Some(grantee) = grantees.get(i) {
                 let access_key = (symbol_short!("ACCESS"), patient.clone(), grantee.clone());
-                let expired = match env.storage().persistent().get::<_, AccessGrant>(&access_key) {
-                    Some(grant) => grant.expires_at <= now,
-                    None => true, // already removed
-                };
 
-                if expired {
-                    // Fetch expires_at for the event before removing.
-                    if let Some(grant) =
-                        env.storage().persistent().get::<_, AccessGrant>(&access_key)
-                    {
+                match env.storage().persistent().get::<_, AccessGrant>(&access_key) {
+                    Some(grant) if grant.expires_at <= now => {
                         env.storage().persistent().remove(&access_key);
                         events::publish_access_expired(
                             &env,
@@ -388,10 +381,15 @@ impl VisionRecordsContract {
                             grantee,
                             grant.expires_at,
                         );
+                        purged += 1;
                     }
-                    purged += 1;
-                } else {
-                    remaining.push_back(grantee);
+                    Some(_) => {
+                        // Grant still active — keep in the list.
+                        remaining.push_back(grantee);
+                    }
+                    None => {
+                        // Already removed — nothing to purge, drop from list.
+                    }
                 }
             }
         }
