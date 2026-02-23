@@ -1,5 +1,20 @@
 use soroban_sdk::{contracttype, symbol_short, Address, Env, Vec};
 
+const TTL_THRESHOLD: u32 = 5184000;
+const TTL_EXTEND_TO: u32 = 10368000;
+
+fn extend_ttl_address_key(env: &Env, key: &(soroban_sdk::Symbol, Address)) {
+    env.storage()
+        .persistent()
+        .extend_ttl(key, TTL_THRESHOLD, TTL_EXTEND_TO);
+}
+
+fn extend_ttl_delegation_key(env: &Env, key: &(soroban_sdk::Symbol, Address, Address)) {
+    env.storage()
+        .persistent()
+        .extend_ttl(key, TTL_THRESHOLD, TTL_EXTEND_TO);
+}
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
@@ -94,9 +109,9 @@ pub fn assign_role(env: &Env, user: Address, role: Role, expires_at: u64) {
         expires_at,
     };
 
-    env.storage()
-        .persistent()
-        .set(&user_assignment_key(&user), &assignment);
+    let key = user_assignment_key(&user);
+    env.storage().persistent().set(&key, &assignment);
+    extend_ttl_address_key(env, &key);
 }
 
 /// Retrieve the active assignment for a user, or None if it doesn't exist or is expired
@@ -131,9 +146,9 @@ pub fn grant_custom_permission(env: &Env, user: Address, permission: Permission)
         assignment.custom_grants.push_back(permission);
     }
 
-    env.storage()
-        .persistent()
-        .set(&user_assignment_key(&user), &assignment);
+    let key = user_assignment_key(&user);
+    env.storage().persistent().set(&key, &assignment);
+    extend_ttl_address_key(env, &key);
     Ok(())
 }
 
@@ -159,9 +174,9 @@ pub fn revoke_custom_permission(
         assignment.custom_revokes.push_back(permission);
     }
 
-    env.storage()
-        .persistent()
-        .set(&user_assignment_key(&user), &assignment);
+    let key = user_assignment_key(&user);
+    env.storage().persistent().set(&key, &assignment);
+    extend_ttl_address_key(env, &key);
     Ok(())
 }
 
@@ -180,9 +195,9 @@ pub fn delegate_role(
         expires_at,
     };
 
-    env.storage()
-        .persistent()
-        .set(&delegation_key(&delegator, &delegatee), &del);
+    let key = delegation_key(&delegator, &delegatee);
+    env.storage().persistent().set(&key, &del);
+    extend_ttl_delegation_key(env, &key);
 }
 
 /// Retrieve the active delegations for a particular `delegatee` representing `delegator`
