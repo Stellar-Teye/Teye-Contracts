@@ -115,6 +115,39 @@ pub struct AccessGrant {
     pub expires_at: u64,
 }
 
+/// Consent types for patient data sharing
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ConsentType {
+    Treatment,
+    Research,
+    Sharing,
+}
+
+/// Consent grant from patient to grantee
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct ConsentGrant {
+    pub patient: Address,
+    pub grantee: Address,
+    pub consent_type: ConsentType,
+    pub granted_at: u64,
+    pub expires_at: u64,
+    pub revoked: bool,
+}
+
+/// Check if an active consent exists from patient to grantee.
+fn has_active_consent(env: &Env, patient: &Address, grantee: &Address) -> bool {
+    let key = (symbol_short!("CONSENT"), patient.clone(), grantee.clone());
+    if let Some(consent) = env.storage().persistent().get::<_, ConsentGrant>(&key) {
+        if consent.revoked {
+            return false;
+        }
+        return consent.expires_at > env.ledger().timestamp();
+    }
+    false
+}
+
 #[contract]
 pub struct VisionRecordsContract;
 
@@ -293,10 +326,23 @@ impl VisionRecordsContract {
         Ok(record_id)
     }
 
-    /// Get a vision record by ID
-    pub fn get_record(env: Env, record_id: u64) -> Result<VisionRecord, ContractError> {
+    /// Get a vision record by ID.
+    /// Consent is checked for non-patient, non-admin callers.
+    pub fn get_record(
+        env: Env,
+        caller: Address,
+        record_id: u64,
+    ) -> Result<VisionRecord, ContractError> {
         let key = (symbol_short!("RECORD"), record_id);
-        if let Some(record) = env.storage().persistent().get(&key) {
+        if let Some(record) = env.storage().persistent().get::<_, VisionRecord>(&key) {
+            // Patient can always view own records; admins bypass consent
+            if caller != record.patient
+                && !rbac::has_permission(&env, &caller, &Permission::SystemAdmin)
+            {
+                if !has_active_consent(&env, &record.patient, &caller) {
+                    return Err(ContractError::ConsentRequired);
+                }
+            }
             Ok(record)
         } else {
             let resource_id = String::from_str(&env, "get_record");
@@ -370,8 +416,13 @@ impl VisionRecordsContract {
         Ok(())
     }
 
-    /// Check access level
+    /// Check access level.
+    /// Requires both an active access grant AND active patient consent.
     pub fn check_access(env: Env, patient: Address, grantee: Address) -> AccessLevel {
+        if !has_active_consent(&env, &patient, &grantee) {
+            return AccessLevel::None;
+        }
+
         let key = (symbol_short!("ACCESS"), patient, grantee);
 
         if let Some(grant) = env.storage().persistent().get::<_, AccessGrant>(&key) {
@@ -395,6 +446,63 @@ impl VisionRecordsContract {
         env.storage().persistent().remove(&key);
 
         events::publish_access_revoked(&env, patient, grantee);
+
+        Ok(())
+    }
+
+    // ======================== Consent Endpoints ========================
+
+    /// Grant consent from patient to grantee for a specific type.
+    #[allow(clippy::arithmetic_side_effects)]
+    pub fn grant_consent(
+        env: Env,
+        patient: Address,
+        grantee: Address,
+        consent_type: ConsentType,
+        duration_seconds: u64,
+    ) -> Result<(), ContractError> {
+        patient.require_auth();
+
+        validation::validate_duration(duration_seconds)?;
+
+        let expires_at = env.ledger().timestamp() + duration_seconds;
+        let consent = ConsentGrant {
+            patient: patient.clone(),
+            grantee: grantee.clone(),
+            consent_type: consent_type.clone(),
+            granted_at: env.ledger().timestamp(),
+            expires_at,
+            revoked: false,
+        };
+
+        let key = (symbol_short!("CONSENT"), patient.clone(), grantee.clone());
+        env.storage().persistent().set(&key, &consent);
+        extend_ttl_access_key(&env, &key);
+
+        events::publish_consent_granted(&env, patient, grantee, consent_type, expires_at);
+
+        Ok(())
+    }
+
+    /// Revoke consent previously granted by a patient.
+    pub fn revoke_consent(
+        env: Env,
+        patient: Address,
+        grantee: Address,
+    ) -> Result<(), ContractError> {
+        patient.require_auth();
+
+        let key = (symbol_short!("CONSENT"), patient.clone(), grantee.clone());
+        if let Some(mut consent) = env
+            .storage()
+            .persistent()
+            .get::<_, ConsentGrant>(&key)
+        {
+            consent.revoked = true;
+            env.storage().persistent().set(&key, &consent);
+        }
+
+        events::publish_consent_revoked(&env, patient, grantee);
 
         Ok(())
     }
