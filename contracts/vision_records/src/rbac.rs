@@ -99,6 +99,12 @@ pub fn delegation_key(
     )
 }
 
+/// Storage key for the delegation index: maps a delegatee to their list of delegators.
+/// Used by `has_permission` to discover all active delegations for a user.
+fn delegatee_index_key(delegatee: &Address) -> (soroban_sdk::Symbol, Address) {
+    (symbol_short!("DEL_IDX"), delegatee.clone())
+}
+
 // ======================== Core RBAC Engine ========================
 
 pub fn assign_role(env: &Env, user: Address, role: Role, expires_at: u64) {
@@ -180,7 +186,10 @@ pub fn revoke_custom_permission(
     Ok(())
 }
 
-/// Create a delegation from `delegator` to `delegatee`
+/// Create a delegation from `delegator` to `delegatee`.
+///
+/// Also updates the delegatee's delegation index so that `has_permission`
+/// can discover all active delegations when evaluating permissions.
 pub fn delegate_role(
     env: &Env,
     delegator: Address,
@@ -198,6 +207,20 @@ pub fn delegate_role(
     let key = delegation_key(&delegator, &delegatee);
     env.storage().persistent().set(&key, &del);
     extend_ttl_delegation_key(env, &key);
+
+    // Maintain the delegatee's index of delegators for unified permission lookups
+    let idx_key = delegatee_index_key(&delegatee);
+    let mut delegators: Vec<Address> = env
+        .storage()
+        .persistent()
+        .get(&idx_key)
+        .unwrap_or(Vec::new(env));
+
+    if !delegators.contains(&delegator) {
+        delegators.push_back(delegator);
+    }
+    env.storage().persistent().set(&idx_key, &delegators);
+    extend_ttl_address_key(env, &idx_key);
 }
 
 /// Retrieve the active delegations for a particular `delegatee` representing `delegator`
@@ -218,32 +241,75 @@ pub fn get_active_delegation(
     None
 }
 
-/// Evaluates if a specified `user` holds a `permission`.
-/// This function merges Base Role inherited permissions, Custom Grants, Custom Revokes,
-/// and currently active delegated Roles.
+/// Evaluates if a specified `user` holds a `permission` through any path.
+///
+/// This unified function checks both direct role assignments and delegated
+/// roles in a single call. Evaluation order:
+///
+/// 1. **Direct assignment** — custom revokes → custom grants → base role perms
+/// 2. **Delegated roles** — iterate all active delegations for this user
+///
+/// Edge cases:
+/// - **Explicit revoke blocks delegations**: If the user's active direct
+///   assignment has a custom revoke for this permission, the function returns
+///   false immediately. Delegations are NOT checked. This prevents users from
+///   circumventing an admin's explicit revocation through delegations.
+/// - **No direct assignment**: If the user has no assignment (or it expired),
+///   delegations are still evaluated. An expired assignment does not block
+///   delegation-based permissions.
+/// - **Expired delegations**: Silently skipped during iteration.
+///
+/// Complexity: O(g + d) where g = custom grants/revokes, d = active delegators.
 pub fn has_permission(env: &Env, user: &Address, permission: &Permission) -> bool {
-    // 1. Check primary active assignment
+    // Step 1: Check direct role assignment
     if let Some(assignment) = get_active_assignment(env, user) {
-        // Did we explicitly revoke it?
+        // Explicit revoke takes highest priority — overrides grants,
+        // base role, AND delegations to prevent bypass.
         if assignment.custom_revokes.contains(permission) {
-            return false; // Explicit revoke overrides all basic/grant logic below
+            return false;
         }
 
-        // Did we explicitly grant it?
+        // Explicit custom grant takes precedence over base role lookup
         if assignment.custom_grants.contains(permission) {
             return true;
         }
 
-        // Do we get it implicitly through our baseline role hierarchy?
+        // Check base permissions inherited from the assigned role
         if get_base_permissions(env, &assignment.role).contains(permission) {
             return true;
+        }
+    }
+
+    // Step 2: No direct permission found — check delegated roles.
+    // Users with no assignment (or expired) can still act through
+    // active delegations from other users.
+    let idx_key = delegatee_index_key(user);
+    if let Some(delegators) = env
+        .storage()
+        .persistent()
+        .get::<_, Vec<Address>>(&idx_key)
+    {
+        for delegator in delegators.iter() {
+            // Expired or missing delegations return None and are skipped
+            if let Some(del) = get_active_delegation(env, &delegator, user) {
+                if get_base_permissions(env, &del.role).contains(permission) {
+                    return true;
+                }
+            }
         }
     }
 
     false
 }
 
-/// Same as has_permission, but also checks if `delegatee` can perform the action on behalf of `delegator`.
+/// Checks if `delegatee` holds `permission` through a specific delegation
+/// from `delegator`.
+///
+/// Unlike `has_permission` which checks ALL delegation paths, this function
+/// verifies a specific delegator→delegatee relationship. Use this when the
+/// caller must be acting on behalf of a particular entity (e.g., a provider
+/// delegating record-writing authority, or a patient delegating access
+/// management).
 pub fn has_delegated_permission(
     env: &Env,
     delegator: &Address,
