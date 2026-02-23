@@ -100,3 +100,21 @@ fn test_registry_resolve_not_found() {
         DIDError::NotFound,
     );
 }
+
+#[test]
+fn test_register_rejects_manually_constructed_invalid_doc() {
+    use std::collections::HashMap;
+
+    // Bypass DIDDocument::new() by constructing directly with public fields
+    let bad_doc = DIDDocument {
+        id: "not-a-did".to_string(),
+        controller: None,
+        verification_methods: HashMap::new(),
+    };
+
+    let mut reg = DIDRegistry::default();
+    assert_eq!(
+        reg.register(bad_doc).unwrap_err(),
+        DIDError::MissingPrefix,
+    );
+}

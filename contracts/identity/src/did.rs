@@ -94,8 +94,12 @@ pub struct DIDRegistry {
 }
 
 impl DIDRegistry {
-    /// Register a DID document. The document's `id` is validated on construction, so by the time it reaches the registry the format is guaranteed correct.  Returns `Err(AlreadyRegistered)` if a document with the same id already exists.
+    /// Register a DID document.  Re-validates `doc.id` because
+    /// `DIDDocument` fields are public and callers may bypass `::new()`.
+    /// Returns `Err(AlreadyRegistered)` if a document with the same id
+    /// already exists.
     pub fn register(&mut self, doc: DIDDocument) -> Result<(), DIDError> {
+        validate_did_format(&doc.id)?;
         if self.docs.contains_key(&doc.id) {
             return Err(DIDError::AlreadyRegistered);
         }
