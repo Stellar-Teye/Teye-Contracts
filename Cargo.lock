@@ -263,18 +263,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "common"
-version = "1.2.2"
-
-[[package]]
-name = "compliance"
-version = "1.2.2"
-dependencies = [
- "common",
- "soroban-sdk",
-]
-
-[[package]]
 name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -792,14 +780,6 @@ name = "ident_case"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
-
-[[package]]
-name = "identity"
-version = "1.2.2"
-dependencies = [
- "common",
- "soroban-sdk",
-]
 
 [[package]]
 name = "indexmap"
@@ -2114,13 +2094,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
-]
-
-[[package]]
-name = "zk_verifier"
-version = "1.2.2"
-dependencies = [
- "soroban-sdk",
 ]
 
 [[package]]
