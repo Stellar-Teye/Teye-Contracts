@@ -11,6 +11,8 @@ use soroban_sdk::{
 /// Storage keys for the contract
 const ADMIN: Symbol = symbol_short!("ADMIN");
 const INITIALIZED: Symbol = symbol_short!("INIT");
+const RATE_CFG: Symbol = symbol_short!("RL_CFG");
+const RATE_TRACK: Symbol = symbol_short!("RL_TRK");
 
 pub use rbac::{Permission, Role};
 
@@ -85,6 +87,7 @@ pub enum ContractError {
     InvalidInput = 6,
     AccessDenied = 7,
     Paused = 8,
+    RateLimited = 9,
 }
 
 #[contract]
@@ -92,6 +95,44 @@ pub struct VisionRecordsContract;
 
 #[contractimpl]
 impl VisionRecordsContract {
+    fn enforce_rate_limit(env: &Env, caller: &Address) -> Result<(), ContractError> {
+        let cfg: Option<(u64, u64)> = env.storage().instance().get(&RATE_CFG);
+        let (max_requests_per_window, window_duration_seconds) = match cfg {
+            Some(c) => c,
+            None => return Ok(()), // No config set -> unlimited
+        };
+
+        if max_requests_per_window == 0 || window_duration_seconds == 0 {
+            // Explicitly disabled
+            return Ok(());
+        }
+
+        let now = env.ledger().timestamp();
+        let key = (RATE_TRACK, caller.clone());
+
+        let mut state: (u64, u64) = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or((0, now));
+
+        let window_end = state.1.saturating_add(window_duration_seconds);
+        if now >= window_end {
+            state.0 = 0;
+            state.1 = now;
+        }
+
+        let next = state.0.saturating_add(1);
+        if next > max_requests_per_window {
+            return Err(ContractError::RateLimited);
+        }
+
+        state.0 = next;
+        env.storage().persistent().set(&key, &state);
+
+        Ok(())
+    }
+
     /// Initialize the contract with an admin address
     pub fn initialize(env: Env, admin: Address) -> Result<(), ContractError> {
         if env.storage().instance().has(&INITIALIZED) {
@@ -123,6 +164,38 @@ impl VisionRecordsContract {
     /// Check if the contract is initialized
     pub fn is_initialized(env: Env) -> bool {
         env.storage().instance().has(&INITIALIZED)
+    }
+
+    /// Configure per-address rate limiting for this contract.
+    pub fn set_rate_limit_config(
+        env: Env,
+        caller: Address,
+        max_requests_per_window: u64,
+        window_duration_seconds: u64,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+
+        if max_requests_per_window == 0 || window_duration_seconds == 0 {
+            return Err(ContractError::InvalidInput);
+        }
+
+        let admin = Self::get_admin(env.clone())?;
+        let has_system_admin = rbac::has_permission(&env, &caller, &Permission::SystemAdmin);
+
+        if caller != admin && !has_system_admin {
+            return Err(ContractError::Unauthorized);
+        }
+
+        env.storage()
+            .instance()
+            .set(&RATE_CFG, &(max_requests_per_window, window_duration_seconds));
+
+        Ok(())
+    }
+
+    /// Return the current rate limiting configuration, if any.
+    pub fn get_rate_limit_config(env: Env) -> Option<(u64, u64)> {
+        env.storage().instance().get(&RATE_CFG)
     }
 
     /// Register a new user
@@ -183,6 +256,8 @@ impl VisionRecordsContract {
         data_hash: String,
     ) -> Result<u64, ContractError> {
         caller.require_auth();
+
+        Self::enforce_rate_limit(&env, &caller)?;
 
         validation::validate_data_hash(&data_hash)?;
 
@@ -260,6 +335,8 @@ impl VisionRecordsContract {
         duration_seconds: u64,
     ) -> Result<(), ContractError> {
         caller.require_auth();
+
+        Self::enforce_rate_limit(&env, &caller)?;
 
         validation::validate_duration(duration_seconds)?;
 
