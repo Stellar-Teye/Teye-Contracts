@@ -1,4 +1,6 @@
-use super::{Permission, Role, VisionRecordsContract, VisionRecordsContractClient};
+use super::{
+    ConsentType, Permission, Role, VisionRecordsContract, VisionRecordsContractClient,
+};
 use soroban_sdk::{testutils::Address as _, testutils::Ledger as _, Address, Env, String};
 
 fn setup_test() -> (Env, VisionRecordsContractClient<'static>, Address) {
@@ -140,6 +142,9 @@ fn test_role_delegation() {
         &Role::Optometrist,
         &String::from_str(&env, "Doc"),
     );
+
+    // pt1 grants consent so check_access passes the consent gate
+    client.grant_consent(&pt1, &doctor, &ConsentType::Treatment, &3600);
 
     // pt2 should be able to grant access acting for pt1
     // (caller: pt2, patient: pt1, grantee: doctor)
