@@ -1,11 +1,14 @@
-use crate::verifier::Proof;
 use crate::AccessRequest;
 use soroban_sdk::{BytesN, Env, Vec};
 
+/// Helper utility for creating ZK access requests.
 pub struct ZkAccessHelper;
 
 impl ZkAccessHelper {
-    /// Helper to format raw byte arrays into the contract's standard `AccessRequest`.
+    /// Formats raw cryptographic proof points and public inputs into a standard `AccessRequest`.
+    ///
+    /// This helper is intended for use in tests and off-chain tools to ensure consistent
+    /// formatting of the `AccessRequest` structure submitted to the `ZkVerifierContract`.
     pub fn create_request(
         env: &Env,
         user: soroban_sdk::Address,
@@ -23,10 +26,25 @@ impl ZkAccessHelper {
         AccessRequest {
             user,
             resource_id: BytesN::from_array(env, &resource_id),
-            proof: Proof {
-                a: BytesN::from_array(env, &proof_a),
-                b: BytesN::from_array(env, &proof_b),
-                c: BytesN::from_array(env, &proof_c),
+            proof: crate::verifier::Proof {
+                a: crate::verifier::G1Point {
+                    x: BytesN::from_array(env, &proof_a[0..32].try_into().unwrap()),
+                    y: BytesN::from_array(env, &proof_a[32..64].try_into().unwrap()),
+                },
+                b: crate::verifier::G2Point {
+                    x: (
+                        BytesN::from_array(env, &proof_b[0..32].try_into().unwrap()),
+                        BytesN::from_array(env, &proof_b[32..64].try_into().unwrap()),
+                    ),
+                    y: (
+                        BytesN::from_array(env, &proof_b[64..96].try_into().unwrap()),
+                        BytesN::from_array(env, &proof_b[96..128].try_into().unwrap()),
+                    ),
+                },
+                c: crate::verifier::G1Point {
+                    x: BytesN::from_array(env, &proof_c[0..32].try_into().unwrap()),
+                    y: BytesN::from_array(env, &proof_c[32..64].try_into().unwrap()),
+                },
             },
             public_inputs: pi_vec,
         }

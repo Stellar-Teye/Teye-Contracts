@@ -146,4 +146,216 @@ proptest! {
         prop_assert_eq!(client.check_access(&patient, &grantee_a), AccessLevel::None);
         prop_assert_eq!(client.check_access(&patient, &grantee_b), level_b);
     }
+
+    /// Time-restricted access: policies should only allow access during specified hours
+    #[test]
+    fn prop_time_restricted_access(
+        hour_seed in 0u8..=23u8,
+        business_hours_only in bool::ANY,
+    ) {
+        let (env, client) = setup();
+        let patient = Address::generate(&env);
+        let provider = Address::generate(&env);
+        let researcher = Address::generate(&env);
+
+        // Register users
+        client.register_user(&admin, &provider, &vision_records::Role::Optometrist, &String::from_str(&env, "Provider"));
+        client.register_user(&admin, &researcher, &vision_records::Role::Staff, &String::from_str(&env, "Researcher"));
+
+        // Create a time-restricted policy
+        let time_restriction = if business_hours_only {
+            vision_records::TimeRestriction::BusinessHours
+        } else {
+            vision_records::TimeRestriction::HourRange(hour_seed, (hour_seed + 1) % 24)
+        };
+
+        client.create_access_policy(
+            &admin,
+            &String::from_str(&env, "time_restricted_policy"),
+            &String::from_str(&env, "Time Restricted Access"),
+            Some(vision_records::Role::Researcher),
+            time_restriction,
+            vision_records::CredentialType::ResearchCredentials,
+            vision_records::SensitivityLevel::Standard,
+            false,
+        );
+
+        // Set researcher credentials
+        client.set_user_credential(&admin, &researcher, vision_records::CredentialType::ResearchCredentials);
+
+        // Create a record
+        let record_id = client.add_record(
+            &provider,
+            &patient,
+            &provider,
+            &vision_records::RecordType::Examination,
+            &String::from_str(&env, "data_hash"),
+        ).unwrap();
+
+        // Set record sensitivity
+        client.set_record_sensitivity(&provider, &record_id, vision_records::SensitivityLevel::Standard);
+
+        // Test access based on time
+        let current_hour = (env.ledger().timestamp() / 3600) % 24;
+        let should_allow = if business_hours_only {
+            current_hour >= 9 && current_hour <= 17
+        } else {
+            current_hour == hour_seed as u64 || current_hour == ((hour_seed + 1) % 24) as u64
+        };
+
+        let access_result = client.check_record_access(&researcher, &record_id).unwrap();
+        
+        if should_allow {
+            prop_assert_ne!(access_result, vision_records::AccessLevel::None);
+        } else {
+            prop_assert_eq!(access_result, vision_records::AccessLevel::None);
+        }
+    }
+
+    /// Consent-gated access: policies should require active consent
+    #[test]
+    fn prop_consent_gated_access(
+        consent_granted in bool::ANY,
+        consent_expired in bool::ANY,
+    ) {
+        let (env, client) = setup();
+        let patient = Address::generate(&env);
+        let provider = Address::generate(&env);
+        let researcher = Address::generate(&env);
+
+        // Register users
+        client.register_user(&admin, &provider, &vision_records::Role::Optometrist, &String::from_str(&env, "Provider"));
+        client.register_user(&admin, &researcher, &vision_records::Role::Staff, &String::from_str(&env, "Researcher"));
+
+        // Create a consent-required policy
+        client.create_access_policy(
+            &admin,
+            &String::from_str(&env, "consent_required_policy"),
+            &String::from_str(&env, "Consent Required Access"),
+            Some(vision_records::Role::Researcher),
+            vision_records::TimeRestriction::None,
+            vision_records::CredentialType::ResearchCredentials,
+            vision_records::SensitivityLevel::Standard,
+            true, // consent_required
+        );
+
+        // Set researcher credentials
+        client.set_user_credential(&admin, &researcher, vision_records::CredentialType::ResearchCredentials);
+
+        // Create a record
+        let record_id = client.add_record(
+            &provider,
+            &patient,
+            &provider,
+            &vision_records::RecordType::Examination,
+            &String::from_str(&env, "data_hash"),
+        ).unwrap();
+
+        // Set record sensitivity
+        client.set_record_sensitivity(&provider, &record_id, vision_records::SensitivityLevel::Standard);
+
+        // Grant consent if required
+        if consent_granted {
+            let duration = if consent_expired { 1 } else { 86400 }; // 1 second if expired, 1 day if not
+            client.grant_consent(
+                &patient,
+                &researcher,
+                &vision_records::ConsentType::Research,
+                duration,
+            ).unwrap();
+        }
+
+        // Test access
+        let access_result = client.check_record_access(&researcher, &record_id).unwrap();
+        
+        let should_allow = consent_granted && !consent_expired;
+        if should_allow {
+            prop_assert_ne!(access_result, vision_records::AccessLevel::None);
+        } else {
+            prop_assert_eq!(access_result, vision_records::AccessLevel::None);
+        }
+    }
+
+    /// Multi-attribute policies: access should satisfy all conditions
+    #[test]
+    fn prop_multi_attribute_policies(
+        role_match in bool::ANY,
+        credential_match in bool::ANY,
+        sensitivity_match in bool::ANY,
+        consent_match in bool::ANY,
+    ) {
+        let (env, client) = setup();
+        let patient = Address::generate(&env);
+        let provider = Address::generate(&env);
+        let user = Address::generate(&env);
+
+        // Register user with role based on test
+        let user_role = if role_match {
+            vision_records::Role::Optometrist
+        } else {
+            vision_records::Role::Staff
+        };
+        client.register_user(&admin, &user, &user_role, &String::from_str(&env, "User"));
+
+        // Create a multi-attribute policy
+        client.create_access_policy(
+            &admin,
+            &String::from_str(&env, "multi_attribute_policy"),
+            &String::from_str(&env, "Multi Attribute Access"),
+            Some(vision_records::Role::Optometrist), // Requires Optometrist role
+            vision_records::TimeRestriction::BusinessHours, // Requires business hours
+            vision_records::CredentialType::MedicalLicense, // Requires medical license
+            vision_records::SensitivityLevel::Confidential, // Allows confidential and above
+            true, // consent_required
+        );
+
+        // Set credentials based on test
+        let credential = if credential_match {
+            vision_records::CredentialType::MedicalLicense
+        } else {
+            vision_records::CredentialType::None
+        };
+        client.set_user_credential(&admin, &user, credential);
+
+        // Create a record
+        let record_id = client.add_record(
+            &provider,
+            &patient,
+            &provider,
+            &vision_records::RecordType::Examination,
+            &String::from_str(&env, "data_hash"),
+        ).unwrap();
+
+        // Set record sensitivity based on test
+        let sensitivity = if sensitivity_match {
+            vision_records::SensitivityLevel::Confidential
+        } else {
+            vision_records::SensitivityLevel::Restricted
+        };
+        client.set_record_sensitivity(&provider, &record_id, sensitivity);
+
+        // Grant consent if required
+        if consent_match {
+            client.grant_consent(
+                &patient,
+                &user,
+                &vision_records::ConsentType::Treatment,
+                86400,
+            ).unwrap();
+        }
+
+        // Test access - all conditions must be met
+        let current_hour = (env.ledger().timestamp() / 3600) % 24;
+        let is_business_hours = current_hour >= 9 && current_hour <= 17;
+        
+        let should_allow = role_match && credential_match && sensitivity_match && consent_match && is_business_hours;
+        
+        let access_result = client.check_record_access(&user, &record_id).unwrap();
+        
+        if should_allow {
+            prop_assert_ne!(access_result, vision_records::AccessLevel::None);
+        } else {
+            prop_assert_eq!(access_result, vision_records::AccessLevel::None);
+        }
+    }
 }

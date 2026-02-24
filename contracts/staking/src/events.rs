@@ -70,28 +70,30 @@ pub struct LockPeriodSetEvent {
     pub timestamp: u64,
 }
 
-/// Fired when the admin proposes a reward rate change (delayed).
+/// Fired when an admin transfer is proposed.
 #[soroban_sdk::contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RewardRateProposedEvent {
-    pub new_rate: i128,
-    pub effective_at: u64,
+pub struct AdminTransferProposedEvent {
+    pub current_admin: Address,
+    pub proposed_admin: Address,
     pub timestamp: u64,
 }
 
-/// Fired when a pending reward rate change is applied after the delay.
+/// Fired when an admin transfer is accepted.
 #[soroban_sdk::contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RewardRateAppliedEvent {
-    pub new_rate: i128,
+pub struct AdminTransferAcceptedEvent {
+    pub old_admin: Address,
+    pub new_admin: Address,
     pub timestamp: u64,
 }
 
-/// Fired when the admin changes the rate-change delay period.
+/// Fired when a pending admin transfer is cancelled.
 #[soroban_sdk::contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RateChangeDelaySetEvent {
-    pub delay: u64,
+pub struct AdminTransferCancelledEvent {
+    pub admin: Address,
+    pub cancelled_proposed: Address,
     pub timestamp: u64,
 }
 
@@ -192,32 +194,34 @@ pub fn publish_lock_period_set(env: &Env, new_period: u64) {
     );
 }
 
-pub fn publish_reward_rate_proposed(env: &Env, new_rate: i128, effective_at: u64) {
+pub fn publish_admin_transfer_proposed(env: &Env, current_admin: Address, proposed_admin: Address) {
     env.events().publish(
-        (symbol_short!("RWD_PROP"),),
-        RewardRateProposedEvent {
-            new_rate,
-            effective_at,
+        (symbol_short!("ADM_PROP"), current_admin.clone()),
+        AdminTransferProposedEvent {
+            current_admin,
+            proposed_admin,
             timestamp: env.ledger().timestamp(),
         },
     );
 }
 
-pub fn publish_reward_rate_applied(env: &Env, new_rate: i128) {
+pub fn publish_admin_transfer_accepted(env: &Env, old_admin: Address, new_admin: Address) {
     env.events().publish(
-        (symbol_short!("RWD_APPL"),),
-        RewardRateAppliedEvent {
-            new_rate,
+        (symbol_short!("ADM_ACPT"), new_admin.clone()),
+        AdminTransferAcceptedEvent {
+            old_admin,
+            new_admin,
             timestamp: env.ledger().timestamp(),
         },
     );
 }
 
-pub fn publish_rate_change_delay_set(env: &Env, delay: u64) {
+pub fn publish_admin_transfer_cancelled(env: &Env, admin: Address, cancelled_proposed: Address) {
     env.events().publish(
-        (symbol_short!("RDLY_SET"),),
-        RateChangeDelaySetEvent {
-            delay,
+        (symbol_short!("ADM_CNCL"), admin.clone()),
+        AdminTransferCancelledEvent {
+            admin,
+            cancelled_proposed,
             timestamp: env.ledger().timestamp(),
         },
     );
