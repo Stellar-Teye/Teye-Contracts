@@ -380,7 +380,7 @@ fn test_empty_public_inputs_rejected() {
     ));
 
     let events = env.events().all();
-    let event = events.get(events.len() - 1).unwrap();
+    let event = events.last().unwrap();
     assert_eq!(
         event.1,
         (symbol_short!("REJECT"), user.clone(), BytesN::from_array(&env, &[10u8; 32]))
