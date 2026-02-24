@@ -38,10 +38,11 @@ impl ConsentManager {
         now: u64,
         ttl_secs: Option<u64>,
     ) {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        // let now = SystemTime::now()
+        //     .duration_since(UNIX_EPOCH)
+        //     .unwrap_or_default()
+        //     .as_secs();
+        // Use externally supplied now
         let expires = ttl_secs.and_then(|t| now.checked_add(t));
         self.records.insert(
             id.to_string(),
@@ -72,11 +73,7 @@ impl ConsentManager {
                 return false;
             }
             if let Some(exp) = r.expires_at {
-                return SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs()
-                    < exp;
+                return now < exp;
             }
             return true;
         }
