@@ -898,6 +898,7 @@ name = "identity"
 version = "1.2.2"
 dependencies = [
  "soroban-sdk",
+ "zk_verifier",
 ]
 
 [[package]]

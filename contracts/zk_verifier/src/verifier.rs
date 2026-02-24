@@ -23,58 +23,129 @@ pub struct Proof {
     pub c: G1Point,
 }
 
+/// Total byte length of a G2 point (four 32-byte limbs).
+const G2_POINT_LEN: usize = 128;
+
+/// Errors produced by structural validation of proof components.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum ProofValidationError {
+    /// A proof component is entirely zero bytes.
+    ZeroedComponent,
+    /// A proof component is saturated (all 0xFF) — invalid curve encoding.
+    OversizedComponent,
+    /// G1 point A has a malformed internal structure.
+    MalformedG1PointA,
+    /// G1 point C has a malformed internal structure.
+    MalformedG1PointC,
+    /// The G2 point has a malformed internal structure.
+    MalformedG2Point,
+    /// No public inputs were provided.
+    EmptyPublicInputs,
+    /// A public-input element is all zeros.
+    ZeroedPublicInput,
+}
+
+// ── Helper functions ─────────────────────────────────────────────────────────
+
+/// Returns `true` if all bytes of a `BytesN<32>` are zero.
+fn is_bytes_all_zeros(b: &BytesN<32>) -> bool {
+    let arr = b.to_array();
+    let mut i = 0;
+    while i < 32 {
+        if arr[i] != 0 {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+/// Returns `true` if all bytes of a `BytesN<32>` are 0xFF.
+fn is_bytes_all_ones(b: &BytesN<32>) -> bool {
+    let arr = b.to_array();
+    let mut i = 0;
+    while i < 32 {
+        if arr[i] != 0xFF {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+/// Check whether both coordinates of a G1 point are all zeros.
+fn is_g1_all_zeros(p: &G1Point) -> bool {
+    is_bytes_all_zeros(&p.x) && is_bytes_all_zeros(&p.y)
+}
+
+/// Check whether both coordinates of a G1 point are all 0xFF.
+fn is_g1_all_ones(p: &G1Point) -> bool {
+    is_bytes_all_ones(&p.x) && is_bytes_all_ones(&p.y)
+}
+
+/// Check whether all four limbs of a G2 point are all zeros.
+fn is_g2_all_zeros(p: &G2Point) -> bool {
+    is_bytes_all_zeros(&p.x.0)
+        && is_bytes_all_zeros(&p.x.1)
+        && is_bytes_all_zeros(&p.y.0)
+        && is_bytes_all_zeros(&p.y.1)
+}
+
+/// Check whether all four limbs of a G2 point are all 0xFF.
+fn is_g2_all_ones(p: &G2Point) -> bool {
+    is_bytes_all_ones(&p.x.0)
+        && is_bytes_all_ones(&p.x.1)
+        && is_bytes_all_ones(&p.y.0)
+        && is_bytes_all_ones(&p.y.1)
+}
+
 /// Verifier implementation for the BN254 curve.
 pub struct Bn254Verifier;
 
 impl Bn254Verifier {
     /// Validate individual proof components for known-bad byte patterns that
     /// would cause undefined behaviour or nonsensical results in a real pairing
-    /// check.  This runs *before* the (mock) verification arithmetic.
+    /// check.  This runs *before* the verification arithmetic.
     pub fn validate_proof_components(
         proof: &Proof,
         public_inputs: &Vec<BytesN<32>>,
     ) -> Result<(), ProofValidationError> {
         // --- G1 point `a` --------------------------------------------------
-        if is_component_all_zeros(&proof.a) {
+        if is_g1_all_zeros(&proof.a) {
             return Err(ProofValidationError::ZeroedComponent);
         }
-        if is_component_all_ones(&proof.a) {
+        if is_g1_all_ones(&proof.a) {
             return Err(ProofValidationError::OversizedComponent);
         }
-        // Both 32-byte halves of a G1 point must not individually be all-zero
-        // (each half represents a field coordinate).
-        let a_arr = proof.a.to_array();
-        if a_arr[..32].iter().all(|&b| b == 0) || a_arr[32..].iter().all(|&b| b == 0) {
+        // Each coordinate of a G1 point must not be individually all-zero.
+        if is_bytes_all_zeros(&proof.a.x) || is_bytes_all_zeros(&proof.a.y) {
             return Err(ProofValidationError::MalformedG1PointA);
         }
 
         // --- G2 point `b` --------------------------------------------------
-        if is_component_all_zeros(&proof.b) {
+        if is_g2_all_zeros(&proof.b) {
             return Err(ProofValidationError::ZeroedComponent);
         }
-        if is_component_all_ones(&proof.b) {
+        if is_g2_all_ones(&proof.b) {
             return Err(ProofValidationError::OversizedComponent);
         }
         // G2 is composed of four 32-byte limbs; none may be individually zero.
-        let b_arr = proof.b.to_array();
-        let mut limb_start = 0usize;
-        while limb_start < G2_POINT_LEN {
-            let limb_end = limb_start + 32;
-            if b_arr[limb_start..limb_end].iter().all(|&b| b == 0) {
-                return Err(ProofValidationError::MalformedG2Point);
-            }
-            limb_start = limb_end;
+        if is_bytes_all_zeros(&proof.b.x.0)
+            || is_bytes_all_zeros(&proof.b.x.1)
+            || is_bytes_all_zeros(&proof.b.y.0)
+            || is_bytes_all_zeros(&proof.b.y.1)
+        {
+            return Err(ProofValidationError::MalformedG2Point);
         }
 
         // --- G1 point `c` --------------------------------------------------
-        if is_component_all_zeros(&proof.c) {
+        if is_g1_all_zeros(&proof.c) {
             return Err(ProofValidationError::ZeroedComponent);
         }
-        if is_component_all_ones(&proof.c) {
+        if is_g1_all_ones(&proof.c) {
             return Err(ProofValidationError::OversizedComponent);
         }
-        let c_arr = proof.c.to_array();
-        if c_arr[..32].iter().all(|&b| b == 0) || c_arr[32..].iter().all(|&b| b == 0) {
+        if is_bytes_all_zeros(&proof.c.x) || is_bytes_all_zeros(&proof.c.y) {
             return Err(ProofValidationError::MalformedG1PointC);
         }
 
@@ -83,7 +154,7 @@ impl Bn254Verifier {
             return Err(ProofValidationError::EmptyPublicInputs);
         }
         for pi in public_inputs.iter() {
-            if is_component_all_zeros(&pi) {
+            if is_bytes_all_zeros(&pi) {
                 return Err(ProofValidationError::ZeroedPublicInput);
             }
         }
@@ -104,8 +175,8 @@ impl Bn254Verifier {
             return false;
         }
 
-        use soroban_sdk::crypto::{BnScalar, bn254::{Bn254G1Affine, Bn254G2Affine}};
         use core::ops::Neg;
+        use soroban_sdk::crypto::bn254::{Bn254G1Affine, Bn254G2Affine, Fr};
 
         // 1. Compute the public input point (acc)
         // acc = IC[0] + sum(public_inputs[i] * IC[i+1])
@@ -121,11 +192,11 @@ impl Bn254Verifier {
             ic_bytes[0..32].copy_from_slice(&ic_point.x.to_array());
             ic_bytes[32..64].copy_from_slice(&ic_point.y.to_array());
             let g1_point = Bn254G1Affine::from_array(env, &ic_bytes);
-            
+
             // Scalar multiplication: IC[i+1] * input
-            let scalar = BnScalar::from_bytes(input.clone());
+            let scalar = Fr::from_bytes(input.clone());
             let mul = env.crypto().bn254().g1_mul(&g1_point, &scalar);
-            
+
             // Addition: acc + (IC[i+1] * input)
             acc = env.crypto().bn254().g1_add(&acc, &mul);
         }
@@ -134,60 +205,56 @@ impl Bn254Verifier {
         // e(A, B) == e(alpha, beta) * e(acc, gamma) * e(C, delta)
         // Rearranged for sum(e(P_i, Q_i)) == 0 approach:
         // e(-A, B) * e(alpha, beta) * e(acc, gamma) * e(C, delta) == 1
-        
+
         // Negate G1 point A instead of G2 point B (achieves the same result)
         let mut a_bytes = [0u8; 64];
         a_bytes[0..32].copy_from_slice(&proof.a.x.to_array());
         a_bytes[32..64].copy_from_slice(&proof.a.y.to_array());
         let point_a = Bn254G1Affine::from_array(env, &a_bytes);
         let neg_a = point_a.neg();
-        
+
         let mut g1_points = Vec::<Bn254G1Affine>::new(env);
         let mut g2_points = Vec::<Bn254G2Affine>::new(env);
-        
+
         // pair 1: e(-A, B)
         g1_points.push_back(neg_a);
-        
+
         let mut b_bytes = [0u8; 128];
         b_bytes[0..32].copy_from_slice(&proof.b.x.0.to_array());
         b_bytes[32..64].copy_from_slice(&proof.b.x.1.to_array());
-        b_bytes[64..128].copy_from_slice(&proof.b.y.0.to_array()); // Error in previous slice index (64..96)
-        // Wait, b.y is (BytesN<32>, BytesN<32>)
-        let mut b_y_bytes = [0u8; 64];
-        b_y_bytes[0..32].copy_from_slice(&proof.b.y.0.to_array());
-        b_y_bytes[32..64].copy_from_slice(&proof.b.y.1.to_array());
-        b_bytes[64..128].copy_from_slice(&b_y_bytes);
+        b_bytes[64..96].copy_from_slice(&proof.b.y.0.to_array());
+        b_bytes[96..128].copy_from_slice(&proof.b.y.1.to_array());
         g2_points.push_back(Bn254G2Affine::from_array(env, &b_bytes));
-        
+
         // pair 2: e(alpha, beta)
         let mut alpha_bytes = [0u8; 64];
         alpha_bytes[0..32].copy_from_slice(&vk.alpha_g1.x.to_array());
         alpha_bytes[32..64].copy_from_slice(&vk.alpha_g1.y.to_array());
         g1_points.push_back(Bn254G1Affine::from_array(env, &alpha_bytes));
-        
+
         let mut beta_bytes = [0u8; 128];
         beta_bytes[0..32].copy_from_slice(&vk.beta_g2.x.0.to_array());
         beta_bytes[32..64].copy_from_slice(&vk.beta_g2.x.1.to_array());
         beta_bytes[64..96].copy_from_slice(&vk.beta_g2.y.0.to_array());
         beta_bytes[96..128].copy_from_slice(&vk.beta_g2.y.1.to_array());
         g2_points.push_back(Bn254G2Affine::from_array(env, &beta_bytes));
-        
+
         // pair 3: e(acc, gamma)
         g1_points.push_back(acc);
-        
+
         let mut gamma_bytes = [0u8; 128];
         gamma_bytes[0..32].copy_from_slice(&vk.gamma_g2.x.0.to_array());
         gamma_bytes[32..64].copy_from_slice(&vk.gamma_g2.x.1.to_array());
         gamma_bytes[64..96].copy_from_slice(&vk.gamma_g2.y.0.to_array());
         gamma_bytes[96..128].copy_from_slice(&vk.gamma_g2.y.1.to_array());
         g2_points.push_back(Bn254G2Affine::from_array(env, &gamma_bytes));
-        
+
         // pair 4: e(C, delta)
         let mut c_bytes = [0u8; 64];
         c_bytes[0..32].copy_from_slice(&proof.c.x.to_array());
         c_bytes[32..64].copy_from_slice(&proof.c.y.to_array());
         g1_points.push_back(Bn254G1Affine::from_array(env, &c_bytes));
-        
+
         let mut delta_bytes = [0u8; 128];
         delta_bytes[0..32].copy_from_slice(&vk.delta_g2.x.0.to_array());
         delta_bytes[32..64].copy_from_slice(&vk.delta_g2.x.1.to_array());

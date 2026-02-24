@@ -1,4 +1,4 @@
-use crate::verifier::Proof;
+use crate::verifier::{G1Point, G2Point, Proof};
 use crate::AccessRequest;
 use soroban_sdk::{BytesN, Env, Vec};
 
@@ -27,12 +27,12 @@ impl ZkAccessHelper {
         AccessRequest {
             user,
             resource_id: BytesN::from_array(env, &resource_id),
-            proof: crate::verifier::Proof {
-                a: crate::verifier::G1Point {
+            proof: Proof {
+                a: G1Point {
                     x: BytesN::from_array(env, &proof_a[0..32].try_into().unwrap()),
                     y: BytesN::from_array(env, &proof_a[32..64].try_into().unwrap()),
                 },
-                b: crate::verifier::G2Point {
+                b: G2Point {
                     x: (
                         BytesN::from_array(env, &proof_b[0..32].try_into().unwrap()),
                         BytesN::from_array(env, &proof_b[32..64].try_into().unwrap()),
@@ -42,7 +42,7 @@ impl ZkAccessHelper {
                         BytesN::from_array(env, &proof_b[96..128].try_into().unwrap()),
                     ),
                 },
-                c: crate::verifier::G1Point {
+                c: G1Point {
                     x: BytesN::from_array(env, &proof_c[0..32].try_into().unwrap()),
                     y: BytesN::from_array(env, &proof_c[32..64].try_into().unwrap()),
                 },
