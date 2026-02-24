@@ -9,6 +9,7 @@ members = [
     "contracts/common",
     "contracts/identity",
     "contracts/zk_verifier",
+    "contracts/zk_voting",
     "contracts/fhir",
     "contracts/cross_chain",
     "contracts/analytics",
