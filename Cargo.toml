@@ -25,7 +25,7 @@ repository = "https://github.com/Stellar-Teye/Teye-Contracts"
 rust-version = "1.78"
 
 [workspace.dependencies]
-soroban-sdk = "22.0.0"
+soroban-sdk = "25.0.0"
 proptest = "1"
 proptest-derive = "0.4"
 

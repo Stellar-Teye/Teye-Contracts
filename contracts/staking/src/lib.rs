@@ -4,6 +4,7 @@ pub mod events;
 pub mod rewards;
 pub mod timelock;
 
+use common::admin_tiers::{self, AdminTier};
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, token, Address, Env, Symbol,
 };
@@ -98,6 +99,10 @@ impl StakingContract {
         env.storage().instance().set(&LOCK_PERIOD, &lock_period);
         // TOTAL_STAKED, REWARD_PER_TOKEN, and UNSTK_CTR start at zero;
         // unwrap_or(0) handles absent keys, so no explicit init needed.
+
+        // Bootstrap the initializing admin as SuperAdmin in the tier system
+        admin_tiers::set_super_admin(&env, &admin);
+        admin_tiers::track_admin(&env, &admin);
 
         events::publish_initialized(
             &env,
@@ -409,10 +414,12 @@ impl StakingContract {
     /// The global accumulator is flushed at the current rate *before* the
     /// rate changes, so existing stakers never lose or gain rewards
     /// retroactively.
+    ///
+    /// Requires at least `ContractAdmin` tier.
     pub fn set_reward_rate(env: Env, caller: Address, new_rate: i128) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
-        Self::require_admin(&env, &caller)?;
+        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin)?;
 
         if new_rate < 0 {
             return Err(ContractError::InvalidInput);
@@ -429,6 +436,8 @@ impl StakingContract {
     }
 
     /// Update the unstake lock period (affects only *future* requests).
+    ///
+    /// Requires at least `ContractAdmin` tier.
     pub fn set_lock_period(
         env: Env,
         caller: Address,
@@ -436,13 +445,51 @@ impl StakingContract {
     ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
-        Self::require_admin(&env, &caller)?;
+        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin)?;
 
         env.storage().instance().set(&LOCK_PERIOD, &new_period);
 
         events::publish_lock_period_set(&env, new_period);
 
         Ok(())
+    }
+
+    // ── Admin tier management ────────────────────────────────────────────────
+
+    /// Promotes or assigns a target address to the specified admin tier.
+    ///
+    /// Only a `SuperAdmin` may call this.
+    pub fn promote_admin(
+        env: Env,
+        caller: Address,
+        target: Address,
+        tier: AdminTier,
+    ) -> Result<(), ContractError> {
+        Self::require_initialized(&env)?;
+        caller.require_auth();
+        if !admin_tiers::promote_admin(&env, &caller, &target, tier) {
+            return Err(ContractError::Unauthorized);
+        }
+        admin_tiers::track_admin(&env, &target);
+        Ok(())
+    }
+
+    /// Removes the admin tier from the target address entirely.
+    ///
+    /// Only a `SuperAdmin` may call this.
+    pub fn demote_admin(env: Env, caller: Address, target: Address) -> Result<(), ContractError> {
+        Self::require_initialized(&env)?;
+        caller.require_auth();
+        if !admin_tiers::demote_admin(&env, &caller, &target) {
+            return Err(ContractError::Unauthorized);
+        }
+        admin_tiers::untrack_admin(&env, &target);
+        Ok(())
+    }
+
+    /// Returns the admin tier of the given address, if any.
+    pub fn get_admin_tier(env: Env, admin: Address) -> Option<AdminTier> {
+        admin_tiers::get_admin_tier(&env, &admin)
     }
 
     // ── Internal helpers ─────────────────────────────────────────────────────
@@ -456,6 +503,7 @@ impl StakingContract {
     }
 
     /// Guard: revert if `caller` is not the stored admin.
+    /// Kept for backward compatibility.
     fn require_admin(env: &Env, caller: &Address) -> Result<(), ContractError> {
         let admin: Address = env
             .storage()
@@ -466,6 +514,21 @@ impl StakingContract {
             return Err(ContractError::Unauthorized);
         }
         Ok(())
+    }
+
+    /// Guard: revert if `caller` does not hold at least `min_tier`.
+    /// Falls back to the legacy ADMIN check for backward compatibility.
+    fn require_admin_tier(
+        env: &Env,
+        caller: &Address,
+        min_tier: &AdminTier,
+    ) -> Result<(), ContractError> {
+        // First check the tiered system
+        if admin_tiers::require_tier(env, caller, min_tier) {
+            return Ok(());
+        }
+        // Fall back to legacy admin check
+        Self::require_admin(env, caller)
     }
 
     /// Flush the global reward-per-token accumulator without touching any
@@ -528,3 +591,6 @@ impl StakingContract {
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod test_admin_tiers;
