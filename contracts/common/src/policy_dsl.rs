@@ -291,13 +291,15 @@ pub enum SimulationVerdict {
 #[derive(Clone, Debug)]
 pub struct SimulationResult {
     pub verdict: SimulationVerdict,
-    pub matched_policy: Option<PolicyId>,
+    /// Empty vec = no match; single element = the winning policy.
+    pub matched_policy: Vec<PolicyId>,
     pub evaluated_count: u32,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use soroban_sdk::testutils::Address as _;
     use soroban_sdk::Env;
 
     #[test]

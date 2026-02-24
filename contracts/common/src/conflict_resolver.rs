@@ -42,7 +42,8 @@ pub struct PolicyConflict {
 pub struct ResolutionResult {
     pub effect: PolicyEffect,
     pub conflicts: Vec<PolicyConflict>,
-    pub winning_policy: Option<PolicyId>,
+    /// Empty vec = no winner; single element = the winning policy.
+    pub winning_policy: Vec<PolicyId>,
 }
 
 // ── Core Resolver ───────────────────────────────────────────────────────────
@@ -63,7 +64,7 @@ pub fn resolve(
         return ResolutionResult {
             effect: PolicyEffect::Deny,
             conflicts: Vec::new(env),
-            winning_policy: None,
+            winning_policy: Vec::new(env),
         };
     }
 
@@ -86,10 +87,15 @@ pub fn resolve(
         tagged_conflicts.push_back(c);
     }
 
+    let mut winning_policy: Vec<PolicyId> = Vec::new(env);
+    if let Some(w) = winner {
+        winning_policy.push_back(w);
+    }
+
     ResolutionResult {
         effect,
         conflicts: tagged_conflicts,
-        winning_policy: winner,
+        winning_policy,
     }
 }
 
@@ -246,7 +252,7 @@ mod tests {
         let matched: Vec<(PolicyDefinition, PolicyEffect)> = Vec::new(&env);
         let result = resolve(&env, ResolutionStrategy::DenyOverride, &matched);
         assert_eq!(result.effect, PolicyEffect::Deny);
-        assert!(result.winning_policy.is_none());
+        assert!(result.winning_policy.is_empty());
     }
 
     #[test]

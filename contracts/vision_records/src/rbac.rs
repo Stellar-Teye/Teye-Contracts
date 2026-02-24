@@ -194,7 +194,6 @@ pub fn user_groups_key(user: &Address) -> (Symbol, Address) {
     (symbol_short!("USR_GRPS"), user.clone())
 }
 
-
 pub fn access_policy_key(id: &String) -> (Symbol, String) {
     (symbol_short!("ACC_POL"), id.clone())
 }
@@ -204,7 +203,7 @@ pub fn user_credential_key(user: &Address) -> (Symbol, Address) {
 }
 
 pub fn record_sensitivity_key(record_id: &u64) -> (Symbol, u64) {
-    (symbol_short!("REC_SENS"), record_id.clone())
+    (symbol_short!("REC_SENS"), *record_id)
 }
 
 // ======================== Core RBAC Engine ========================
@@ -548,7 +547,7 @@ fn satisfies_time_restriction(env: &Env, restriction: &TimeRestriction) -> bool 
         TimeRestriction::BusinessHours => {
             let timestamp = env.ledger().timestamp();
             let hour = (timestamp / 3600) % 24;
-            hour >= 9 && hour <= 17
+            (9..=17).contains(&hour)
         }
         TimeRestriction::HourRange(start, end) => {
             let timestamp = env.ledger().timestamp();
@@ -674,10 +673,10 @@ pub fn evaluate_access_policies(
 ) -> bool {
     // Get all policies (in a real implementation, you might want to index policies by user/resource)
     // For now, we'll check a few default policy IDs
-    let mut default_policy_ids = Vec::new(&env);
-    default_policy_ids.push_back(String::from_str(&env, "default_medical_access"));
-    default_policy_ids.push_back(String::from_str(&env, "emergency_access"));
-    default_policy_ids.push_back(String::from_str(&env, "research_access"));
+    let mut default_policy_ids = Vec::new(env);
+    default_policy_ids.push_back(String::from_str(env, "default_medical_access"));
+    default_policy_ids.push_back(String::from_str(env, "emergency_access"));
+    default_policy_ids.push_back(String::from_str(env, "research_access"));
 
     let context = PolicyContext {
         user: user.clone(),
@@ -856,8 +855,16 @@ fn id_to_string(env: &Env, mut id: u64) -> String {
     for i in 0..len {
         let d = digits.get(len - 1 - i).unwrap();
         let ch = match d {
-            0 => "0", 1 => "1", 2 => "2", 3 => "3", 4 => "4",
-            5 => "5", 6 => "6", 7 => "7", 8 => "8", 9 => "9",
+            0 => "0",
+            1 => "1",
+            2 => "2",
+            3 => "3",
+            4 => "4",
+            5 => "5",
+            6 => "6",
+            7 => "7",
+            8 => "8",
+            9 => "9",
             _ => "0",
         };
         result = concat_strings(env, &result, &String::from_str(env, ch));
@@ -877,8 +884,8 @@ fn concat_strings(env: &Env, a: &String, b: &String) -> String {
     }
     let mut buf = [0u8; 256];
     let len = combined.len() as usize;
-    for i in 0..len {
-        buf[i] = combined.get(i as u32).unwrap();
+    for (i, slot) in buf.iter_mut().enumerate().take(len) {
+        *slot = combined.get(i as u32).unwrap();
     }
     String::from_bytes(env, &buf[..len])
 }

@@ -196,6 +196,27 @@ pub fn publish_reward_rate_set(env: &Env, new_rate: i128) {
     );
 }
 
+pub fn publish_reward_rate_proposed(env: &Env, new_rate: i128, effective_at: u64) {
+    env.events().publish(
+        (symbol_short!("RWD_PROP"),),
+        (new_rate, effective_at, env.ledger().timestamp()),
+    );
+}
+
+pub fn publish_reward_rate_applied(env: &Env, new_rate: i128) {
+    env.events().publish(
+        (symbol_short!("RWD_APLD"),),
+        (new_rate, env.ledger().timestamp()),
+    );
+}
+
+pub fn publish_rate_change_delay_set(env: &Env, delay: u64) {
+    env.events().publish(
+        (symbol_short!("DLY_SET"),),
+        (delay, env.ledger().timestamp()),
+    );
+}
+
 pub fn publish_lock_period_set(env: &Env, new_period: u64) {
     env.events().publish(
         (symbol_short!("LOCK_SET"),),

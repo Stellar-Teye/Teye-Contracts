@@ -9,8 +9,8 @@ use soroban_sdk::{contracttype, symbol_short, Env, String, Symbol, Vec};
 
 use crate::conflict_resolver::{self, ResolutionResult, ResolutionStrategy};
 use crate::policy_dsl::{
-    AttributeCondition, AttrOperator, EvalContext, PolicyDefinition, PolicyEffect,
-    PolicyId, PolicyRule, SimulationResult, SimulationVerdict,
+    AttrOperator, AttributeCondition, EvalContext, PolicyDefinition, PolicyEffect, PolicyId,
+    PolicyRule, SimulationResult, SimulationVerdict,
 };
 
 // ── Storage Keys ────────────────────────────────────────────────────────────
@@ -133,11 +133,7 @@ pub fn evaluate(env: &Env, ctx: &EvalContext) -> ResolutionResult {
 
 /// Evaluates policies with result caching. If a valid cached result exists
 /// for the given cache key, it is returned immediately.
-pub fn evaluate_cached(
-    env: &Env,
-    ctx: &EvalContext,
-    cache_hint: &String,
-) -> ResolutionResult {
+pub fn evaluate_cached(env: &Env, ctx: &EvalContext, cache_hint: &String) -> ResolutionResult {
     let gen = current_cache_generation(env);
     let ck = cache_key(cache_hint);
 
@@ -146,7 +142,7 @@ pub fn evaluate_cached(
             return ResolutionResult {
                 effect: entry.effect,
                 conflicts: Vec::new(env),
-                winning_policy: None,
+                winning_policy: Vec::new(env),
             };
         }
     }
@@ -196,7 +192,7 @@ pub fn simulate(env: &Env, ctx: &EvalContext) -> SimulationResult {
     if matched.is_empty() {
         return SimulationResult {
             verdict: SimulationVerdict::Indeterminate,
-            matched_policy: None,
+            matched_policy: Vec::new(env),
             evaluated_count: eval_count,
         };
     }
@@ -237,6 +233,7 @@ pub fn is_backward_compatible(old: &PolicyDefinition, new: &PolicyDefinition) ->
 // ── Rule Evaluation (recursive) ─────────────────────────────────────────────
 
 /// Recursively evaluates a `PolicyRule` tree against the given context.
+#[allow(clippy::only_used_in_recursion)]
 pub fn evaluate_rule(env: &Env, rule: &PolicyRule, ctx: &EvalContext) -> bool {
     match rule {
         PolicyRule::Allow => true,
@@ -420,10 +417,7 @@ fn remove_from_index(env: &Env, id: &PolicyId) {
 /// Sorts matched policies by priority in ascending order (lowest number =
 /// highest priority). Uses a simple insertion sort suitable for the small
 /// policy sets typical in on-chain evaluation.
-fn sort_matched_by_priority(
-    env: &Env,
-    matched: &mut Vec<(PolicyDefinition, PolicyEffect)>,
-) {
+fn sort_matched_by_priority(env: &Env, matched: &mut Vec<(PolicyDefinition, PolicyEffect)>) {
     let len = matched.len();
     if len <= 1 {
         return;
@@ -461,6 +455,7 @@ fn sort_matched_by_priority(
 mod tests {
     use super::*;
     use crate::policy_dsl::*;
+    use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{Address, Env, String, Vec};
 
     fn test_ctx(env: &Env) -> EvalContext {
@@ -621,11 +616,7 @@ mod tests {
             operator: AttrOperator::Eq,
             values,
         };
-        assert!(evaluate_rule(
-            &env,
-            &PolicyRule::Attribute(cond),
-            &ctx
-        ));
+        assert!(evaluate_rule(&env, &PolicyRule::Attribute(cond), &ctx));
     }
 
     #[test]
@@ -642,11 +633,7 @@ mod tests {
             operator: AttrOperator::In,
             values,
         };
-        assert!(evaluate_rule(
-            &env,
-            &PolicyRule::Attribute(cond),
-            &ctx
-        ));
+        assert!(evaluate_rule(&env, &PolicyRule::Attribute(cond), &ctx));
     }
 
     #[test]
@@ -662,11 +649,7 @@ mod tests {
             operator: AttrOperator::NotIn,
             values,
         };
-        assert!(!evaluate_rule(
-            &env,
-            &PolicyRule::Attribute(cond),
-            &ctx
-        ));
+        assert!(!evaluate_rule(&env, &PolicyRule::Attribute(cond), &ctx));
     }
 
     #[test]
@@ -681,11 +664,7 @@ mod tests {
             allowed_hour_end: 17,
             allowed_days_mask: 0,
         };
-        assert!(evaluate_rule(
-            &env,
-            &PolicyRule::Temporal(tc),
-            &ctx
-        ));
+        assert!(evaluate_rule(&env, &PolicyRule::Temporal(tc), &ctx));
     }
 
     #[test]
@@ -693,7 +672,13 @@ mod tests {
         let env = Env::default();
         let ctx = test_ctx(&env);
 
-        let policy = make_policy_def(&env, "allow_doctors", PolicyRule::Allow, PolicyEffect::Permit, 1);
+        let policy = make_policy_def(
+            &env,
+            "allow_doctors",
+            PolicyRule::Allow,
+            PolicyEffect::Permit,
+            1,
+        );
         store_policy(&env, &policy);
 
         let result = evaluate(&env, &ctx);
@@ -744,7 +729,8 @@ mod tests {
         assert_eq!(r1.effect, PolicyEffect::Permit);
 
         // Store a new deny policy — bumps generation
-        let deny_policy = make_policy_def(&env, "v1_deny", PolicyRule::Allow, PolicyEffect::Deny, 0);
+        let deny_policy =
+            make_policy_def(&env, "v1_deny", PolicyRule::Allow, PolicyEffect::Deny, 0);
         store_policy(&env, &deny_policy);
 
         // Cache is invalidated; re-evaluates
@@ -829,7 +815,13 @@ mod tests {
 
         let complex_rule = PolicyRule::And(and_children);
 
-        let policy = make_policy_def(&env, "complex_access", complex_rule, PolicyEffect::Permit, 1);
+        let policy = make_policy_def(
+            &env,
+            "complex_access",
+            complex_rule,
+            PolicyEffect::Permit,
+            1,
+        );
         store_policy(&env, &policy);
 
         let result = evaluate(&env, &ctx);
@@ -858,7 +850,13 @@ mod tests {
         let env = Env::default();
         let ctx = test_ctx(&env);
 
-        let v1 = make_policy_def(&env, "versioned", PolicyRule::Allow, PolicyEffect::Permit, 1);
+        let v1 = make_policy_def(
+            &env,
+            "versioned",
+            PolicyRule::Allow,
+            PolicyEffect::Permit,
+            1,
+        );
         store_policy(&env, &v1);
 
         // Upgrade to v2 with same name — replaces in index
