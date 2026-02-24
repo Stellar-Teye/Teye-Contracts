@@ -1,8 +1,16 @@
 #![no_std]
 #![allow(clippy::too_many_arguments)]
+pub mod appointment;
+pub mod audit;
 pub mod circuit_breaker;
+pub mod emergency;
+pub mod errors;
 pub mod events;
+pub mod examination;
+pub mod patient_profile;
 pub mod prescription;
+pub mod provider;
+pub mod rate_limit;
 pub mod rbac;
 pub mod validation;
 
@@ -10,8 +18,28 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol, Vec,
 };
 
-/// Re-export the shared error type so callers can use `ContractError` locally.
-pub use teye_common::CommonError as ContractError;
+use teye_common::whitelist;
+
+/// Re-export the contract-specific error type at the crate root.
+pub use errors::ContractError;
+
+/// Re-export provider types needed by other modules (e.g. events).
+pub use provider::VerificationStatus;
+
+/// Re-export error helpers used throughout the contract.
+pub use errors::{create_error_context, log_error};
+
+/// Re-export types from submodules used directly in the contract impl.
+pub use audit::{AccessAction, AccessResult};
+pub use examination::{
+    EyeExamination, IntraocularPressure, OptFundusPhotography, OptRetinalImaging, OptVisualField,
+    SlitLampFindings, VisualAcuity,
+};
+pub use patient_profile::{
+    EmergencyContact, InsuranceInfo, OptionalEmergencyContact, OptionalInsuranceInfo,
+    PatientProfile,
+};
+pub use prescription::{LensType, OptionalContactLensData, Prescription, PrescriptionData};
 
 /// Storage keys for the contract
 const ADMIN: Symbol = symbol_short!("ADMIN");
@@ -143,6 +171,36 @@ pub struct AccessGrant {
     pub level: AccessLevel,
     pub granted_at: u64,
     pub expires_at: u64,
+}
+
+/// Consent grant structure for patient-to-provider consent tracking
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct ConsentGrant {
+    pub patient: Address,
+    pub grantee: Address,
+    pub consent_type: ConsentType,
+    pub granted_at: u64,
+    pub expires_at: u64,
+    pub revoked: bool,
+}
+
+/// Input for batch record creation
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct BatchRecordInput {
+    pub patient: Address,
+    pub record_type: RecordType,
+    pub data_hash: String,
+}
+
+/// Input for batch access granting
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct BatchGrantInput {
+    pub grantee: Address,
+    pub level: AccessLevel,
+    pub duration_seconds: u64,
 }
 
 #[contract]
@@ -982,7 +1040,7 @@ impl VisionRecordsContract {
         // Log successful access revoke
         let audit_entry = audit::create_audit_entry(
             &env,
-            caller.clone(),
+            patient.clone(),
             patient.clone(),
             None,
             AccessAction::RevokeAccess,
@@ -1265,14 +1323,10 @@ impl VisionRecordsContract {
         };
         profile.updated_at = env.ledger().timestamp();
 
-        let user = Address::generate(&env);
-        let name = String::from_str(&env, "Dr. Smith");
+        env.storage().persistent().set(&profile_key, &profile);
+        events::publish_profile_updated(&env, patient);
 
-        client.register_user(&user, &Role::Optometrist, &name);
-
-        let user_data = client.get_user(&user);
-        assert_eq!(user_data.role, Role::Optometrist);
-        assert!(user_data.is_active);
+        Ok(())
     }
 
     /// Update insurance information (hashed values only)
@@ -1305,14 +1359,7 @@ impl VisionRecordsContract {
         env.storage().persistent().set(&profile_key, &profile);
         events::publish_profile_updated(&env, patient);
 
-        let record_id =
-            client.add_record(&patient, &provider, &RecordType::Examination, &data_hash);
-
-        assert_eq!(record_id, 1);
-
-        let record = client.get_record(&record_id);
-        assert_eq!(record.patient, patient);
-        assert_eq!(record.provider, provider);
+        Ok(())
     }
 
     /// Add medical history reference (IPFS hash or record ID)
@@ -1359,11 +1406,6 @@ impl VisionRecordsContract {
         let profile_key = (symbol_short!("PAT_PROF"), patient);
         env.storage().persistent().has(&profile_key)
     }
-
-        // Grant access
-        client.grant_access(&patient, &doctor, &AccessLevel::Read, &86400);
-
-        assert_eq!(client.check_access(&patient, &doctor), AccessLevel::Read);
 
     /// Grants a custom permission to a user.
     /// Requires the caller to have ManageUsers permission.

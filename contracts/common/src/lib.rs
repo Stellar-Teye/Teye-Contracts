@@ -1,12 +1,40 @@
-//! Shared error types for the Teye contract suite.
+//! Shared utilities and error types for the Teye contract suite.
 //!
-//! All contracts should use [`CommonError`] for standardised error codes.
+//! This crate provides:
+//! - [`CommonError`] — standardised error codes for all contracts.
+//! - Consent, key-management, and multisig helpers (requires `std` feature).
+//! - On-chain whitelist, meta-transaction, and rate-limiting utilities.
+//!
 //! Contract-specific errors can extend the range starting at code **100** and
 //! above, ensuring no collisions with the common set.
 
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 use soroban_sdk::contracterror;
+
+// ── Modules ──────────────────────────────────────────────────────────────────
+
+#[cfg(feature = "std")]
+pub mod consent;
+#[cfg(feature = "std")]
+pub mod keys;
+pub mod meta_tx;
+#[cfg(feature = "std")]
+pub mod multisig;
+pub mod rate_limit;
+pub mod whitelist;
+
+#[cfg(feature = "std")]
+pub use consent::*;
+#[cfg(feature = "std")]
+pub use keys::*;
+pub use meta_tx::*;
+#[cfg(feature = "std")]
+pub use multisig::*;
+pub use rate_limit::*;
+pub use whitelist::*;
+
+// ── Shared error enum ────────────────────────────────────────────────────────
 
 /// Standardised error codes shared by every Teye contract.
 ///

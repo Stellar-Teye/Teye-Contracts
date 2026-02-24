@@ -1,7 +1,7 @@
 # Error Codes
 
 Standardised error codes used across all Teye contracts.
-Every contract re-exports `CommonError` from the `teye-common` crate as `ContractError` so that error codes are identical everywhere.
+Every contract re-exports `CommonError` from the `common` crate as `ContractError` so that error codes are identical everywhere.
 
 ## Code Ranges
 
