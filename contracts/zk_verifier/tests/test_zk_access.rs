@@ -246,3 +246,372 @@ fn test_whitelist_admin_only_management() {
         Ok(ContractError::Unauthorized)
     ));
 }
+
+// ===========================================================================
+// Edge-case tests — empty inputs, zeroed proofs, oversized inputs, malformed
+// ===========================================================================
+
+#[test]
+fn test_empty_public_inputs_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let user = Address::generate(&env);
+
+    // Build request with NO public inputs.
+    let request = ZkAccessHelper::create_request(
+        &env,
+        user.clone(),
+        [10u8; 32],
+        {
+            let mut a = [0u8; 64];
+            a[0] = 1;
+            a
+        },
+        {
+            let mut b = [0u8; 128];
+            b[0] = 1;
+            b
+        },
+        {
+            let mut c = [0u8; 64];
+            c[0] = 1;
+            c
+        },
+        &[], // empty public inputs
+    );
+
+    let res = client.try_verify_access(&request);
+    assert!(res.is_err(), "Empty public inputs must be rejected");
+    assert!(matches!(
+        res.unwrap_err(),
+        Ok(ContractError::EmptyPublicInputs)
+    ));
+}
+
+#[test]
+fn test_zeroed_proof_bytes_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let user = Address::generate(&env);
+    let pi = [1u8; 32];
+
+    // proof_a is all zeros → degenerate
+    let request_zero_a = ZkAccessHelper::create_request(
+        &env,
+        user.clone(),
+        [11u8; 32],
+        [0u8; 64],
+        {
+            let mut b = [0u8; 128];
+            b[0] = 1;
+            b
+        },
+        {
+            let mut c = [0u8; 64];
+            c[0] = 1;
+            c
+        },
+        &[&pi],
+    );
+    let res_a = client.try_verify_access(&request_zero_a);
+    assert!(
+        res_a.is_err(),
+        "All-zero proof.a must be rejected as degenerate"
+    );
+    assert!(matches!(
+        res_a.unwrap_err(),
+        Ok(ContractError::DegenerateProof)
+    ));
+
+    // proof_b is all zeros → degenerate
+    let request_zero_b = ZkAccessHelper::create_request(
+        &env,
+        user.clone(),
+        [12u8; 32],
+        {
+            let mut a = [0u8; 64];
+            a[0] = 1;
+            a
+        },
+        [0u8; 128],
+        {
+            let mut c = [0u8; 64];
+            c[0] = 1;
+            c
+        },
+        &[&pi],
+    );
+    let res_b = client.try_verify_access(&request_zero_b);
+    assert!(
+        res_b.is_err(),
+        "All-zero proof.b must be rejected as degenerate"
+    );
+    assert!(matches!(
+        res_b.unwrap_err(),
+        Ok(ContractError::DegenerateProof)
+    ));
+
+    // proof_c is all zeros → degenerate
+    let request_zero_c = ZkAccessHelper::create_request(
+        &env,
+        user.clone(),
+        [13u8; 32],
+        {
+            let mut a = [0u8; 64];
+            a[0] = 1;
+            a
+        },
+        {
+            let mut b = [0u8; 128];
+            b[0] = 1;
+            b
+        },
+        [0u8; 64],
+        &[&pi],
+    );
+    let res_c = client.try_verify_access(&request_zero_c);
+    assert!(
+        res_c.is_err(),
+        "All-zero proof.c must be rejected as degenerate"
+    );
+    assert!(matches!(
+        res_c.unwrap_err(),
+        Ok(ContractError::DegenerateProof)
+    ));
+}
+
+#[test]
+fn test_all_proof_components_zeroed_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let user = Address::generate(&env);
+    let pi = [1u8; 32];
+
+    let request = ZkAccessHelper::create_request(
+        &env,
+        user.clone(),
+        [14u8; 32],
+        [0u8; 64],  // all zero a
+        [0u8; 128], // all zero b
+        [0u8; 64],  // all zero c
+        &[&pi],
+    );
+    let res = client.try_verify_access(&request);
+    assert!(res.is_err(), "Fully zeroed proof must be rejected");
+    assert!(matches!(
+        res.unwrap_err(),
+        Ok(ContractError::DegenerateProof)
+    ));
+}
+
+#[test]
+fn test_oversized_public_inputs_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let user = Address::generate(&env);
+
+    // Build 17 public inputs (MAX_PUBLIC_INPUTS = 16)
+    let inputs: std::vec::Vec<[u8; 32]> = (0..17)
+        .map(|i| {
+            let mut buf = [0u8; 32];
+            buf[0] = if i == 0 { 1 } else { (i % 255 + 1) as u8 };
+            buf
+        })
+        .collect();
+    let input_refs: std::vec::Vec<&[u8; 32]> = inputs.iter().collect();
+
+    let request = ZkAccessHelper::create_request(
+        &env,
+        user.clone(),
+        [15u8; 32],
+        {
+            let mut a = [0u8; 64];
+            a[0] = 1;
+            a
+        },
+        {
+            let mut b = [0u8; 128];
+            b[0] = 1;
+            b
+        },
+        {
+            let mut c = [0u8; 64];
+            c[0] = 1;
+            c
+        },
+        &input_refs,
+    );
+    let res = client.try_verify_access(&request);
+    assert!(res.is_err(), "More than 16 public inputs must be rejected");
+    assert!(matches!(
+        res.unwrap_err(),
+        Ok(ContractError::TooManyPublicInputs)
+    ));
+}
+
+#[test]
+fn test_malformed_proof_first_byte_not_one() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let user = Address::generate(&env);
+    let pi = [1u8; 32];
+
+    // proof_a first byte is 0xFF (not 0x01) but not all zeros → passes
+    // validation but fails the mock verifier check.
+    let mut bad_a = [0u8; 64];
+    bad_a[0] = 0xFF;
+    let request = ZkAccessHelper::create_request(
+        &env,
+        user.clone(),
+        [16u8; 32],
+        bad_a,
+        {
+            let mut b = [0u8; 128];
+            b[0] = 1;
+            b
+        },
+        {
+            let mut c = [0u8; 64];
+            c[0] = 1;
+            c
+        },
+        &[&pi],
+    );
+
+    let is_valid = client.verify_access(&request);
+    assert!(
+        !is_valid,
+        "Proof with a[0] != 0x01 should fail verification"
+    );
+}
+
+#[test]
+fn test_malformed_public_input_first_byte_not_one() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let user = Address::generate(&env);
+
+    // public input first byte is 0x00 → verifier rejects
+    let bad_pi = [0u8; 32];
+    let request = ZkAccessHelper::create_request(
+        &env,
+        user.clone(),
+        [17u8; 32],
+        {
+            let mut a = [0u8; 64];
+            a[0] = 1;
+            a
+        },
+        {
+            let mut b = [0u8; 128];
+            b[0] = 1;
+            b
+        },
+        {
+            let mut c = [0u8; 64];
+            c[0] = 1;
+            c
+        },
+        &[&bad_pi],
+    );
+
+    let is_valid = client.verify_access(&request);
+    assert!(
+        !is_valid,
+        "Public input with pi[0] == 0x00 should fail verification"
+    );
+}
+
+#[test]
+fn test_exactly_max_public_inputs_accepted() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let user = Address::generate(&env);
+
+    // Exactly 16 inputs (the maximum) should be accepted.
+    let inputs: std::vec::Vec<[u8; 32]> = (0..16)
+        .map(|i| {
+            let mut buf = [0u8; 32];
+            buf[0] = if i == 0 { 1 } else { (i % 255 + 1) as u8 };
+            buf
+        })
+        .collect();
+    let input_refs: std::vec::Vec<&[u8; 32]> = inputs.iter().collect();
+
+    let request = ZkAccessHelper::create_request(
+        &env,
+        user.clone(),
+        [18u8; 32],
+        {
+            let mut a = [0u8; 64];
+            a[0] = 1;
+            a
+        },
+        {
+            let mut b = [0u8; 128];
+            b[0] = 1;
+            b
+        },
+        {
+            let mut c = [0u8; 64];
+            c[0] = 1;
+            c
+        },
+        &input_refs,
+    );
+
+    let is_valid = client.verify_access(&request);
+    assert!(
+        is_valid,
+        "Exactly MAX_PUBLIC_INPUTS (16) should be accepted"
+    );
+}
