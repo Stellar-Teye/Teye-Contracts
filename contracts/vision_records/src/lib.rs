@@ -15,10 +15,12 @@ pub mod rbac;
 pub mod validation;
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol, Vec,
+    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, String, Symbol, Vec,
 };
 
-use teye_common::whitelist;
+extern crate alloc;
+use alloc::string::ToString;
+use teye_common::{multisig, whitelist, KeyManager, StdString, StdVec, admin_tiers, AdminTier};
 
 /// Re-export the contract-specific error type at the crate root.
 pub use errors::ContractError;
@@ -43,12 +45,16 @@ pub use prescription::{LensType, OptionalContactLensData, Prescription, Prescrip
 
 /// Storage keys for the contract
 const ADMIN: Symbol = symbol_short!("ADMIN");
+const PENDING_ADMIN: Symbol = symbol_short!("PEND_ADM");
 const INITIALIZED: Symbol = symbol_short!("INIT");
-const RATE_CFG: Symbol = symbol_short!("RL_CFG");
-const RATE_TRACK: Symbol = symbol_short!("RL_TRK");
+const RATE_CFG: Symbol = symbol_short!("RL_IN_CFG");
+const RATE_TRACK: Symbol = symbol_short!("RL_IN_TRK");
 
 const TTL_THRESHOLD: u32 = 5184000;
 const TTL_EXTEND_TO: u32 = 10368000;
+
+const ENC_CUR: Symbol = symbol_short!("ENC_CUR");
+const ENC_KEY: Symbol = symbol_short!("ENC_KEY");
 
 /// Extends the time-to-live (TTL) for a storage key containing an Address.
 /// This ensures the data remains accessible for the extended period.
@@ -93,7 +99,11 @@ fn has_active_consent(env: &Env, patient: &Address, grantee: &Address) -> bool {
     }
 }
 
-pub use rbac::{Permission, Role};
+pub use rbac::{
+    create_access_policy, evaluate_access_policies, set_record_sensitivity, set_user_credential,
+    AccessPolicy, CredentialType, Permission, PolicyContext, Role, SensitivityLevel,
+    TimeRestriction,
+};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -164,6 +174,7 @@ pub struct VisionRecord {
     pub provider: Address,
     pub record_type: RecordType,
     pub data_hash: String,
+    pub key_version: Option<String>,
     pub created_at: u64,
     pub updated_at: u64,
 }
@@ -314,14 +325,151 @@ impl VisionRecordsContract {
         env.storage().instance().has(&INITIALIZED)
     }
 
+    /// Propose a new admin address. Only the current admin can call this.
+    /// The new admin must call `accept_admin` to complete the transfer.
+    pub fn propose_admin(
+        env: Env,
+        current_admin: Address,
+        new_admin: Address,
+    ) -> Result<(), ContractError> {
+        current_admin.require_auth();
+
+        let admin = Self::get_admin(env.clone())?;
+        if current_admin != admin {
+            return Err(ContractError::Unauthorized);
+        }
+
+        env.storage().instance().set(&PENDING_ADMIN, &new_admin);
+
+        events::publish_admin_transfer_proposed(&env, current_admin, new_admin);
+
+        Ok(())
+    }
+
+    /// Accept the pending admin transfer. Only the proposed new admin can call this.
+    /// Completes the two-step admin transfer process.
+    pub fn accept_admin(env: Env, new_admin: Address) -> Result<(), ContractError> {
+        new_admin.require_auth();
+
+        let pending: Address = env
+            .storage()
+            .instance()
+            .get(&PENDING_ADMIN)
+            .ok_or(ContractError::InvalidInput)?;
+
+        if new_admin != pending {
+            return Err(ContractError::Unauthorized);
+        }
+
+        let old_admin = Self::get_admin(env.clone())?;
+
+        env.storage().instance().set(&ADMIN, &new_admin);
+        env.storage().instance().remove(&PENDING_ADMIN);
+
+        events::publish_admin_transfer_accepted(&env, old_admin, new_admin);
+
+        Ok(())
+    }
+
+    /// Cancel a pending admin transfer. Only the current admin can call this.
+    pub fn cancel_admin_transfer(env: Env, current_admin: Address) -> Result<(), ContractError> {
+        current_admin.require_auth();
+
+        let admin = Self::get_admin(env.clone())?;
+        if current_admin != admin {
+            return Err(ContractError::Unauthorized);
+        }
+
+        let pending: Address = env
+            .storage()
+            .instance()
+            .get(&PENDING_ADMIN)
+            .ok_or(ContractError::InvalidInput)?;
+
+        env.storage().instance().remove(&PENDING_ADMIN);
+
+        events::publish_admin_transfer_cancelled(&env, current_admin, pending);
+
+        Ok(())
+    }
+
+    /// Get the pending admin address, if any.
+    pub fn get_pending_admin(env: Env) -> Option<Address> {
+        env.storage().instance().get(&PENDING_ADMIN)
+    }
+
+    // ── Multisig management ──────────────────────────────────────────────────
+
+    /// Configure M-of-N multisig for admin operations.
+    pub fn configure_multisig(
+        env: Env,
+        caller: Address,
+        signers: soroban_sdk::Vec<Address>,
+        threshold: u32,
+    ) -> Result<(), ContractError> {
+        if !Self::is_initialized(env.clone()) {
+            return Err(ContractError::NotInitialized);
+        }
+        caller.require_auth();
+        
+        let admin = Self::get_admin(env.clone())?;
+        if caller != admin {
+            return Err(ContractError::Unauthorized);
+        }
+
+        multisig::configure(&env, signers, threshold)
+            .map_err(|_| ContractError::InvalidInput)
+    }
+
+    pub fn propose_admin_action(
+        env: Env,
+        proposer: Address,
+        action: Symbol,
+        data_hash: BytesN<32>,
+    ) -> Result<u64, ContractError> {
+        if !Self::is_initialized(env.clone()) {
+            return Err(ContractError::NotInitialized);
+        }
+        proposer.require_auth();
+
+        multisig::propose(&env, &proposer, action, data_hash)
+            .map_err(|_| ContractError::Unauthorized)
+    }
+
+    pub fn approve_admin_action(
+        env: Env,
+        approver: Address,
+        proposal_id: u64,
+    ) -> Result<(), ContractError> {
+        if !Self::is_initialized(env.clone()) {
+            return Err(ContractError::NotInitialized);
+        }
+        approver.require_auth();
+
+        multisig::approve(&env, &approver, proposal_id)
+            .map_err(|_| ContractError::Unauthorized)
+    }
+
+    pub fn get_multisig_config(env: Env) -> Option<multisig::MultisigConfig> {
+        multisig::get_config(&env)
+    }
+
+    pub fn get_proposal(env: Env, proposal_id: u64) -> Option<multisig::Proposal> {
+        multisig::get_proposal(&env, proposal_id)
+    }
+
+    // ── Admin configuration ──────────────────────────────────────────────────
+
     /// Configure per-address rate limiting for this contract.
     ///
     /// Requires at least `ContractAdmin` tier, or legacy admin/SystemAdmin.
+    /// Uses multisig if configured.
     pub fn set_rate_limit_config(
         env: Env,
         caller: Address,
         max_requests_per_window: u64,
         window_duration_seconds: u64,
+        proposal_id: u64,
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
@@ -329,7 +477,13 @@ impl VisionRecordsContract {
             return Err(ContractError::InvalidInput);
         }
 
-        if !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin) {
+        if !multisig::is_legacy_admin_allowed(&env) {
+            if !multisig::is_executable(&env, proposal_id) {
+                return Err(ContractError::Unauthorized); // Use Unauthorized for multisig rejection
+            }
+            multisig::mark_executed(&env, proposal_id)
+                .map_err(|_| ContractError::Unauthorized)?;
+        } else if !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin) {
             return Err(ContractError::Unauthorized);
         }
 
@@ -337,6 +491,41 @@ impl VisionRecordsContract {
             &RATE_CFG,
             &(max_requests_per_window, window_duration_seconds),
         );
+
+        Ok(())
+    }
+
+    /// Set or rotate an encryption master key under a given `version`.
+    /// Stores the key bytes persistently under (ENC_KEY, version) and updates current.
+    pub fn set_encryption_key(
+        env: Env,
+        caller: Address,
+        version: String,
+        key: String,
+        proposal_id: u64,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+
+        if !multisig::is_legacy_admin_allowed(&env) {
+            if !multisig::is_executable(&env, proposal_id) {
+                return Err(ContractError::Unauthorized);
+            }
+            multisig::mark_executed(&env, proposal_id)
+                .map_err(|_| ContractError::Unauthorized)?;
+        } else {
+            let admin = Self::get_admin(env.clone())?;
+            let has_system_admin = rbac::has_permission(&env, &caller, &Permission::SystemAdmin);
+            if caller != admin && !has_system_admin {
+                return Err(ContractError::Unauthorized);
+            }
+        }
+
+        // Persist the key hex string under (ENC_KEY, version)
+        env.storage()
+            .persistent()
+            .set(&(ENC_KEY, version.clone()), &key);
+        // Update current active version
+        env.storage().instance().set(&ENC_CUR, &version);
 
         Ok(())
     }
@@ -500,6 +689,7 @@ impl VisionRecordsContract {
         record_type: RecordType,
         data_hash: String,
     ) -> Result<u64, ContractError> {
+        let _guard = teye_common::ReentrancyGuard::new(&env);
         circuit_breaker::require_not_paused(
             &env,
             &circuit_breaker::PauseScope::Function(symbol_short!("ADD_REC")),
@@ -553,12 +743,35 @@ impl VisionRecordsContract {
         let record_id: u64 = env.storage().instance().get(&counter_key).unwrap_or(0) + 1;
         env.storage().instance().set(&counter_key, &record_id);
 
+        // Determine current encryption key version (if any) and load master bytes
+        let current_version: Option<String> = env.storage().instance().get(&ENC_CUR);
+        let mut master_bytes: StdVec<u8> = StdVec::new();
+        if let Some(ver) = current_version.clone() {
+            if let Some(sv) = env
+                .storage()
+                .persistent()
+                .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
+            {
+                let hex = sv.to_string();
+                if let Some(bytes) = teye_common::hex_to_bytes(&hex) {
+                    master_bytes = bytes;
+                }
+            }
+        }
+
+        // Build KeyManager and encrypt the provided data_hash
+        let km = KeyManager::new(master_bytes);
+        let plaintext: StdString = data_hash.to_string();
+        let ciphertext = km.encrypt(None, &plaintext);
+        let stored_hash = String::from_str(&env, &ciphertext);
+
         let record = VisionRecord {
             id: record_id,
             patient: patient.clone(),
             provider: provider.clone(),
             record_type: record_type.clone(),
-            data_hash,
+            data_hash: stored_hash,
+            key_version: current_version.clone(),
             created_at: env.ledger().timestamp(),
             updated_at: env.ledger().timestamp(),
         };
@@ -611,15 +824,38 @@ impl VisionRecordsContract {
         let mut current_id: u64 = env.storage().instance().get(&counter_key).unwrap_or(0);
         let mut record_ids = Vec::new(&env);
 
+        // Load current encryption key/version once for the batch
+        let current_version: Option<String> = env.storage().instance().get(&ENC_CUR);
+        let mut master_bytes_batch: StdVec<u8> = StdVec::new();
+        if let Some(ver) = current_version.clone() {
+            if let Some(sv) = env
+                .storage()
+                .persistent()
+                .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
+            {
+                let hex = sv.to_string();
+                if let Some(bytes) = teye_common::hex_to_bytes(&hex) {
+                    master_bytes_batch = bytes;
+                }
+            }
+        }
+
         for input in records.iter() {
             current_id += 1;
+
+            // Encrypt input.data_hash with batch master
+            let km = KeyManager::new(master_bytes_batch.clone());
+            let plaintext: StdString = input.data_hash.to_string();
+            let ciphertext = km.encrypt(None, &plaintext);
+            let stored_hash = String::from_str(&env, &ciphertext);
 
             let record = VisionRecord {
                 id: current_id,
                 patient: input.patient.clone(),
                 provider: provider.clone(),
                 record_type: input.record_type.clone(),
-                data_hash: input.data_hash.clone(),
+                data_hash: stored_hash,
+                key_version: current_version.clone(),
                 created_at: env.ledger().timestamp(),
                 updated_at: env.ledger().timestamp(),
             };
@@ -718,7 +954,36 @@ impl VisionRecordsContract {
                 audit::add_audit_entry(&env, &audit_entry);
                 events::publish_audit_log_entry(&env, &audit_entry);
 
-                Ok(record)
+                // Decrypt data_hash for authorized caller before returning
+                let mut out_record = record.clone();
+                // Prefer record's key_version, fall back to current instance version
+                let key_ver = out_record
+                    .key_version
+                    .clone()
+                    .or_else(|| env.storage().instance().get(&ENC_CUR));
+                let mut master_bytes: StdVec<u8> = StdVec::new();
+                if let Some(ver) = key_ver {
+                    if let Some(sv) = env
+                        .storage()
+                        .persistent()
+                        .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
+                    {
+                        let hex = sv.to_string();
+                        if let Some(bytes) = teye_common::hex_to_bytes(&hex) {
+                            master_bytes = bytes;
+                        }
+                    }
+                }
+
+                if !master_bytes.is_empty() || out_record.key_version.is_none() {
+                    let km = KeyManager::new(master_bytes);
+                    let ciphertext_std: StdString = out_record.data_hash.to_string();
+                    if let Some(plain) = km.decrypt(None, &ciphertext_std) {
+                        out_record.data_hash = String::from_str(&env, &plain);
+                    }
+                }
+
+                Ok(out_record)
             }
             None => {
                 // Log failed access attempt (record not found)
@@ -822,8 +1087,7 @@ impl VisionRecordsContract {
             true
         } else {
             let access = Self::check_access(env.clone(), record.patient.clone(), caller.clone());
-            let record_access =
-                Self::check_record_access(env.clone(), record_id, caller.clone());
+            let record_access = Self::check_record_access(env.clone(), record_id, caller.clone());
             access == AccessLevel::Read
                 || access == AccessLevel::Write
                 || access == AccessLevel::Full
@@ -857,6 +1121,7 @@ impl VisionRecordsContract {
         level: AccessLevel,
         duration_seconds: u64,
     ) -> Result<(), ContractError> {
+        let _guard = teye_common::ReentrancyGuard::new(&env);
         circuit_breaker::require_not_paused(
             &env,
             &circuit_breaker::PauseScope::Function(symbol_short!("GRT_ACC")),
@@ -976,17 +1241,23 @@ impl VisionRecordsContract {
         Ok(())
     }
 
-    /// Check access level
+    /// Check access level with ABAC policy evaluation
     pub fn check_access(env: Env, patient: Address, grantee: Address) -> AccessLevel {
+        // First check traditional consent-based access
         if !has_active_consent(&env, &patient, &grantee) {
             return AccessLevel::None;
         }
 
-        let key = (symbol_short!("ACCESS"), patient, grantee);
+        let key = (symbol_short!("ACCESS"), patient.clone(), grantee.clone());
 
         if let Some(grant) = env.storage().persistent().get::<_, AccessGrant>(&key) {
             if grant.expires_at > env.ledger().timestamp() {
-                return grant.level;
+                // Check if ABAC policies also allow this access
+                let abac_allowed =
+                    evaluate_access_policies(&env, &grantee, None, Some(patient.clone()));
+                if abac_allowed {
+                    return grant.level;
+                }
             }
         }
 
@@ -1651,11 +1922,7 @@ impl VisionRecordsContract {
     /// Removes the admin tier from the target address entirely.
     ///
     /// Only a `SuperAdmin` may call this.
-    pub fn demote_admin(
-        env: Env,
-        caller: Address,
-        target: Address,
-    ) -> Result<(), ContractError> {
+    pub fn demote_admin(env: Env, caller: Address, target: Address) -> Result<(), ContractError> {
         caller.require_auth();
         if !admin_tiers::demote_admin(&env, &caller, &target) {
             return Err(ContractError::Unauthorized);

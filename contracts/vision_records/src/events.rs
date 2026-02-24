@@ -1,3 +1,5 @@
+#![allow(deprecated)] // events().publish migration tracked separately
+
 use crate::appointment::AppointmentType;
 use crate::audit::{AccessAction, AccessResult, AuditEntry};
 use crate::circuit_breaker::PauseScope;
@@ -11,6 +13,33 @@ use soroban_sdk::{symbol_short, Address, Env, String};
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InitializedEvent {
     pub admin: Address,
+    pub timestamp: u64,
+}
+
+/// Event published when an admin transfer is proposed.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminTransferProposedEvent {
+    pub current_admin: Address,
+    pub proposed_admin: Address,
+    pub timestamp: u64,
+}
+
+/// Event published when an admin transfer is accepted.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminTransferAcceptedEvent {
+    pub old_admin: Address,
+    pub new_admin: Address,
+    pub timestamp: u64,
+}
+
+/// Event published when a pending admin transfer is cancelled.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminTransferCancelledEvent {
+    pub admin: Address,
+    pub cancelled_proposed: Address,
     pub timestamp: u64,
 }
 
@@ -113,6 +142,36 @@ pub struct ContractResumedEvent {
     pub caller: Address,
     pub scope: PauseScope,
     pub timestamp: u64,
+}
+
+pub fn publish_admin_transfer_proposed(env: &Env, current_admin: Address, proposed_admin: Address) {
+    let topics = (symbol_short!("ADM_PROP"), current_admin.clone());
+    let data = AdminTransferProposedEvent {
+        current_admin,
+        proposed_admin,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+pub fn publish_admin_transfer_accepted(env: &Env, old_admin: Address, new_admin: Address) {
+    let topics = (symbol_short!("ADM_ACPT"), new_admin.clone());
+    let data = AdminTransferAcceptedEvent {
+        old_admin,
+        new_admin,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+pub fn publish_admin_transfer_cancelled(env: &Env, admin: Address, cancelled_proposed: Address) {
+    let topics = (symbol_short!("ADM_CNCL"), admin.clone());
+    let data = AdminTransferCancelledEvent {
+        admin,
+        cancelled_proposed,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
 }
 
 pub fn publish_initialized(env: &Env, admin: Address) {
@@ -973,6 +1032,80 @@ pub fn publish_rate_limit_bypass_updated(
         address: address.clone(),
         bypass_enabled,
         updated_by: updated_by.clone(),
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+/// Event published when an access policy is created.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PolicyCreatedEvent {
+    pub policy_id: String,
+    pub created_by: Address,
+    pub timestamp: u64,
+}
+
+/// Event published when a user credential is set.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CredentialSetEvent {
+    pub user: Address,
+    pub credential: crate::CredentialType,
+    pub set_by: Address,
+    pub timestamp: u64,
+}
+
+/// Event published when a record sensitivity level is set.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SensitivitySetEvent {
+    pub record_id: u64,
+    pub sensitivity: crate::SensitivityLevel,
+    pub set_by: Address,
+    pub timestamp: u64,
+}
+
+/// Publishes an event when an access policy is created.
+pub fn publish_policy_created(env: &Env, policy_id: String, created_by: Address) {
+    let topics = (symbol_short!("POL_CRT"),);
+    let data = PolicyCreatedEvent {
+        policy_id,
+        created_by,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+/// Publishes an event when a user credential is set.
+pub fn publish_credential_set(
+    env: &Env,
+    user: Address,
+    credential: crate::CredentialType,
+    set_by: Address,
+) {
+    let topics = (symbol_short!("CRED_SET"), user.clone());
+    let data = CredentialSetEvent {
+        user,
+        credential,
+        set_by,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+/// Publishes an event when a record sensitivity level is set.
+pub fn publish_sensitivity_set(
+    env: &Env,
+    record_id: u64,
+    sensitivity: crate::SensitivityLevel,
+    set_by: Address,
+) {
+    let topics = (symbol_short!("SENS_SET"), record_id);
+    let data = SensitivitySetEvent {
+        record_id,
+        sensitivity,
+        set_by,
         timestamp: env.ledger().timestamp(),
     };
     env.events().publish(topics, data);

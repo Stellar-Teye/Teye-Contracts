@@ -14,13 +14,16 @@
 //! - `ZkAccessHelper`: A utility for formatting binary proof data into interoperable requests.
 
 mod audit;
+pub mod events;
 mod helpers;
-mod verifier;
+pub mod verifier;
 pub mod vk;
 
 pub use crate::audit::{AuditRecord, AuditTrail};
+pub use crate::events::AccessRejectedEvent;
 pub use crate::helpers::ZkAccessHelper;
-pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof, VerificationKey};
+pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof, ProofValidationError};
+pub use crate::vk::VerificationKey;
 
 use common::whitelist;
 use soroban_sdk::{
@@ -29,10 +32,11 @@ use soroban_sdk::{
 };
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
-const VK: Symbol = symbol_short!("VK");
+const PENDING_ADMIN: Symbol = symbol_short!("PEND_ADM");
 const RATE_CFG: Symbol = symbol_short!("RATECFG");
 const RATE_TRACK: Symbol = symbol_short!("RLTRK");
 const VK: Symbol = symbol_short!("VK");
+
 
 /// Maximum number of public inputs accepted per proof verification.
 const MAX_PUBLIC_INPUTS: u32 = 16;
@@ -62,6 +66,30 @@ pub enum ContractError {
     EmptyPublicInputs = 4,
     TooManyPublicInputs = 5,
     DegenerateProof = 6,
+    /// A proof component is saturated (all 0xFF) — invalid curve encoding.
+    OversizedProofComponent = 7,
+    /// A G1 point has a malformed internal structure (e.g. one coordinate is zero).
+    MalformedG1Point = 8,
+    /// The G2 point has a malformed internal structure (e.g. a limb is zero).
+    MalformedG2Point = 9,
+    /// A public-input element is all zeros.
+    ZeroedPublicInput = 10,
+    /// Cross-contract proof deserialization produced structurally invalid data.
+    MalformedProofData = 11,
+}
+
+/// Map low-level proof validation errors into contract-level errors.
+fn map_proof_validation_error(e: ProofValidationError) -> ContractError {
+    match e {
+        ProofValidationError::ZeroedComponent => ContractError::DegenerateProof,
+        ProofValidationError::OversizedComponent => ContractError::OversizedProofComponent,
+        ProofValidationError::MalformedG1PointA | ProofValidationError::MalformedG1PointC => {
+            ContractError::MalformedG1Point
+        }
+        ProofValidationError::MalformedG2Point => ContractError::MalformedG2Point,
+        ProofValidationError::EmptyPublicInputs => ContractError::EmptyPublicInputs,
+        ProofValidationError::ZeroedPublicInput => ContractError::ZeroedPublicInput,
+    }
 }
 
 #[contract]
@@ -83,6 +111,12 @@ fn is_all_zeros(data: &BytesN<32>) -> bool {
 }
 
 /// Validate request shape before running proof verification.
+///
+/// This performs lightweight structural checks on the `AccessRequest` envelope.
+/// Deeper proof-component validation (zeroed, oversized, malformed coordinates)
+/// is delegated to [`Bn254Verifier::validate_proof_components`] which runs
+/// inside `verify_proof` and returns granular [`ProofValidationError`] variants
+/// that are mapped to [`ContractError`] via the `From` impl.
 fn validate_request(request: &AccessRequest) -> Result<(), ContractError> {
     if request.public_inputs.is_empty() {
         return Err(ContractError::EmptyPublicInputs);
@@ -133,22 +167,71 @@ impl ZkVerifierContract {
         Ok(())
     }
 
-    /// Set the Groth16 verification key (admin-only).
-    /// This stores the VK for later use in proof verification.
-    pub fn set_verification_key(
+    /// Propose a new admin address. Only the current admin can call this.
+    /// The new admin must call `accept_admin` to complete the transfer.
+    pub fn propose_admin(
         env: Env,
-        caller: Address,
-        vk: VerificationKey,
+        current_admin: Address,
+        new_admin: Address,
     ) -> Result<(), ContractError> {
-        Self::require_admin(&env, &caller)?;
-        env.storage().instance().set(&VK, &vk);
+        Self::require_admin(&env, &current_admin)?;
+
+        env.storage().instance().set(&PENDING_ADMIN, &new_admin);
+
+        events::publish_admin_transfer_proposed(&env, current_admin, new_admin);
+
         Ok(())
     }
 
-    /// Get the stored Groth16 verification key.
-    /// Returns the VK if it has been set, or None if not yet configured.
-    pub fn get_verification_key(env: Env) -> Option<VerificationKey> {
-        env.storage().instance().get(&VK)
+    /// Accept the pending admin transfer. Only the proposed new admin can call this.
+    /// Completes the two-step admin transfer process.
+    pub fn accept_admin(env: Env, new_admin: Address) -> Result<(), ContractError> {
+        new_admin.require_auth();
+
+        let pending: Address = env
+            .storage()
+            .instance()
+            .get(&PENDING_ADMIN)
+            .ok_or(ContractError::InvalidConfig)?;
+
+        if new_admin != pending {
+            return Err(ContractError::Unauthorized);
+        }
+
+        let old_admin: Address = env
+            .storage()
+            .instance()
+            .get(&ADMIN)
+            .ok_or(ContractError::Unauthorized)?;
+
+        env.storage().instance().set(&ADMIN, &new_admin);
+        env.storage().instance().remove(&PENDING_ADMIN);
+
+        events::publish_admin_transfer_accepted(&env, old_admin, new_admin);
+
+        Ok(())
+    }
+
+    /// Cancel a pending admin transfer. Only the current admin can call this.
+    pub fn cancel_admin_transfer(env: Env, current_admin: Address) -> Result<(), ContractError> {
+        Self::require_admin(&env, &current_admin)?;
+
+        let pending: Address = env
+            .storage()
+            .instance()
+            .get(&PENDING_ADMIN)
+            .ok_or(ContractError::InvalidConfig)?;
+
+        env.storage().instance().remove(&PENDING_ADMIN);
+
+        events::publish_admin_transfer_cancelled(&env, current_admin, pending);
+
+        Ok(())
+    }
+
+    /// Get the pending admin address, if any.
+    pub fn get_pending_admin(env: Env) -> Option<Address> {
+        env.storage().instance().get(&PENDING_ADMIN)
     }
 
     /// Configure per-address rate limiting for this contract.
@@ -172,22 +255,17 @@ impl ZkVerifierContract {
         Ok(())
     }
 
-    /// Set the ZK verification key.
-    pub fn set_verification_key(
-        env: Env,
-        caller: Address,
-        vk: vk::VerificationKey,
-    ) -> Result<(), ContractError> {
+    /// Sets the ZK Verification Key for Groth16.
+    pub fn set_verification_key(env: Env, caller: Address, vk: VerificationKey) -> Result<(), ContractError> {
         Self::require_admin(&env, &caller)?;
-        env.storage().instance().set(&VK, &vk);
+        env.storage().instance().set(&symbol_short!("VK"), &vk);
         Ok(())
     }
 
-    /// Get the ZK verification key.
-    pub fn get_verification_key(env: Env) -> Option<vk::VerificationKey> {
-        env.storage().instance().get(&VK)
+    /// Gets the configured Verification Key.
+    pub fn get_verification_key(env: Env) -> Option<VerificationKey> {
+        env.storage().instance().get(&symbol_short!("VK"))
     }
-
     /// Return the current rate limiting configuration, if any.
     pub fn get_rate_limit_config(env: Env) -> Option<(u64, u64)> {
         env.storage().instance().get(&RATE_CFG)
@@ -277,20 +355,37 @@ impl ZkVerifierContract {
     pub fn verify_access(env: Env, request: AccessRequest) -> Result<bool, ContractError> {
         request.user.require_auth();
 
-        validate_request(&request)?;
+        validate_request(&request).map_err(|err| {
+            events::publish_access_rejected(
+                &env,
+                request.user.clone(),
+                request.resource_id.clone(),
+                err,
+            );
+            err
+        })?;
 
         if !whitelist::check_whitelist_access(&env, &request.user) {
+            events::publish_access_rejected(
+                &env,
+                request.user.clone(),
+                request.resource_id.clone(),
+                ContractError::Unauthorized,
+            );
             return Err(ContractError::Unauthorized);
         }
 
-        Self::check_and_update_rate_limit(&env, &request.user)?;
+        Self::check_and_update_rate_limit(&env, &request.user).map_err(|err| {
+            events::publish_access_rejected(
+                &env,
+                request.user.clone(),
+                request.resource_id.clone(),
+                err,
+            );
+            err
+        })?;
 
-        let vk: vk::VerificationKey = env
-            .storage()
-            .instance()
-            .get(&VK)
-            .ok_or(ContractError::Unauthorized)?;
-
+        let vk = Self::get_verification_key(env.clone()).ok_or(ContractError::InvalidConfig)?;
         let is_valid = Bn254Verifier::verify_proof(&env, &vk, &request.proof, &request.public_inputs);
         if is_valid {
             let proof_hash = PoseidonHasher::hash(&env, &request.public_inputs);
@@ -301,12 +396,23 @@ impl ZkVerifierContract {
 
     /// Retrieves an audit record for a specific user and resource.
     ///
-    /// Returns the `AuditRecord` if it exists, otherwise `None`.
+    /// Returns the most recent `AuditRecord` if it exists, otherwise `None`.
     pub fn get_audit_record(
         env: Env,
         user: Address,
         resource_id: BytesN<32>,
     ) -> Option<AuditRecord> {
         AuditTrail::get_record(&env, user, resource_id)
+    }
+
+    /// Verifies the integrity of the audit chain for a given user and resource.
+    ///
+    /// Returns `true` if all hash links are valid, or if the chain is empty.
+    pub fn verify_audit_chain(
+        env: Env,
+        user: Address,
+        resource_id: BytesN<32>,
+    ) -> bool {
+        AuditTrail::verify_chain(&env, user, resource_id)
     }
 }

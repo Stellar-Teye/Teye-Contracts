@@ -1,3 +1,5 @@
+#![allow(deprecated)] // events().publish migration tracked separately
+
 use soroban_sdk::{symbol_short, Address, Bytes, Env, String};
 
 pub fn publish_initialized(env: &Env, admin: Address) {

@@ -3,6 +3,62 @@ use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol, Vec}
 const TTL_THRESHOLD: u32 = 5184000;
 const TTL_EXTEND_TO: u32 = 10368000;
 
+/// Time-based access restrictions
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq, Copy)]
+pub enum TimeRestriction {
+    /// No time restriction
+    None,
+    /// Only allow access during business hours (9 AM - 5 PM UTC)
+    BusinessHours,
+    /// Only allow access during specific hour range (start_hour, end_hour, inclusive)
+    HourRange(u32, u32),
+    /// Only allow access on specific days of week (bitmask: 0b0000001 = Sunday, 0b1000000 = Saturday)
+    DaysOfWeek(u32),
+}
+
+/// Credential types for attribute-based access
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq, Copy)]
+pub enum CredentialType {
+    None,
+    MedicalLicense,
+    ResearchCredentials,
+    EmergencyCredentials,
+    AdminCredentials,
+}
+
+/// Record sensitivity levels
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq, Copy)]
+pub enum SensitivityLevel {
+    Public,
+    Standard,
+    Confidential,
+    Restricted,
+}
+
+/// Attribute-based access policy conditions
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PolicyConditions {
+    pub required_role: Role,
+    pub time_restriction: TimeRestriction,
+    pub required_credential: CredentialType,
+    pub min_sensitivity_level: SensitivityLevel,
+    pub consent_required: bool,
+}
+
+/// Access policy combining RBAC with attribute-based conditions
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct AccessPolicy {
+    pub id: String,
+    pub name: String,
+    pub conditions: PolicyConditions,
+    pub enabled: bool,
+}
+
 fn extend_ttl_address_key(env: &Env, key: &(soroban_sdk::Symbol, Address)) {
     env.storage()
         .persistent()
@@ -28,8 +84,9 @@ pub enum Permission {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[repr(u32)] // Needed for easier comparison/conversion
+#[repr(u32)]
 pub enum Role {
+    None = 0,
     Patient = 1,
     Staff = 2,
     Optometrist = 3,
@@ -137,8 +194,17 @@ pub fn user_groups_key(user: &Address) -> (Symbol, Address) {
     (symbol_short!("USR_GRPS"), user.clone())
 }
 
-pub fn delegatee_index_key(delegatee: &Address) -> (Symbol, Address) {
-    (symbol_short!("DEL_IDX"), delegatee.clone())
+
+pub fn access_policy_key(id: &String) -> (Symbol, String) {
+    (symbol_short!("ACC_POL"), id.clone())
+}
+
+pub fn user_credential_key(user: &Address) -> (Symbol, Address) {
+    (symbol_short!("USER_CRED"), user.clone())
+}
+
+pub fn record_sensitivity_key(record_id: &u64) -> (Symbol, u64) {
+    (symbol_short!("REC_SENS"), record_id.clone())
 }
 
 // ======================== Core RBAC Engine ========================
@@ -322,10 +388,11 @@ pub fn get_active_scoped_delegation(
     delegator: &Address,
     delegatee: &Address,
 ) -> Option<ScopedDelegation> {
-    if let Some(del) = env.storage().persistent().get::<_, ScopedDelegation>(&scoped_delegation_key(
-        delegator,
-        delegatee,
-    )) {
+    if let Some(del) = env
+        .storage()
+        .persistent()
+        .get::<_, ScopedDelegation>(&scoped_delegation_key(delegator, delegatee))
+    {
         if del.expires_at == 0 || del.expires_at > env.ledger().timestamp() {
             return Some(del);
         }
@@ -470,4 +537,203 @@ pub fn has_delegated_permission(
         }
     }
     false
+}
+
+// ======================== ABAC Policy Engine ========================
+
+/// Check if current time satisfies time restriction
+fn satisfies_time_restriction(env: &Env, restriction: &TimeRestriction) -> bool {
+    match restriction {
+        TimeRestriction::None => true,
+        TimeRestriction::BusinessHours => {
+            let timestamp = env.ledger().timestamp();
+            let hour = (timestamp / 3600) % 24;
+            hour >= 9 && hour <= 17
+        }
+        TimeRestriction::HourRange(start, end) => {
+            let timestamp = env.ledger().timestamp();
+            let hour = (timestamp / 3600) % 24;
+            if start <= end {
+                hour >= *start as u64 && hour <= *end as u64
+            } else {
+                // Handle overnight range (e.g., 22-6 means 10 PM to 6 AM)
+                hour >= *start as u64 || hour <= *end as u64
+            }
+        }
+        TimeRestriction::DaysOfWeek(day_mask) => {
+            let timestamp = env.ledger().timestamp();
+            let day_of_week = ((timestamp / 86400) + 4) % 7; // Unix epoch was Thursday
+            (day_mask & (1 << day_of_week)) != 0
+        }
+    }
+}
+
+/// Get user's credential type from storage
+fn get_user_credential(env: &Env, user: &Address) -> CredentialType {
+    let key = user_credential_key(user);
+    env.storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or(CredentialType::None)
+}
+
+/// Get record sensitivity level from storage
+fn get_record_sensitivity(env: &Env, record_id: &u64) -> SensitivityLevel {
+    let key = record_sensitivity_key(record_id);
+    env.storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or(SensitivityLevel::Standard)
+}
+
+/// Context for policy evaluation
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct PolicyContext {
+    pub user: Address,
+    pub resource_id: Option<u64>, // Record ID if applicable
+    pub patient: Option<Address>, // Patient address if applicable
+    pub current_time: u64,
+}
+
+/// Evaluate an access policy against the given context
+pub fn evaluate_policy(env: &Env, policy: &AccessPolicy, context: &PolicyContext) -> bool {
+    if !policy.enabled {
+        return false;
+    }
+
+    let conditions = &policy.conditions;
+
+    // Check role requirement
+    if conditions.required_role != Role::None {
+        if let Some(assignment) = get_active_assignment(env, &context.user) {
+            if assignment.role != conditions.required_role {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+
+    // Check time restriction
+    if !satisfies_time_restriction(env, &conditions.time_restriction) {
+        return false;
+    }
+
+    // Check credential requirement
+    if conditions.required_credential != CredentialType::None {
+        let user_credential = get_user_credential(env, &context.user);
+        if user_credential != conditions.required_credential {
+            return false;
+        }
+    }
+
+    // Check sensitivity level requirement
+    if let Some(record_id) = &context.resource_id {
+        let record_sensitivity = get_record_sensitivity(env, record_id);
+        // User can access records at or above their minimum sensitivity level
+        if (record_sensitivity as u32) < (conditions.min_sensitivity_level as u32) {
+            return false;
+        }
+    }
+
+    // Check consent requirement
+    if conditions.consent_required {
+        if let (Some(patient), Some(_record_id)) = (&context.patient, &context.resource_id) {
+            // Check if there's active consent for this user to access this patient's records
+            let consent_key = (
+                symbol_short!("CONSENT"),
+                patient.clone(),
+                context.user.clone(),
+            );
+            if let Some(consent) = env
+                .storage()
+                .persistent()
+                .get::<_, ConsentGrant>(&consent_key)
+            {
+                if consent.revoked || consent.expires_at <= context.current_time {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        } else {
+            return false; // Consent required but no patient context provided
+        }
+    }
+
+    true
+}
+
+/// Evaluate all applicable policies for a user and resource
+pub fn evaluate_access_policies(
+    env: &Env,
+    user: &Address,
+    resource_id: Option<u64>,
+    patient: Option<Address>,
+) -> bool {
+    // Get all policies (in a real implementation, you might want to index policies by user/resource)
+    // For now, we'll check a few default policy IDs
+    let mut default_policy_ids = Vec::new(&env);
+    default_policy_ids.push_back(String::from_str(&env, "default_medical_access"));
+    default_policy_ids.push_back(String::from_str(&env, "emergency_access"));
+    default_policy_ids.push_back(String::from_str(&env, "research_access"));
+
+    let context = PolicyContext {
+        user: user.clone(),
+        resource_id,
+        patient,
+        current_time: env.ledger().timestamp(),
+    };
+
+    for i in 0..default_policy_ids.len() {
+        if let Some(policy_id) = default_policy_ids.get(i) {
+            let key = access_policy_key(&policy_id);
+            if let Some(policy) = env.storage().persistent().get::<_, AccessPolicy>(&key) {
+                if evaluate_policy(env, &policy, &context) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
+/// Set user credential type
+pub fn set_user_credential(env: &Env, user: Address, credential: CredentialType) {
+    let key = user_credential_key(&user);
+    env.storage().persistent().set(&key, &credential);
+    extend_ttl_address_key(env, &key);
+}
+
+/// Set record sensitivity level
+pub fn set_record_sensitivity(env: &Env, record_id: u64, sensitivity: SensitivityLevel) {
+    let key = record_sensitivity_key(&record_id);
+    env.storage().persistent().set(&key, &sensitivity);
+    extend_ttl_u64_key(env, &key);
+}
+
+/// Create or update an access policy
+pub fn create_access_policy(env: &Env, policy: AccessPolicy) {
+    let key = access_policy_key(&policy.id);
+    env.storage().persistent().set(&key, &policy);
+}
+
+fn extend_ttl_u64_key(env: &Env, key: &(soroban_sdk::Symbol, u64)) {
+    env.storage()
+        .persistent()
+        .extend_ttl(key, TTL_THRESHOLD, TTL_EXTEND_TO);
+}
+
+/// Consent grant structure for ABAC evaluation
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConsentGrant {
+    pub patient: Address,
+    pub grantee: Address,
+    pub consent_type: crate::ConsentType,
+    pub granted_at: u64,
+    pub expires_at: u64,
+    pub revoked: bool,
 }

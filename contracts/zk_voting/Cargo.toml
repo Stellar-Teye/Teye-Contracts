@@ -1,5 +1,5 @@
 [package]
-name = "identity"
+name = "zk_voting"
 version.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -13,8 +13,11 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
-zk_verifier = { path = "../zk_verifier", default-features = false }
+zk_verifier = { path = "../zk_verifier" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 zk_verifier = { path = "../zk_verifier", features = ["testutils"] }
+
+[features]
+testutils = ["soroban-sdk/testutils", "zk_verifier/testutils"]

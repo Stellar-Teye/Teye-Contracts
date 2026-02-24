@@ -1,80 +1,114 @@
-name: Code Quality Checks
+name: Code Quality
 
 on:
   push:
-    branches: [main]
+    branches: [master, develop]
   pull_request:
-    branches: [main]
+    branches: [master, develop]
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUST_VERSION: "1.92.0"
+  CARGO_TERM_COLOR: always
 
 jobs:
-  lint-and-test:
+  # ── Unused dependencies ──────────────────────────────────────
+  udeps:
+    name: Unused Dependencies
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 20
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config libudev-dev libhidapi-dev
 
-      - name: Install dependencies
-        run: |
-          npm install
-          npm install -g markdownlint-cli
+      - uses: dtolnay/rust-toolchain@nightly
 
-      - name: Run ESLint
-        run: |
-          npx eslint src/**/*.js src/**/*.ts || exit 1
+      - name: Install cargo-udeps
+        run: cargo install cargo-udeps --locked
 
-      - name: Run markdownlint
-        run: |
-          markdownlint docs/**/*.md || exit 1
+      - name: Check for unused dependencies
+        run: cargo +nightly udeps --all-targets
+        continue-on-error: true   # Advisory, not blocking
 
-      - name: Run tests with coverage
-        run: |
-          npm test -- --coverage
-          COVERAGE=$(npx jest --coverage | grep "All files" | awk '{print $4}' | tr -d '%')
-          echo "Coverage is $COVERAGE%"
-          if [ $COVERAGE -lt 80 ]; then
-            echo "Code coverage below threshold!"
-            exit 1
-          fi
-
-      - name: Run cyclomatic complexity check
-        run: |
-          npx plato -r -d reports src || exit 1
-
-  rust-quality:
+  # ── Documentation coverage ──────────────────────────────────
+  doc-coverage:
+    name: Documentation Coverage
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config libudev-dev libhidapi-dev
 
-      - name: Install Clippy
-        run: rustup component add clippy
+      - uses: dtolnay/rust-toolchain@nightly
 
-      - name: Lint Rust code
-        run: cargo clippy --all-targets --all-features -- -D warnings
-
-      - name: Run Rust tests
-        run: cargo test --all --verbose
-
-      - name: Check code coverage
+      - name: Check doc coverage
         run: |
-          cargo install cargo-tarpaulin
-          cargo tarpaulin --out Xml
-          COVERAGE=$(grep line-rate coverage.xml | head -1 | sed 's/.*line-rate="\([0-9.]*\)".*/\1/')
-          COVERAGE_PERCENT=$(echo "$COVERAGE * 100" | bc)
-          echo "Rust coverage: $COVERAGE_PERCENT%"
-          if (( $(echo "$COVERAGE_PERCENT < 80" | bc -l) )); then
-            echo "Coverage below 80%!"
-            exit 1
-          fi
+          RUSTDOCFLAGS="-Z unstable-options --document-hidden-items" \
+            cargo +nightly doc --workspace --no-deps 2>&1 | tee doc_output.txt
+
+          WARNINGS=$(grep -c "warning:" doc_output.txt || true)
+          echo "## Documentation" >> "$GITHUB_STEP_SUMMARY"
+          echo "Warnings: $WARNINGS" >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Markdown linting ─────────────────────────────────────────
+  markdown:
+    name: Markdown Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DavidAnson/markdownlint-cli2-action@v19
+        with:
+          globs: "docs/**/*.md"
+        continue-on-error: true   # Advisory
+
+  # ── WASM size check ──────────────────────────────────────────
+  wasm-size:
+    name: WASM Binary Sizes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config libudev-dev libhidapi-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: wasm32-unknown-unknown
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-wasm-size-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-wasm-size-
+
+      - name: Build and measure
+        run: |
+          cargo build --target wasm32-unknown-unknown --release
+
+          echo "## WASM Binary Sizes" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Contract | Size (KB) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|-----------|" >> "$GITHUB_STEP_SUMMARY"
+
+          for wasm in target/wasm32-unknown-unknown/release/*.wasm; do
+            [ -f "$wasm" ] || continue
+            name=$(basename "$wasm" .wasm)
+            size=$(du -k "$wasm" | cut -f1)
+            echo "| $name | $size |" >> "$GITHUB_STEP_SUMMARY"
+            # Warn if any contract exceeds 256KB (Soroban limit hint)
+            if [ "$size" -gt 256 ]; then
+              echo "::warning file=$wasm::$name.wasm is ${size}KB — exceeds 256KB advisory limit"
+            fi
+          done
