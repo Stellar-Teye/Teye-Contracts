@@ -1,5 +1,5 @@
 [package]
-name = "cross_chain"
+name = "ai_integration"
 version.workspace = true
 authors.workspace = true
 license.workspace = true
