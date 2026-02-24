@@ -28,7 +28,7 @@ pub use crate::vk::VerificationKey;
 use common::whitelist;
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, BytesN, Env,
-    Symbol, Vec,
+    String, Symbol, Vec,
 };
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
@@ -36,7 +36,6 @@ const PENDING_ADMIN: Symbol = symbol_short!("PEND_ADM");
 const RATE_CFG: Symbol = symbol_short!("RATECFG");
 const RATE_TRACK: Symbol = symbol_short!("RLTRK");
 const VK: Symbol = symbol_short!("VK");
-
 
 /// Maximum number of public inputs accepted per proof verification.
 const MAX_PUBLIC_INPUTS: u32 = 16;
@@ -151,17 +150,35 @@ impl ZkVerifierContract {
         env.storage().instance().set(&ADMIN, &admin);
     }
 
-    fn require_admin(env: &Env, caller: &Address) -> Result<(), ContractError> {
+    fn emit_access_violation(env: &Env, caller: &Address, action: &str, required_permission: &str) {
+        events::publish_access_violation(
+            env,
+            caller.clone(),
+            String::from_str(env, action),
+            String::from_str(env, required_permission),
+        );
+    }
+
+    fn unauthorized<T>(
+        env: &Env,
+        caller: &Address,
+        action: &str,
+        required_permission: &str,
+    ) -> Result<T, ContractError> {
+        Self::emit_access_violation(env, caller, action, required_permission);
+        Err(ContractError::Unauthorized)
+    }
+
+    fn require_admin(env: &Env, caller: &Address, action: &str) -> Result<(), ContractError> {
         caller.require_auth();
 
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&ADMIN)
-            .ok_or(ContractError::Unauthorized)?;
+        let admin: Address = match env.storage().instance().get(&ADMIN) {
+            Some(admin) => admin,
+            None => return Self::unauthorized(env, caller, action, "initialized_admin"),
+        };
 
         if caller != &admin {
-            return Err(ContractError::Unauthorized);
+            return Self::unauthorized(env, caller, action, "current_admin");
         }
 
         Ok(())
@@ -174,7 +191,7 @@ impl ZkVerifierContract {
         current_admin: Address,
         new_admin: Address,
     ) -> Result<(), ContractError> {
-        Self::require_admin(&env, &current_admin)?;
+        Self::require_admin(&env, &current_admin, "propose_admin")?;
 
         env.storage().instance().set(&PENDING_ADMIN, &new_admin);
 
@@ -195,14 +212,15 @@ impl ZkVerifierContract {
             .ok_or(ContractError::InvalidConfig)?;
 
         if new_admin != pending {
-            return Err(ContractError::Unauthorized);
+            return Self::unauthorized(&env, &new_admin, "accept_admin", "pending_admin");
         }
 
-        let old_admin: Address = env
-            .storage()
-            .instance()
-            .get(&ADMIN)
-            .ok_or(ContractError::Unauthorized)?;
+        let old_admin: Address = match env.storage().instance().get(&ADMIN) {
+            Some(admin) => admin,
+            None => {
+                return Self::unauthorized(&env, &new_admin, "accept_admin", "initialized_admin")
+            }
+        };
 
         env.storage().instance().set(&ADMIN, &new_admin);
         env.storage().instance().remove(&PENDING_ADMIN);
@@ -214,7 +232,7 @@ impl ZkVerifierContract {
 
     /// Cancel a pending admin transfer. Only the current admin can call this.
     pub fn cancel_admin_transfer(env: Env, current_admin: Address) -> Result<(), ContractError> {
-        Self::require_admin(&env, &current_admin)?;
+        Self::require_admin(&env, &current_admin, "cancel_admin_transfer")?;
 
         let pending: Address = env
             .storage()
@@ -241,7 +259,7 @@ impl ZkVerifierContract {
         max_requests_per_window: u64,
         window_duration_seconds: u64,
     ) -> Result<(), ContractError> {
-        Self::require_admin(&env, &caller)?;
+        Self::require_admin(&env, &caller, "set_rate_limit_config")?;
 
         if max_requests_per_window == 0 || window_duration_seconds == 0 {
             return Err(ContractError::InvalidConfig);
@@ -277,14 +295,14 @@ impl ZkVerifierContract {
         caller: Address,
         enabled: bool,
     ) -> Result<(), ContractError> {
-        Self::require_admin(&env, &caller)?;
+        Self::require_admin(&env, &caller, "set_whitelist_enabled")?;
         whitelist::set_whitelist_enabled(&env, enabled);
         Ok(())
     }
 
     /// Adds an address to the whitelist.
     pub fn add_to_whitelist(env: Env, caller: Address, user: Address) -> Result<(), ContractError> {
-        Self::require_admin(&env, &caller)?;
+        Self::require_admin(&env, &caller, "add_to_whitelist")?;
         whitelist::add_to_whitelist(&env, &user);
         Ok(())
     }
@@ -295,7 +313,7 @@ impl ZkVerifierContract {
         caller: Address,
         user: Address,
     ) -> Result<(), ContractError> {
-        Self::require_admin(&env, &caller)?;
+        Self::require_admin(&env, &caller, "remove_from_whitelist")?;
         whitelist::remove_from_whitelist(&env, &user);
         Ok(())
     }
@@ -372,7 +390,7 @@ impl ZkVerifierContract {
                 request.resource_id.clone(),
                 ContractError::Unauthorized,
             );
-            return Err(ContractError::Unauthorized);
+            return Self::unauthorized(&env, &request.user, "verify_access", "whitelisted_user");
         }
 
         Self::check_and_update_rate_limit(&env, &request.user).map_err(|err| {
@@ -390,6 +408,13 @@ impl ZkVerifierContract {
         if is_valid {
             let proof_hash = PoseidonHasher::hash(&env, &request.public_inputs);
             AuditTrail::log_access(&env, request.user, request.resource_id, proof_hash);
+        } else {
+            Self::emit_access_violation(
+                &env,
+                &request.user,
+                "verify_access",
+                "valid_groth16_proof",
+            );
         }
         Ok(is_valid)
     }

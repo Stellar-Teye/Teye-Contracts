@@ -144,6 +144,16 @@ pub struct ContractResumedEvent {
     pub timestamp: u64,
 }
 
+/// Event published when an unauthorized or denied action is attempted.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccessViolationEvent {
+    pub caller: Address,
+    pub action: String,
+    pub required_permission: String,
+    pub timestamp: u64,
+}
+
 pub fn publish_admin_transfer_proposed(env: &Env, current_admin: Address, proposed_admin: Address) {
     let topics = (symbol_short!("ADM_PROP"), current_admin.clone());
     let data = AdminTransferProposedEvent {
@@ -302,6 +312,22 @@ pub fn publish_contract_resumed(env: &Env, caller: Address, scope: PauseScope) {
     let data = ContractResumedEvent {
         caller,
         scope,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+pub fn publish_access_violation(
+    env: &Env,
+    caller: Address,
+    action: String,
+    required_permission: String,
+) {
+    let topics = (symbol_short!("ACC_VIOL"), caller.clone(), action.clone());
+    let data = AccessViolationEvent {
+        caller,
+        action,
+        required_permission,
         timestamp: env.ledger().timestamp(),
     };
     env.events().publish(topics, data);
