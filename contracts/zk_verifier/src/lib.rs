@@ -1,12 +1,26 @@
-#![no_std]
+//! # ZK Verifier Module
+//!
+//! This module provides a Zero-Knowledge (ZK) proof verification system for the Soroban ecosystem.
+//! It specifically implements support for Groth16 proofs over the BN254 (Alt-BN128) curve.
+//!
+//! The ZK subsystem is designed to provide privacy-preserving access control by allowing users
+//! to prove they possess certain credentials or meet specific criteria without revealing
+//! the underlying sensitive data.
+//!
+//! ## Key Components
+//! - `ZkVerifierContract`: The main contract implementation handling access requests and auditing.
+//! - `Bn254Verifier`: The core library for verifying Groth16 proofs.
+//! - `AuditTrail`: A persistence layer for logging successful verifications.
+//! - `ZkAccessHelper`: A utility for formatting binary proof data into interoperable requests.
 
 mod audit;
 mod helpers;
 mod verifier;
+pub mod vk;
 
 pub use crate::audit::{AuditRecord, AuditTrail};
 pub use crate::helpers::ZkAccessHelper;
-pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof};
+pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof, VerificationKey};
 
 use common::whitelist;
 use soroban_sdk::{
@@ -15,18 +29,25 @@ use soroban_sdk::{
 };
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
+const VK: Symbol = symbol_short!("VK");
 const RATE_CFG: Symbol = symbol_short!("RATECFG");
 const RATE_TRACK: Symbol = symbol_short!("RLTRK");
+const VK: Symbol = symbol_short!("VK");
 
 /// Maximum number of public inputs accepted per proof verification.
 const MAX_PUBLIC_INPUTS: u32 = 16;
 
+/// Request structure for ZK access verification.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AccessRequest {
+    /// The address of the user requesting access.
     pub user: Address,
+    /// Unique identifier for the resource being accessed.
     pub resource_id: BytesN<32>,
+    /// The Groth16 proof (points A, B, and C).
     pub proof: Proof,
+    /// Public inputs associated with the proof.
     pub public_inputs: Vec<BytesN<32>>,
 }
 
@@ -47,11 +68,11 @@ pub enum ContractError {
 pub struct ZkVerifierContract;
 
 /// Return `true` if every byte in `data` is zero.
-fn is_all_zeros<const N: usize>(data: &BytesN<N>) -> bool {
+fn is_all_zeros(data: &BytesN<32>) -> bool {
     let arr = data.to_array();
     let mut all_zero = true;
     let mut i = 0;
-    while i < N {
+    while i < 32 {
         if arr[i] != 0 {
             all_zero = false;
             break;
@@ -71,9 +92,12 @@ fn validate_request(request: &AccessRequest) -> Result<(), ContractError> {
         return Err(ContractError::TooManyPublicInputs);
     }
 
-    if is_all_zeros(&request.proof.a)
-        || is_all_zeros(&request.proof.b)
-        || is_all_zeros(&request.proof.c)
+    if (is_all_zeros(&request.proof.a.x) && is_all_zeros(&request.proof.a.y))
+        || (is_all_zeros(&request.proof.b.x.0)
+            && is_all_zeros(&request.proof.b.x.1)
+            && is_all_zeros(&request.proof.b.y.0)
+            && is_all_zeros(&request.proof.b.y.1))
+        || (is_all_zeros(&request.proof.c.x) && is_all_zeros(&request.proof.c.y))
     {
         return Err(ContractError::DegenerateProof);
     }
@@ -109,6 +133,24 @@ impl ZkVerifierContract {
         Ok(())
     }
 
+    /// Set the Groth16 verification key (admin-only).
+    /// This stores the VK for later use in proof verification.
+    pub fn set_verification_key(
+        env: Env,
+        caller: Address,
+        vk: VerificationKey,
+    ) -> Result<(), ContractError> {
+        Self::require_admin(&env, &caller)?;
+        env.storage().instance().set(&VK, &vk);
+        Ok(())
+    }
+
+    /// Get the stored Groth16 verification key.
+    /// Returns the VK if it has been set, or None if not yet configured.
+    pub fn get_verification_key(env: Env) -> Option<VerificationKey> {
+        env.storage().instance().get(&VK)
+    }
+
     /// Configure per-address rate limiting for this contract.
     pub fn set_rate_limit_config(
         env: Env,
@@ -128,6 +170,22 @@ impl ZkVerifierContract {
         );
 
         Ok(())
+    }
+
+    /// Set the ZK verification key.
+    pub fn set_verification_key(
+        env: Env,
+        caller: Address,
+        vk: vk::VerificationKey,
+    ) -> Result<(), ContractError> {
+        Self::require_admin(&env, &caller)?;
+        env.storage().instance().set(&VK, &vk);
+        Ok(())
+    }
+
+    /// Get the ZK verification key.
+    pub fn get_verification_key(env: Env) -> Option<vk::VerificationKey> {
+        env.storage().instance().get(&VK)
     }
 
     /// Return the current rate limiting configuration, if any.
@@ -205,6 +263,17 @@ impl ZkVerifierContract {
         Ok(())
     }
 
+    /// Verifies a ZK proof for resource access.
+    ///
+    /// This is the primary entry point for users to gain access to protected resources.
+    /// It performs the following steps:
+    /// 1. Authorizes the user.
+    /// 2. Validates the request shape.
+    /// 3. Checks whitelist and rate limits.
+    /// 4. Verifies the Groth16 proof via `Bn254Verifier`.
+    /// 5. Logs the access in the `AuditTrail` if successful.
+    ///
+    /// Returns `true` if the proof is valid and all checks pass, otherwise returns an error or `false`.
     pub fn verify_access(env: Env, request: AccessRequest) -> Result<bool, ContractError> {
         request.user.require_auth();
 
@@ -216,7 +285,13 @@ impl ZkVerifierContract {
 
         Self::check_and_update_rate_limit(&env, &request.user)?;
 
-        let is_valid = Bn254Verifier::verify_proof(&env, &request.proof, &request.public_inputs);
+        let vk: vk::VerificationKey = env
+            .storage()
+            .instance()
+            .get(&VK)
+            .ok_or(ContractError::Unauthorized)?;
+
+        let is_valid = Bn254Verifier::verify_proof(&env, &vk, &request.proof, &request.public_inputs);
         if is_valid {
             let proof_hash = PoseidonHasher::hash(&env, &request.public_inputs);
             AuditTrail::log_access(&env, request.user, request.resource_id, proof_hash);
@@ -224,6 +299,9 @@ impl ZkVerifierContract {
         Ok(is_valid)
     }
 
+    /// Retrieves an audit record for a specific user and resource.
+    ///
+    /// Returns the `AuditRecord` if it exists, otherwise `None`.
     pub fn get_audit_record(
         env: Env,
         user: Address,

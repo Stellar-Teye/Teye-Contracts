@@ -14,7 +14,7 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
-common = { path = "../common", default-features = false }
+teye-common = { path = "../common", package = "common" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
