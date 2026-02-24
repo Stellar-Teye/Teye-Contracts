@@ -70,6 +70,31 @@ pub struct LockPeriodSetEvent {
     pub timestamp: u64,
 }
 
+/// Fired when the admin proposes a reward rate change (delayed).
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RewardRateProposedEvent {
+    pub new_rate: i128,
+    pub effective_at: u64,
+    pub timestamp: u64,
+}
+
+/// Fired when a pending reward rate change is applied after the delay.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RewardRateAppliedEvent {
+    pub new_rate: i128,
+    pub timestamp: u64,
+}
+
+/// Fired when the admin changes the rate-change delay period.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RateChangeDelaySetEvent {
+    pub delay: u64,
+    pub timestamp: u64,
+}
+
 // ── Publishers ──────────────────────────────────────────────────────────────
 
 pub fn publish_initialized(
@@ -162,6 +187,37 @@ pub fn publish_lock_period_set(env: &Env, new_period: u64) {
         (symbol_short!("LOCK_SET"),),
         LockPeriodSetEvent {
             new_period,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
+}
+
+pub fn publish_reward_rate_proposed(env: &Env, new_rate: i128, effective_at: u64) {
+    env.events().publish(
+        (symbol_short!("RWD_PROP"),),
+        RewardRateProposedEvent {
+            new_rate,
+            effective_at,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
+}
+
+pub fn publish_reward_rate_applied(env: &Env, new_rate: i128) {
+    env.events().publish(
+        (symbol_short!("RWD_APPL"),),
+        RewardRateAppliedEvent {
+            new_rate,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
+}
+
+pub fn publish_rate_change_delay_set(env: &Env, delay: u64) {
+    env.events().publish(
+        (symbol_short!("RDLY_SET"),),
+        RateChangeDelaySetEvent {
+            delay,
             timestamp: env.ledger().timestamp(),
         },
     );

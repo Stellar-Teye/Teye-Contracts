@@ -52,3 +52,30 @@ pub fn next_request_id(env: &Env) -> u64 {
     env.storage().instance().set(&UNSTK_CTR, &next);
     next
 }
+
+// ── Rate change proposal ────────────────────────────────────────────────────
+
+const PENDING_RATE: soroban_sdk::Symbol = symbol_short!("PND_RATE");
+
+/// A pending reward-rate change waiting for its delay to expire.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct RateChangeProposal {
+    pub new_rate: i128,
+    pub effective_at: u64,
+}
+
+/// Persist a pending rate-change proposal.
+pub fn store_rate_proposal(env: &Env, proposal: &RateChangeProposal) {
+    env.storage().instance().set(&PENDING_RATE, proposal);
+}
+
+/// Retrieve the pending rate-change proposal, if any.
+pub fn get_rate_proposal(env: &Env) -> Option<RateChangeProposal> {
+    env.storage().instance().get(&PENDING_RATE)
+}
+
+/// Remove the pending rate-change proposal after applying.
+pub fn clear_rate_proposal(env: &Env) {
+    env.storage().instance().remove(&PENDING_RATE);
+}

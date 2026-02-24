@@ -8,7 +8,7 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, token, Address, Env, Symbol,
 };
 
-use timelock::UnstakeRequest;
+use timelock::{RateChangeProposal, UnstakeRequest};
 
 // ── Storage key constants ────────────────────────────────────────────────────
 
@@ -21,6 +21,7 @@ const TOTAL_STAKED: Symbol = symbol_short!("TOT_STK");
 const REWARD_PER_TOKEN: Symbol = symbol_short!("RPT");
 const LAST_UPDATE: Symbol = symbol_short!("LAST_UPD");
 const LOCK_PERIOD: Symbol = symbol_short!("LOCK_PER");
+const RATE_DELAY: Symbol = symbol_short!("RATE_DLY");
 
 // Per-user persistent storage uses tuple keys:  (prefix, user_address)
 const USER_STAKE: Symbol = symbol_short!("STK");
@@ -42,6 +43,8 @@ pub enum ContractError {
     AlreadyWithdrawn = 7,
     RequestNotFound = 8,
     TokensIdentical = 9,
+    RateChangeNotReady = 10,
+    NoPendingRateChange = 11,
 }
 
 // ── Public-facing types (re-exported for test consumers) ─────────────────────
@@ -386,6 +389,16 @@ impl StakingContract {
         env.storage().instance().get(&LOCK_PERIOD).unwrap_or(0)
     }
 
+    /// Return the configured rate-change delay in seconds.
+    pub fn get_rate_change_delay(env: Env) -> u64 {
+        env.storage().instance().get(&RATE_DELAY).unwrap_or(0)
+    }
+
+    /// Return the pending rate-change proposal, if any.
+    pub fn get_pending_rate_change(env: Env) -> Result<RateChangeProposal, ContractError> {
+        timelock::get_rate_proposal(&env).ok_or(ContractError::NoPendingRateChange)
+    }
+
     /// Return the details of a specific unstake request.
     pub fn get_unstake_request(env: Env, request_id: u64) -> Result<UnstakeRequest, ContractError> {
         timelock::get_request(&env, request_id).ok_or(ContractError::RequestNotFound)
@@ -404,11 +417,12 @@ impl StakingContract {
 
     // ── Admin functions ──────────────────────────────────────────────────────
 
-    /// Update the reward emission rate.
+    /// Propose a reward-rate change.
     ///
-    /// The global accumulator is flushed at the current rate *before* the
-    /// rate changes, so existing stakers never lose or gain rewards
-    /// retroactively.
+    /// When `rate_change_delay` is zero the rate is applied immediately
+    /// (backward-compatible). Otherwise the new rate is stored as a pending
+    /// proposal and only takes effect after `apply_reward_rate` is called
+    /// once the delay has elapsed.
     pub fn set_reward_rate(env: Env, caller: Address, new_rate: i128) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
@@ -418,12 +432,63 @@ impl StakingContract {
             return Err(ContractError::InvalidInput);
         }
 
-        // Flush accumulator at old rate before changing.
+        let delay: u64 = env.storage().instance().get(&RATE_DELAY).unwrap_or(0);
+
+        if delay == 0 {
+            // No delay configured — apply immediately.
+            Self::update_global_reward(&env);
+            env.storage().instance().set(&REWARD_RATE, &new_rate);
+            events::publish_reward_rate_set(&env, new_rate);
+        } else {
+            let effective_at = env.ledger().timestamp().saturating_add(delay);
+            let proposal = RateChangeProposal {
+                new_rate,
+                effective_at,
+            };
+            timelock::store_rate_proposal(&env, &proposal);
+            events::publish_reward_rate_proposed(&env, new_rate, effective_at);
+        }
+
+        Ok(())
+    }
+
+    /// Apply a previously proposed reward-rate change after the delay.
+    pub fn apply_reward_rate(env: Env, caller: Address) -> Result<(), ContractError> {
+        Self::require_initialized(&env)?;
+        caller.require_auth();
+        Self::require_admin(&env, &caller)?;
+
+        let proposal =
+            timelock::get_rate_proposal(&env).ok_or(ContractError::NoPendingRateChange)?;
+
+        if env.ledger().timestamp() < proposal.effective_at {
+            return Err(ContractError::RateChangeNotReady);
+        }
+
         Self::update_global_reward(&env);
+        env.storage()
+            .instance()
+            .set(&REWARD_RATE, &proposal.new_rate);
+        timelock::clear_rate_proposal(&env);
 
-        env.storage().instance().set(&REWARD_RATE, &new_rate);
+        events::publish_reward_rate_applied(&env, proposal.new_rate);
 
-        events::publish_reward_rate_set(&env, new_rate);
+        Ok(())
+    }
+
+    /// Set the mandatory delay (in seconds) for reward-rate changes.
+    pub fn set_rate_change_delay(
+        env: Env,
+        caller: Address,
+        delay: u64,
+    ) -> Result<(), ContractError> {
+        Self::require_initialized(&env)?;
+        caller.require_auth();
+        Self::require_admin(&env, &caller)?;
+
+        env.storage().instance().set(&RATE_DELAY, &delay);
+
+        events::publish_rate_change_delay_set(&env, delay);
 
         Ok(())
     }
