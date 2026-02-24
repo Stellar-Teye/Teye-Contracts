@@ -1,3 +1,5 @@
+#![allow(deprecated)] // events().publish migration tracked separately
+
 use crate::appointment::AppointmentType;
 use crate::audit::{AccessAction, AccessResult, AuditEntry};
 use crate::circuit_breaker::PauseScope;

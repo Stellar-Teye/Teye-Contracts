@@ -389,10 +389,11 @@ pub fn get_active_scoped_delegation(
     delegator: &Address,
     delegatee: &Address,
 ) -> Option<ScopedDelegation> {
-    if let Some(del) = env.storage().persistent().get::<_, ScopedDelegation>(&scoped_delegation_key(
-        delegator,
-        delegatee,
-    )) {
+    if let Some(del) = env
+        .storage()
+        .persistent()
+        .get::<_, ScopedDelegation>(&scoped_delegation_key(delegator, delegatee))
+    {
         if del.expires_at == 0 || del.expires_at > env.ledger().timestamp() {
             return Some(del);
         }
@@ -597,11 +598,7 @@ pub struct PolicyContext {
 }
 
 /// Evaluate an access policy against the given context
-pub fn evaluate_policy(
-    env: &Env,
-    policy: &AccessPolicy,
-    context: &PolicyContext,
-) -> bool {
+pub fn evaluate_policy(env: &Env, policy: &AccessPolicy, context: &PolicyContext) -> bool {
     if !policy.enabled {
         return false;
     }
@@ -645,8 +642,16 @@ pub fn evaluate_policy(
     if conditions.consent_required {
         if let (Some(patient), Some(_record_id)) = (&context.patient, &context.resource_id) {
             // Check if there's active consent for this user to access this patient's records
-            let consent_key = (symbol_short!("CONSENT"), patient.clone(), context.user.clone());
-            if let Some(consent) = env.storage().persistent().get::<_, ConsentGrant>(&consent_key) {
+            let consent_key = (
+                symbol_short!("CONSENT"),
+                patient.clone(),
+                context.user.clone(),
+            );
+            if let Some(consent) = env
+                .storage()
+                .persistent()
+                .get::<_, ConsentGrant>(&consent_key)
+            {
                 if consent.revoked || consent.expires_at <= context.current_time {
                     return false;
                 }

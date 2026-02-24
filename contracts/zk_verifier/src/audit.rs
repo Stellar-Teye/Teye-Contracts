@@ -57,6 +57,7 @@ impl AuditTrail {
 
         chain.push_back(record.clone());
         env.storage().persistent().set(&key, &chain);
+        #[allow(deprecated)]
         env.events().publish((user, resource_id), record);
     }
 

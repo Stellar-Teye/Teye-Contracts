@@ -10,9 +10,13 @@ fn hash_pair(env: &Env, left: &NodeHash, right: &NodeHash) -> NodeHash {
 }
 
 fn next_power_of_two(n: u32) -> u32 {
-    if n <= 1 { return 1; }
+    if n <= 1 {
+        return 1;
+    }
     let mut p = 1u32;
-    while p < n { p <<= 1; }
+    while p < n {
+        p <<= 1;
+    }
     p
 }
 
@@ -45,7 +49,7 @@ impl MerkleTree {
         while level_size > 1 {
             let next_size = level_size / 2;
             for i in 0..next_size {
-                let left  = all_nodes.get(level_start + i * 2).unwrap();
+                let left = all_nodes.get(level_start + i * 2).unwrap();
                 let right = all_nodes.get(level_start + i * 2 + 1).unwrap();
                 all_nodes.push_back(hash_pair(env, &left, &right));
             }
@@ -53,7 +57,10 @@ impl MerkleTree {
             level_size = next_size;
         }
 
-        MerkleTree { nodes: all_nodes, leaf_count: n }
+        MerkleTree {
+            nodes: all_nodes,
+            leaf_count: n,
+        }
     }
 
     pub fn root(&self) -> NodeHash {

@@ -1,3 +1,5 @@
+#![allow(deprecated)] // events().publish migration tracked separately
+
 use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env};
 
 /// Fired when an admin transfer is proposed.

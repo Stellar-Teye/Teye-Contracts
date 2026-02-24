@@ -16,19 +16,21 @@
 mod audit;
 pub mod events;
 mod helpers;
-mod verifier;
+pub mod verifier;
 pub mod vk;
 
 pub use crate::audit::{AuditRecord, AuditTrail};
 pub use crate::events::AccessRejectedEvent;
 pub use crate::helpers::ZkAccessHelper;
-pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof, VerificationKey};
+pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof, ProofValidationError};
+pub use crate::vk::VerificationKey;
 
 use common::whitelist;
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, BytesN, Env,
     Symbol, Vec,
 };
+use verifier::ProofValidationError;
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
 const PENDING_ADMIN: Symbol = symbol_short!("PEND_ADM");
@@ -78,18 +80,16 @@ pub enum ContractError {
 }
 
 /// Map low-level proof validation errors into contract-level errors.
-impl From<ProofValidationError> for ContractError {
-    fn from(e: ProofValidationError) -> Self {
-        match e {
-            ProofValidationError::ZeroedComponent => ContractError::DegenerateProof,
-            ProofValidationError::OversizedComponent => ContractError::OversizedProofComponent,
-            ProofValidationError::MalformedG1PointA | ProofValidationError::MalformedG1PointC => {
-                ContractError::MalformedG1Point
-            }
-            ProofValidationError::MalformedG2Point => ContractError::MalformedG2Point,
-            ProofValidationError::EmptyPublicInputs => ContractError::EmptyPublicInputs,
-            ProofValidationError::ZeroedPublicInput => ContractError::ZeroedPublicInput,
+fn map_proof_validation_error(e: ProofValidationError) -> ContractError {
+    match e {
+        ProofValidationError::ZeroedComponent => ContractError::DegenerateProof,
+        ProofValidationError::OversizedComponent => ContractError::OversizedProofComponent,
+        ProofValidationError::MalformedG1PointA | ProofValidationError::MalformedG1PointC => {
+            ContractError::MalformedG1Point
         }
+        ProofValidationError::MalformedG2Point => ContractError::MalformedG2Point,
+        ProofValidationError::EmptyPublicInputs => ContractError::EmptyPublicInputs,
+        ProofValidationError::ZeroedPublicInput => ContractError::ZeroedPublicInput,
     }
 }
 
@@ -214,10 +214,7 @@ impl ZkVerifierContract {
     }
 
     /// Cancel a pending admin transfer. Only the current admin can call this.
-    pub fn cancel_admin_transfer(
-        env: Env,
-        current_admin: Address,
-    ) -> Result<(), ContractError> {
+    pub fn cancel_admin_transfer(env: Env, current_admin: Address) -> Result<(), ContractError> {
         Self::require_admin(&env, &current_admin)?;
 
         let pending: Address = env
@@ -258,23 +255,6 @@ impl ZkVerifierContract {
 
         Ok(())
     }
-
-    /// Set the ZK verification key.
-    pub fn set_verification_key(
-        env: Env,
-        caller: Address,
-        vk: vk::VerificationKey,
-    ) -> Result<(), ContractError> {
-        Self::require_admin(&env, &caller)?;
-        env.storage().instance().set(&VK, &vk);
-        Ok(())
-    }
-
-    /// Get the ZK verification key.
-    pub fn get_verification_key(env: Env) -> Option<vk::VerificationKey> {
-        env.storage().instance().get(&VK)
-    }
-
     /// Return the current rate limiting configuration, if any.
     pub fn get_rate_limit_config(env: Env) -> Option<(u64, u64)> {
         env.storage().instance().get(&RATE_CFG)
@@ -365,7 +345,12 @@ impl ZkVerifierContract {
         request.user.require_auth();
 
         validate_request(&request).map_err(|err| {
-            events::publish_access_rejected(&env, request.user.clone(), request.resource_id.clone(), err);
+            events::publish_access_rejected(
+                &env,
+                request.user.clone(),
+                request.resource_id.clone(),
+                err,
+            );
             err
         })?;
 
@@ -380,26 +365,16 @@ impl ZkVerifierContract {
         }
 
         Self::check_and_update_rate_limit(&env, &request.user).map_err(|err| {
-            events::publish_access_rejected(&env, request.user.clone(), request.resource_id.clone(), err);
+            events::publish_access_rejected(
+                &env,
+                request.user.clone(),
+                request.resource_id.clone(),
+                err,
+            );
             err
         })?;
 
-        let vk: vk::VerificationKey = env
-            .storage()
-            .instance()
-            .get(&VK)
-            .ok_or(ContractError::InvalidConfig)
-            .map_err(|err| {
-                events::publish_access_rejected(
-                    &env,
-                    request.user.clone(),
-                    request.resource_id.clone(),
-                    err,
-                );
-                err
-            })?;
-
-        let is_valid = Bn254Verifier::verify_proof(&env, &vk, &request.proof, &request.public_inputs);
+        let is_valid = Bn254Verifier::verify_proof(&env, &request.proof, &request.public_inputs);
         if is_valid {
             let proof_hash = PoseidonHasher::hash(&env, &request.public_inputs);
             AuditTrail::log_access(&env, request.user, request.resource_id, proof_hash);

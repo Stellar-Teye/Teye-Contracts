@@ -97,7 +97,11 @@ fn has_active_consent(env: &Env, patient: &Address, grantee: &Address) -> bool {
     }
 }
 
-pub use rbac::{Permission, Role, AccessPolicy, PolicyContext, evaluate_access_policies, set_user_credential, set_record_sensitivity, create_access_policy, CredentialType, SensitivityLevel, TimeRestriction};
+pub use rbac::{
+    create_access_policy, evaluate_access_policies, set_record_sensitivity, set_user_credential,
+    AccessPolicy, CredentialType, Permission, PolicyContext, Role, SensitivityLevel,
+    TimeRestriction,
+};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -366,10 +370,7 @@ impl VisionRecordsContract {
     }
 
     /// Cancel a pending admin transfer. Only the current admin can call this.
-    pub fn cancel_admin_transfer(
-        env: Env,
-        current_admin: Address,
-    ) -> Result<(), ContractError> {
+    pub fn cancel_admin_transfer(env: Env, current_admin: Address) -> Result<(), ContractError> {
         current_admin.require_auth();
 
         let admin = Self::get_admin(env.clone())?;
@@ -1004,8 +1005,7 @@ impl VisionRecordsContract {
             true
         } else {
             let access = Self::check_access(env.clone(), record.patient.clone(), caller.clone());
-            let record_access =
-                Self::check_record_access(env.clone(), record_id, caller.clone());
+            let record_access = Self::check_record_access(env.clone(), record_id, caller.clone());
             access == AccessLevel::Read
                 || access == AccessLevel::Write
                 || access == AccessLevel::Full
@@ -1170,7 +1170,8 @@ impl VisionRecordsContract {
         if let Some(grant) = env.storage().persistent().get::<_, AccessGrant>(&key) {
             if grant.expires_at > env.ledger().timestamp() {
                 // Check if ABAC policies also allow this access
-                let abac_allowed = evaluate_access_policies(&env, &grantee, None, Some(patient.clone()));
+                let abac_allowed =
+                    evaluate_access_policies(&env, &grantee, None, Some(patient.clone()));
                 if abac_allowed {
                     return grant.level;
                 }
@@ -1838,11 +1839,7 @@ impl VisionRecordsContract {
     /// Removes the admin tier from the target address entirely.
     ///
     /// Only a `SuperAdmin` may call this.
-    pub fn demote_admin(
-        env: Env,
-        caller: Address,
-        target: Address,
-    ) -> Result<(), ContractError> {
+    pub fn demote_admin(env: Env, caller: Address, target: Address) -> Result<(), ContractError> {
         caller.require_auth();
         if !admin_tiers::demote_admin(&env, &caller, &target) {
             return Err(ContractError::Unauthorized);

@@ -1,3 +1,5 @@
+#![allow(deprecated)] // events().publish migration tracked separately
+
 use soroban_sdk::{symbol_short, Address, Env};
 
 // ── Event payloads ──────────────────────────────────────────────────────────
