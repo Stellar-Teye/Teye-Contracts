@@ -6,7 +6,8 @@ use crate::circuit_breaker::PauseScope;
 use crate::emergency::EmergencyCondition;
 use crate::errors::{ErrorCategory, ErrorContext, ErrorSeverity};
 use crate::{AccessLevel, RecordType, Role, VerificationStatus};
-use soroban_sdk::{symbol_short, Address, Env, String};
+use soroban_sdk::{symbol_short, Address, Env, String, Vec};
+use teye_common::concurrency::{ConflictStatus, ResolutionStrategy, UpdateOutcome};
 
 /// Event published when the contract is initialized.
 #[soroban_sdk::contracttype]
@@ -1132,6 +1133,147 @@ pub fn publish_sensitivity_set(
         record_id,
         sensitivity,
         set_by,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+// ── Optimistic Concurrency Control Events ───────────────────────────────────
+
+/// Event published when a record update is applied under OCC.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OccUpdateAppliedEvent {
+    pub record_id: u64,
+    pub new_version: u64,
+    pub provider: Address,
+    pub timestamp: u64,
+}
+
+/// Event published when concurrent modifications are auto-merged.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OccMergeAppliedEvent {
+    pub record_id: u64,
+    pub new_version: u64,
+    pub provider: Address,
+    pub merged_field_count: u32,
+    pub timestamp: u64,
+}
+
+/// Event published when a concurrency conflict is detected and queued.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OccConflictDetectedEvent {
+    pub conflict_id: u64,
+    pub record_id: u64,
+    pub provider: Address,
+    pub conflicting_fields: Vec<String>,
+    pub strategy: ResolutionStrategy,
+    pub timestamp: u64,
+}
+
+/// Event published when a conflict is resolved.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OccConflictResolvedEvent {
+    pub conflict_id: u64,
+    pub record_id: u64,
+    pub resolved_by: Address,
+    pub timestamp: u64,
+}
+
+/// Event published when a record's resolution strategy is changed.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OccStrategyChangedEvent {
+    pub record_id: u64,
+    pub strategy: ResolutionStrategy,
+    pub changed_by: Address,
+    pub timestamp: u64,
+}
+
+pub fn publish_occ_update_applied(
+    env: &Env,
+    record_id: u64,
+    new_version: u64,
+    provider: Address,
+) {
+    let topics = (symbol_short!("OCC_APPL"), record_id, provider.clone());
+    let data = OccUpdateAppliedEvent {
+        record_id,
+        new_version,
+        provider,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+pub fn publish_occ_merge_applied(
+    env: &Env,
+    record_id: u64,
+    new_version: u64,
+    provider: Address,
+    merged_field_count: u32,
+) {
+    let topics = (symbol_short!("OCC_MRG"), record_id, provider.clone());
+    let data = OccMergeAppliedEvent {
+        record_id,
+        new_version,
+        provider,
+        merged_field_count,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+pub fn publish_occ_conflict_detected(
+    env: &Env,
+    conflict_id: u64,
+    record_id: u64,
+    provider: Address,
+    conflicting_fields: Vec<String>,
+    strategy: ResolutionStrategy,
+) {
+    let topics = (symbol_short!("OCC_CNFL"), record_id, provider.clone());
+    let data = OccConflictDetectedEvent {
+        conflict_id,
+        record_id,
+        provider,
+        conflicting_fields,
+        strategy,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+pub fn publish_occ_conflict_resolved(
+    env: &Env,
+    conflict_id: u64,
+    record_id: u64,
+    resolved_by: Address,
+) {
+    let topics = (symbol_short!("OCC_RSLV"), conflict_id, resolved_by.clone());
+    let data = OccConflictResolvedEvent {
+        conflict_id,
+        record_id,
+        resolved_by,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+pub fn publish_occ_strategy_changed(
+    env: &Env,
+    record_id: u64,
+    strategy: ResolutionStrategy,
+    changed_by: Address,
+) {
+    let topics = (symbol_short!("OCC_STRT"), record_id, changed_by.clone());
+    let data = OccStrategyChangedEvent {
+        record_id,
+        strategy,
+        changed_by,
         timestamp: env.ledger().timestamp(),
     };
     env.events().publish(topics, data);

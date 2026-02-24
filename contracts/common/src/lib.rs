@@ -15,23 +15,29 @@ use soroban_sdk::contracterror;
 // ── Modules ──────────────────────────────────────────────────────────────────
 
 pub mod admin_tiers;
+pub mod concurrency;
 #[cfg(feature = "std")]
 pub mod consent;
 pub mod keys;
 pub mod meta_tx;
 pub mod multisig;
+pub mod operational_transform;
 pub mod rate_limit;
 pub mod reentrancy_guard;
+pub mod vector_clock;
 pub mod whitelist;
 
 pub use admin_tiers::*;
+pub use concurrency::*;
 #[cfg(feature = "std")]
 pub use consent::*;
 pub use keys::*;
 pub use meta_tx::*;
 pub use multisig::*;
+pub use operational_transform::*;
 pub use rate_limit::*;
 pub use reentrancy_guard::*;
+pub use vector_clock::*;
 pub use whitelist::*;
 
 // ── Shared error enum ────────────────────────────────────────────────────────

@@ -113,6 +113,9 @@ pub enum ContractError {
     InvalidAttestation = 34,
     InvalidAppointmentTime = 35,
     InvalidAppointmentStatus = 36,
+    VersionConflict = 37,
+    ConflictQueued = 38,
+    ConflictNotFound = 39,
 }
 
 impl ContractError {
@@ -136,6 +139,9 @@ impl ContractError {
             | ContractError::InvalidAppointmentStatus
             | ContractError::AppointmentNotVerified
             | ContractError::MetaTxExpired => ErrorCategory::Validation,
+            ContractError::VersionConflict | ContractError::ConflictQueued => {
+                ErrorCategory::StateConflict
+            }
             ContractError::Unauthorized
             | ContractError::AccessDenied
             | ContractError::InsufficientPermissions
@@ -151,6 +157,7 @@ impl ContractError {
             | ContractError::DuplicateRecord
             | ContractError::DelegationExpired
             | ContractError::NonceAlreadyUsed => ErrorCategory::StateConflict,
+            ContractError::ConflictNotFound => ErrorCategory::NotFound,
             ContractError::StorageError => ErrorCategory::Storage,
             ContractError::TransientFailure | ContractError::RateLimitExceeded => {
                 ErrorCategory::Transient
@@ -195,6 +202,8 @@ impl ContractError {
             ContractError::EmergencyAccessNotFound
             | ContractError::AppointmentNotFound
             | ContractError::AppointmentNotVerified => ErrorSeverity::Low,
+            ContractError::VersionConflict | ContractError::ConflictQueued => ErrorSeverity::Medium,
+            ContractError::ConflictNotFound => ErrorSeverity::Low,
             ContractError::StorageError | ContractError::TransientFailure => ErrorSeverity::High,
             ContractError::Paused | ContractError::ContractPaused => ErrorSeverity::Critical,
         }
@@ -208,6 +217,7 @@ impl ContractError {
             ContractError::TransientFailure
                 | ContractError::RateLimitExceeded
                 | ContractError::StorageError
+                | ContractError::VersionConflict
         )
     }
 
@@ -251,6 +261,9 @@ impl ContractError {
             ContractError::InvalidAttestation => "Invalid emergency attestation provided",
             ContractError::InvalidAppointmentTime => "Invalid appointment time provided",
             ContractError::InvalidAppointmentStatus => "Invalid appointment status provided",
+            ContractError::VersionConflict => "Record version conflict detected, retry with current version",
+            ContractError::ConflictQueued => "Concurrent modification conflict queued for review",
+            ContractError::ConflictNotFound => "Conflict entry not found",
         }
     }
 }

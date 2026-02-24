@@ -19,9 +19,11 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, String, Symbol, Vec,
 };
 
-extern crate alloc;
 use alloc::string::ToString;
 use teye_common::{multisig, whitelist, KeyManager, StdString, StdVec, admin_tiers, AdminTier};
+use teye_common::concurrency::{
+    self as occ, FieldChange, ResolutionStrategy, UpdateOutcome, VersionStamp,
+};
 
 /// Re-export the contract-specific error type at the crate root.
 pub use errors::ContractError;
@@ -836,6 +838,9 @@ impl VisionRecordsContract {
         let key = (symbol_short!("RECORD"), record_id);
         env.storage().persistent().set(&key, &record);
         extend_ttl_u64_key(&env, &key);
+
+        // Initialise OCC version tracking for the new record.
+        occ::init_record_version(&env, record_id, 0);
 
         // Add to patient's record list
         let patient_key = (symbol_short!("PAT_REC"), patient.clone());
@@ -2048,6 +2053,287 @@ impl VisionRecordsContract {
         admin_tiers::get_admin_tier(&env, &admin)
     }
 
+    // ======================== Optimistic Concurrency Control ========================
+
+    /// Update an eye examination record with optimistic concurrency control.
+    ///
+    /// The caller must provide the `expected_version` obtained from a prior
+    /// read (via `get_record_version_stamp`) and a `node_id` that uniquely
+    /// identifies the provider in the vector clock.
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_examination_versioned(
+        env: Env,
+        caller: Address,
+        record_id: u64,
+        expected_version: u64,
+        node_id: u32,
+        visual_acuity: VisualAcuity,
+        iop: IntraocularPressure,
+        slit_lamp: SlitLampFindings,
+        visual_field: OptVisualField,
+        retina_imaging: OptRetinalImaging,
+        fundus_photo: OptFundusPhotography,
+        clinical_notes: String,
+        changed_fields: Vec<FieldChange>,
+    ) -> Result<UpdateOutcome, ContractError> {
+        caller.require_auth();
+
+        let record = Self::get_record(env.clone(), caller.clone(), record_id)?;
+
+        let has_perm = if caller == record.provider {
+            rbac::has_permission(&env, &caller, &Permission::WriteRecord)
+        } else {
+            rbac::has_delegated_permission(
+                &env,
+                &record.provider,
+                &caller,
+                &Permission::WriteRecord,
+            )
+        };
+
+        if !has_perm && !rbac::has_permission(&env, &caller, &Permission::SystemAdmin) {
+            return Self::unauthorized(
+                &env,
+                &caller,
+                "update_examination_versioned",
+                "permission:WriteRecord_or_SystemAdmin",
+            );
+        }
+
+        if record.record_type != RecordType::Examination {
+            return Err(ContractError::InvalidRecordType);
+        }
+
+        let exam = EyeExamination {
+            record_id,
+            visual_acuity,
+            iop,
+            slit_lamp,
+            visual_field,
+            retina_imaging,
+            fundus_photo,
+            clinical_notes,
+        };
+
+        let outcome = examination::versioned_set_examination(
+            &env,
+            &exam,
+            expected_version,
+            node_id,
+            &caller,
+            &changed_fields,
+        );
+
+        match &outcome {
+            UpdateOutcome::Applied(stamp) => {
+                events::publish_occ_update_applied(&env, record_id, stamp.version, caller);
+            }
+            UpdateOutcome::Merged(stamp) => {
+                events::publish_occ_merge_applied(
+                    &env,
+                    record_id,
+                    stamp.version,
+                    caller,
+                    changed_fields.len(),
+                );
+            }
+            UpdateOutcome::Conflicted(cid) => {
+                let strategy = occ::get_resolution_strategy(&env, record_id);
+                let mut field_names = Vec::new(&env);
+                for fc in changed_fields.iter() {
+                    field_names.push_back(fc.field_name.clone());
+                }
+                events::publish_occ_conflict_detected(
+                    &env,
+                    *cid,
+                    record_id,
+                    caller,
+                    field_names,
+                    strategy,
+                );
+            }
+        }
+
+        Ok(outcome)
+    }
+
+    /// Update a prescription record with optimistic concurrency control.
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_prescription_versioned(
+        env: Env,
+        caller: Address,
+        rx_id: u64,
+        expected_version: u64,
+        node_id: u32,
+        lens_type: LensType,
+        left_eye: PrescriptionData,
+        right_eye: PrescriptionData,
+        contact_data: OptionalContactLensData,
+        metadata_hash: String,
+        changed_fields: Vec<FieldChange>,
+    ) -> Result<UpdateOutcome, ContractError> {
+        caller.require_auth();
+
+        let existing = prescription::get_prescription(&env, rx_id)
+            .ok_or(ContractError::RecordNotFound)?;
+
+        // Only the original provider (or delegatee / admin) may update.
+        let has_perm = if caller == existing.provider {
+            rbac::has_permission(&env, &caller, &Permission::WriteRecord)
+        } else {
+            rbac::has_delegated_permission(
+                &env,
+                &existing.provider,
+                &caller,
+                &Permission::WriteRecord,
+            )
+        };
+
+        if !has_perm && !rbac::has_permission(&env, &caller, &Permission::SystemAdmin) {
+            return Self::unauthorized(
+                &env,
+                &caller,
+                "update_prescription_versioned",
+                "permission:WriteRecord_or_SystemAdmin",
+            );
+        }
+
+        let updated_rx = Prescription {
+            id: rx_id,
+            patient: existing.patient,
+            provider: existing.provider.clone(),
+            lens_type,
+            left_eye,
+            right_eye,
+            contact_data,
+            issued_at: existing.issued_at,
+            expires_at: existing.expires_at,
+            verified: existing.verified,
+            metadata_hash,
+        };
+
+        let outcome = prescription::versioned_save_prescription(
+            &env,
+            &updated_rx,
+            expected_version,
+            node_id,
+            &caller,
+            &changed_fields,
+        );
+
+        match &outcome {
+            UpdateOutcome::Applied(stamp) => {
+                events::publish_occ_update_applied(&env, rx_id, stamp.version, caller);
+            }
+            UpdateOutcome::Merged(stamp) => {
+                events::publish_occ_merge_applied(
+                    &env,
+                    rx_id,
+                    stamp.version,
+                    caller,
+                    changed_fields.len(),
+                );
+            }
+            UpdateOutcome::Conflicted(cid) => {
+                let strategy = occ::get_resolution_strategy(&env, rx_id);
+                let mut field_names = Vec::new(&env);
+                for fc in changed_fields.iter() {
+                    field_names.push_back(fc.field_name.clone());
+                }
+                events::publish_occ_conflict_detected(
+                    &env,
+                    *cid,
+                    rx_id,
+                    caller,
+                    field_names,
+                    strategy,
+                );
+            }
+        }
+
+        Ok(outcome)
+    }
+
+    /// Returns the current OCC version stamp (version + vector clock) for a
+    /// record. Callers should read this before issuing a versioned update.
+    pub fn get_record_version_stamp(env: Env, record_id: u64) -> VersionStamp {
+        occ::get_version_stamp(&env, record_id)
+    }
+
+    /// Configure the conflict resolution strategy for a specific record.
+    ///
+    /// Requires the caller to be the record's provider or a SystemAdmin.
+    pub fn set_record_resolution_strategy(
+        env: Env,
+        caller: Address,
+        record_id: u64,
+        strategy: ResolutionStrategy,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+
+        let key = (symbol_short!("RECORD"), record_id);
+        let record: VisionRecord = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(ContractError::RecordNotFound)?;
+
+        let is_provider = caller == record.provider;
+        let is_admin = rbac::has_permission(&env, &caller, &Permission::SystemAdmin);
+        if !is_provider && !is_admin {
+            return Self::unauthorized(
+                &env,
+                &caller,
+                "set_record_resolution_strategy",
+                "record_provider_or_SystemAdmin",
+            );
+        }
+
+        occ::set_resolution_strategy(&env, record_id, &strategy);
+        events::publish_occ_strategy_changed(&env, record_id, strategy, caller);
+
+        Ok(())
+    }
+
+    /// Returns all pending (unresolved) OCC conflicts.
+    pub fn get_pending_conflicts(env: Env) -> Vec<occ::ConflictEntry> {
+        occ::get_pending_conflicts(&env)
+    }
+
+    /// Returns all OCC conflicts (pending and resolved) for a specific record.
+    pub fn get_record_conflicts(env: Env, record_id: u64) -> Vec<occ::ConflictEntry> {
+        occ::get_record_conflicts(&env, record_id)
+    }
+
+    /// Resolve a queued OCC conflict by its ID.
+    ///
+    /// Requires the caller to be a SystemAdmin.
+    pub fn resolve_conflict(
+        env: Env,
+        caller: Address,
+        conflict_id: u64,
+        record_id: u64,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+
+        if !rbac::has_permission(&env, &caller, &Permission::SystemAdmin) {
+            return Self::unauthorized(
+                &env,
+                &caller,
+                "resolve_conflict",
+                "permission:SystemAdmin",
+            );
+        }
+
+        if !occ::resolve_conflict(&env, conflict_id, &caller) {
+            return Err(ContractError::ConflictNotFound);
+        }
+
+        events::publish_occ_conflict_resolved(&env, conflict_id, record_id, caller);
+
+        Ok(())
+    }
+
     // ======================== Internal Helpers ========================
 
     /// Unified check: returns true if caller has at least the specified admin
@@ -2081,3 +2367,6 @@ mod test_batch;
 
 #[cfg(test)]
 mod test_admin_tiers;
+
+#[cfg(test)]
+mod test_occ;
