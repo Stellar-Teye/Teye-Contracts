@@ -7,7 +7,7 @@ pub mod timelock;
 use common::admin_tiers::{self, AdminTier};
 use common::multisig;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, token, Address, Env, String, Symbol,
+    contract, contractimpl, contracttype, symbol_short, token, Address, BytesN, Env, String, Symbol,
 };
 
 use timelock::{RateChangeProposal, UnstakeRequest};
@@ -168,7 +168,7 @@ impl StakingContract {
             .ok_or(ContractError::NotInitialized)?;
         token::Client::new(&env, &stake_token).transfer(
             &staker,
-            &env.current_contract_address(),
+            env.current_contract_address(),
             &amount,
         );
 
@@ -535,10 +535,9 @@ impl StakingContract {
     ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
-        Self::require_admin(&env, &caller)?;
+        Self::require_admin(&env, &caller, "configure_multisig")?;
 
-        multisig::configure(&env, signers, threshold)
-            .map_err(|_| ContractError::InvalidInput)
+        multisig::configure(&env, signers, threshold).map_err(|_| ContractError::InvalidInput)
     }
 
     /// Create a multisig proposal for an admin action.
@@ -568,8 +567,7 @@ impl StakingContract {
         Self::require_initialized(&env)?;
         approver.require_auth();
 
-        multisig::approve(&env, &approver, proposal_id)
-            .map_err(|_| ContractError::MultisigError)
+        multisig::approve(&env, &approver, proposal_id).map_err(|_| ContractError::MultisigError)
     }
 
     /// Return the current multisig configuration, if any.
@@ -605,6 +603,21 @@ impl StakingContract {
 
         if new_rate < 0 {
             return Err(ContractError::InvalidInput);
+        }
+
+        // If multisig is configured, require an executable proposal and consume it.
+        if !multisig::is_legacy_admin_allowed(&env) {
+            if proposal_id == 0 {
+                return Err(ContractError::MultisigRequired);
+            }
+            let proposal =
+                multisig::get_proposal(&env, proposal_id).ok_or(ContractError::MultisigRequired)?;
+            if proposal.action != symbol_short!("RWD_RATE")
+                || !multisig::is_executable(&env, proposal_id)
+            {
+                return Err(ContractError::MultisigRequired);
+            }
+            multisig::mark_executed(&env, proposal_id).map_err(|_| ContractError::MultisigError)?;
         }
 
         let delay: u64 = env.storage().instance().get(&RATE_DELAY).unwrap_or(0);
@@ -682,6 +695,20 @@ impl StakingContract {
         Self::require_initialized(&env)?;
         caller.require_auth();
         Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin, "set_lock_period")?;
+
+        if !multisig::is_legacy_admin_allowed(&env) {
+            if proposal_id == 0 {
+                return Err(ContractError::MultisigRequired);
+            }
+            let proposal =
+                multisig::get_proposal(&env, proposal_id).ok_or(ContractError::MultisigRequired)?;
+            if proposal.action != symbol_short!("SET_LOCK")
+                || !multisig::is_executable(&env, proposal_id)
+            {
+                return Err(ContractError::MultisigRequired);
+            }
+            multisig::mark_executed(&env, proposal_id).map_err(|_| ContractError::MultisigError)?;
+        }
 
         env.storage().instance().set(&LOCK_PERIOD, &new_period);
 

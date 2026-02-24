@@ -16,7 +16,8 @@ pub mod rbac;
 pub mod validation;
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, String, Symbol, Vec,
+    contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, String,
+    Symbol, Vec,
 };
 
 use alloc::string::ToString;
@@ -87,6 +88,34 @@ fn extend_ttl_record_access_key(env: &Env, key: &(Symbol, u64, Address)) {
     env.storage()
         .persistent()
         .extend_ttl(key, TTL_THRESHOLD, TTL_EXTEND_TO);
+}
+
+fn rate_limit_action_hash(
+    env: &Env,
+    max_requests_per_window: u64,
+    window_duration_seconds: u64,
+) -> BytesN<32> {
+    let mut payload = Bytes::new(env);
+    payload.append(&Bytes::from_slice(env, b"SET_RATE"));
+    payload.append(&Bytes::from_slice(
+        env,
+        &max_requests_per_window.to_be_bytes(),
+    ));
+    payload.append(&Bytes::from_slice(
+        env,
+        &window_duration_seconds.to_be_bytes(),
+    ));
+    env.crypto().sha256(&payload).into()
+}
+
+fn encryption_key_action_hash(env: &Env, version: &String, key: &String) -> BytesN<32> {
+    let mut payload = Bytes::new(env);
+    payload.append(&Bytes::from_slice(env, b"SET_ENC"));
+    let version_std = version.to_string();
+    let key_std = key.to_string();
+    payload.append(&Bytes::from_slice(env, version_std.as_bytes()));
+    payload.append(&Bytes::from_slice(env, key_std.as_bytes()));
+    env.crypto().sha256(&payload).into()
 }
 
 fn consent_key(patient: &Address, grantee: &Address) -> (Symbol, Address, Address) {
@@ -528,6 +557,8 @@ impl VisionRecordsContract {
             3_600,
             900,
         );
+        let expected_data_hash =
+            rate_limit_action_hash(&env, max_requests_per_window, window_duration_seconds);
         let risk = risk_engine::evaluate_risk(
             &env,
             &risk_engine::OperationRiskInput {
@@ -551,6 +582,8 @@ impl VisionRecordsContract {
             risk.final_score,
             auth_session.issued_at,
             Some(proposal_id),
+            symbol_short!("SET_RATE"),
+            expected_data_hash,
             false,
             &progressive_auth::default_policy(),
         )
@@ -593,6 +626,7 @@ impl VisionRecordsContract {
             3_600,
             900,
         );
+        let expected_data_hash = encryption_key_action_hash(&env, &version, &key);
         let policy = progressive_auth::default_policy();
         let baseline = risk_engine::evaluate_risk(
             &env,
@@ -617,6 +651,8 @@ impl VisionRecordsContract {
             baseline.final_score,
             auth_session.issued_at,
             Some(proposal_id),
+            symbol_short!("SET_ENC"),
+            expected_data_hash.clone(),
             false,
             &policy,
         )
@@ -649,6 +685,8 @@ impl VisionRecordsContract {
                     elevated_level,
                     auth_session.issued_at,
                     Some(proposal_id),
+                    symbol_short!("SET_ENC"),
+                    expected_data_hash,
                     false,
                     &policy,
                 )
@@ -1429,10 +1467,25 @@ impl VisionRecordsContract {
 
         if let Some(grant) = env.storage().persistent().get::<_, AccessGrant>(&key) {
             if grant.expires_at > env.ledger().timestamp() {
-                // Check if ABAC policies also allow this access
-                let abac_allowed =
-                    evaluate_access_policies(&env, &grantee, None, Some(patient.clone()));
-                if abac_allowed {
+                // ABAC is optional here: if no policies are configured, valid
+                // consent+grant should still provide access.
+                let default_policy_ids = [
+                    String::from_str(&env, "default_medical_access"),
+                    String::from_str(&env, "emergency_access"),
+                    String::from_str(&env, "research_access"),
+                ];
+                let mut has_any_policy = false;
+                for policy_id in default_policy_ids {
+                    let policy_key = rbac::access_policy_key(&policy_id);
+                    if env.storage().persistent().has(&policy_key) {
+                        has_any_policy = true;
+                        break;
+                    }
+                }
+
+                if !has_any_policy
+                    || evaluate_access_policies(&env, &grantee, None, Some(patient.clone()))
+                {
                     return grant.level;
                 }
             }

@@ -1,3 +1,5 @@
+#![allow(clippy::enum_variant_names)]
+
 use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol, Vec};
 
 // ── Storage Keys ─────────────────────────────────────────────────────────────

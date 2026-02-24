@@ -60,6 +60,7 @@ pub struct VisualField {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum OptVisualField {
     None,
     Some(VisualField),
@@ -75,6 +76,7 @@ pub struct RetinalImaging {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum OptRetinalImaging {
     None,
     Some(RetinalImaging),

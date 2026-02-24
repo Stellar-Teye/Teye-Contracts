@@ -1,4 +1,10 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    unused_imports,
+    unused_variables,
+    deprecated
+)]
 #![cfg(test)]
 
 use soroban_sdk::{
@@ -8,9 +14,7 @@ use soroban_sdk::{
 };
 use zk_verifier::vk::{G1Point, G2Point, VerificationKey};
 use zk_verifier::ZkAccessHelper;
-use zk_verifier::{
-    AccessRejectedEvent, ContractError, ZkVerifierContract, ZkVerifierContractClient,
-};
+use zk_verifier::{ContractError, ZkVerifierContract, ZkVerifierContractClient};
 
 fn setup_vk(env: &Env) -> VerificationKey {
     // Valid BN254 G1 point: (1, 2) is on y^2 = x^3 + 3
@@ -228,15 +232,8 @@ fn test_verify_access_cpu_budget_valid_proof() {
     let mut pi = [0u8; 32];
     pi[0] = 1;
 
-    let request = ZkAccessHelper::create_request(
-        &env,
-        user,
-        resource_id,
-        proof_a,
-        proof_b,
-        proof_c,
-        &[&pi],
-    );
+    let request =
+        ZkAccessHelper::create_request(&env, user, resource_id, proof_a, proof_b, proof_c, &[&pi]);
 
     let mut budget = env.budget();
     budget.reset_default();
@@ -284,15 +281,8 @@ fn test_verify_access_cpu_budget_invalid_proof() {
     let mut pi = [0u8; 32];
     pi[0] = 1;
 
-    let request = ZkAccessHelper::create_request(
-        &env,
-        user,
-        resource_id,
-        proof_a,
-        proof_b,
-        proof_c,
-        &[&pi],
-    );
+    let request =
+        ZkAccessHelper::create_request(&env, user, resource_id, proof_a, proof_b, proof_c, &[&pi]);
 
     let mut budget = env.budget();
     budget.reset_default();

@@ -109,7 +109,8 @@ impl ZkVoting {
             .ok_or(VoteError::MerkleRootNotSet)?;
 
         // 5. Verify the ZK proof
-        let vk_opt: Option<zk_verifier::vk::VerificationKey> = env.storage().instance().get(&DataKey::VerificationKey);
+        let vk_opt: Option<zk_verifier::vk::VerificationKey> =
+            env.storage().instance().get(&DataKey::VerificationKey);
         let vk = vk_opt.ok_or(VoteError::InvalidProof)?;
         if !Bn254Verifier::verify_proof(&env, &vk, &proof, &public_inputs) {
             return Err(VoteError::InvalidProof);
