@@ -454,16 +454,7 @@ impl ZkVerifierContract {
         })?;
 
         Bn254Verifier::validate_proof_components(&request.proof, &request.public_inputs)
-            .map_err(map_proof_validation_error)
-            .map_err(|err| {
-                events::publish_access_rejected(
-                    &env,
-                    request.user.clone(),
-                    request.resource_id.clone(),
-                    err,
-                );
-                err
-            })?;
+            .map_err(map_proof_validation_error)?;
 
         // TODO: post-quantum migration - The verification branch below is hardcoded for BN254 Groth16.
         // During migration, checking `request.proof_type` should branch to `PostQuantumVerifier::verify_proof`

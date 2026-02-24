@@ -2,12 +2,13 @@
 #![cfg(test)]
 
 use soroban_sdk::{
+    symbol_short,
     testutils::{Address as _, Events, Ledger},
-    Address, BytesN, Env, Vec,
+    Address, BytesN, Env, IntoVal, TryIntoVal, Vec,
 };
 use zk_verifier::vk::{G1Point, G2Point, VerificationKey};
 use zk_verifier::ZkAccessHelper;
-use zk_verifier::{ContractError, ZkVerifierContract, ZkVerifierContractClient};
+use zk_verifier::{AccessRejectedEvent, ContractError, ZkVerifierContract, ZkVerifierContractClient};
 
 fn setup_vk(env: &Env) -> VerificationKey {
     // Valid BN254 G1 point: (1, 2) is on y^2 = x^3 + 3
@@ -520,7 +521,17 @@ fn test_empty_public_inputs_rejected() {
         Ok(ContractError::EmptyPublicInputs)
     ));
 
-    let _events = env.events().all();
+    let events = env.events().all();
+    let event = events.last().unwrap();
+    assert_eq!(
+        event.1,
+        (symbol_short!("REJECT"), user.clone(), BytesN::from_array(&env, &[10u8; 32]))
+            .into_val(&env)
+    );
+    let payload: AccessRejectedEvent = event.2.try_into_val(&env).unwrap();
+    assert_eq!(payload.user, user);
+    assert_eq!(payload.resource_id.to_array(), [10u8; 32]);
+    assert_eq!(payload.error, ContractError::EmptyPublicInputs as u32);
 }
 
 #[test]
