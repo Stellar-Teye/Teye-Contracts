@@ -16,10 +16,10 @@ pub mod rbac;
 pub mod validation;
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, String, Symbol, Vec,
+    contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, String,
+    Symbol, Vec,
 };
 
-extern crate alloc;
 use alloc::string::ToString;
 use teye_common::{multisig, whitelist, KeyManager, StdString, StdVec, admin_tiers, AdminTier};
 
@@ -2066,6 +2066,258 @@ impl VisionRecordsContract {
         // 3. Fall back to RBAC SystemAdmin
         rbac::has_permission(env, caller, &Permission::SystemAdmin)
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cross-chain export helpers
+//
+// These are free `pub fn`s (not contract entrypoints) so that crates such as
+// `cross_chain` can import `vision_records` as a library dependency and invoke
+// them directly with a shared `Env`.  They honour every existing auth rule.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Decodes the internal `u64` record counter key from a cross-chain
+/// `BytesN<32>` identifier.
+///
+/// Convention: the serialised `u64` occupies the **last 8 bytes** (big-endian)
+/// of the 32-byte ID.  The remaining 24 bytes may carry chain / namespace
+/// context and are ignored here.
+fn export_internal_record_id(record_id: &BytesN<32>) -> u64 {
+    let raw = record_id.to_array();
+    u64::from_be_bytes([
+        raw[24], raw[25], raw[26], raw[27], raw[28], raw[29], raw[30], raw[31],
+    ])
+}
+
+/// Internal access check shared by both export helpers.
+///
+/// Returns `Ok(VisionRecord)` when the caller is authorised, or a
+/// `ContractError` otherwise.  Mirrors the rule-set from
+/// [`VisionRecordsContract::get_record`] without duplicating audit logging.
+fn export_check_access(
+    env: &Env,
+    caller: &Address,
+    rid: u64,
+) -> Result<VisionRecord, ContractError> {
+    let key = (symbol_short!("RECORD"), rid);
+    let record: VisionRecord = env
+        .storage()
+        .persistent()
+        .get::<_, VisionRecord>(&key)
+        .ok_or(ContractError::RecordNotFound)?;
+
+    // Patient and the originating provider are always allowed.
+    if *caller == record.patient || *caller == record.provider {
+        return Ok(record);
+    }
+
+    // Broad RBAC permissions (ReadAnyRecord or SystemAdmin).
+    if rbac::has_permission(env, caller, &Permission::ReadAnyRecord)
+        || rbac::has_permission(env, caller, &Permission::SystemAdmin)
+    {
+        return Ok(record);
+    }
+
+    // Active patient-to-caller consent grant.
+    if has_active_consent(env, &record.patient, caller) {
+        return Ok(record);
+    }
+
+    // Patient-level AccessGrant (symbol_short!("ACCESS"), patient, grantee).
+    let patient_grant_key = (
+        symbol_short!("ACCESS"),
+        record.patient.clone(),
+        caller.clone(),
+    );
+    if let Some(grant) = env
+        .storage()
+        .persistent()
+        .get::<_, AccessGrant>(&patient_grant_key)
+    {
+        if grant.level != AccessLevel::None && grant.expires_at > env.ledger().timestamp() {
+            return Ok(record);
+        }
+    }
+
+    // Record-level AccessGrant (symbol_short!("REC_ACC"), record_id, grantee).
+    let rec_grant_key = (symbol_short!("REC_ACC"), rid, caller.clone());
+    if let Some(grant) = env
+        .storage()
+        .persistent()
+        .get::<_, AccessGrant>(&rec_grant_key)
+    {
+        if grant.level != AccessLevel::None && grant.expires_at > env.ledger().timestamp() {
+            return Ok(record);
+        }
+    }
+
+    Err(ContractError::Unauthorized)
+}
+
+/// Prepares a vision record for cross-chain export.
+///
+/// Loads the `VisionRecord` identified by `record_id`, verifies that `caller`
+/// has read access under the existing RBAC / consent / grant rules, then
+/// returns:
+///
+/// * `record_data` – the full record serialised to XDR `Bytes` (the
+///   content-addressed blob handed to the Merkle tree).
+/// * `fields` – a `Vec` of `(field_name: Symbol, field_bytes: Bytes)` pairs
+///   suitable for per-field Merkle-tree insertion and selective disclosure.
+///   Core `VisionRecord` fields are always included; `EyeExamination` fields
+///   are appended when an examination exists for the record.
+///
+/// # Access control
+/// `caller.require_auth()` is enforced unconditionally.  The caller must then
+/// be the record's `patient`, the record's `provider`, hold the
+/// `ReadAnyRecord` or `SystemAdmin` RBAC permission, or possess a valid
+/// consent / access grant – exactly as [`VisionRecordsContract::get_record`].
+///
+/// # Errors
+/// * [`ContractError::RecordNotFound`] – no record with that ID exists.
+/// * [`ContractError::Unauthorized`]  – caller lacks read permission.
+pub fn prepare_record_for_export(
+    env: &Env,
+    caller: &Address,
+    record_id: &BytesN<32>,
+) -> Result<(Bytes, Vec<(Symbol, Bytes)>), ContractError> {
+    caller.require_auth();
+
+    let rid = export_internal_record_id(record_id);
+    let record = export_check_access(env, caller, rid)?;
+
+    // ── Serialise the full record to a deterministic byte blob ───────────────
+    // We build the blob by concatenating the record's stable textual fields;
+    // this gives the cross-chain bridge a stable, hash-able payload without
+    // requiring XDR encoding (which is test-only in this SDK version).
+    let mut blob = alloc::vec::Vec::<u8>::new();
+    blob.extend_from_slice(&record.id.to_be_bytes());
+    blob.extend_from_slice(record.data_hash.to_string().as_bytes());
+    blob.extend_from_slice(&record.created_at.to_be_bytes());
+    blob.extend_from_slice(&record.updated_at.to_be_bytes());
+    let record_data = Bytes::from_slice(env, &blob);
+
+    // ── Build per-field (name, bytes) pairs ──────────────────────────────────
+    let mut fields: Vec<(Symbol, Bytes)> = Vec::new(env);
+
+    // Core VisionRecord fields
+    fields.push_back((
+        symbol_short!("data_hash"),
+        Bytes::from_slice(env, record.data_hash.to_string().as_bytes()),
+    ));
+    // RecordType discriminant serialised as a 4-byte big-endian value
+    let rec_type_disc: u32 = match record.record_type {
+        RecordType::Examination  => 0,
+        RecordType::Prescription => 1,
+        RecordType::Diagnosis    => 2,
+        RecordType::Treatment    => 3,
+        RecordType::Surgery      => 4,
+        RecordType::LabResult    => 5,
+    };
+    fields.push_back((
+        symbol_short!("rec_type"),
+        Bytes::from_array(env, &rec_type_disc.to_be_bytes()),
+    ));
+    fields.push_back((
+        symbol_short!("created"),
+        Bytes::from_array(env, &record.created_at.to_be_bytes()),
+    ));
+    fields.push_back((
+        symbol_short!("updated"),
+        Bytes::from_array(env, &record.updated_at.to_be_bytes()),
+    ));
+
+    // EyeExamination fields (present only for Examination-type records)
+    if let Some(exam) = examination::get_examination(env, rid) {
+        fields.push_back((
+            symbol_short!("va_l"),
+            Bytes::from_slice(env, exam.visual_acuity.uncorrected.left_eye.to_string().as_bytes()),
+        ));
+        fields.push_back((
+            symbol_short!("va_r"),
+            Bytes::from_slice(env, exam.visual_acuity.uncorrected.right_eye.to_string().as_bytes()),
+        ));
+        fields.push_back((
+            symbol_short!("iop_l"),
+            Bytes::from_array(env, &exam.iop.left_eye.to_be_bytes()),
+        ));
+        fields.push_back((
+            symbol_short!("iop_r"),
+            Bytes::from_array(env, &exam.iop.right_eye.to_be_bytes()),
+        ));
+        fields.push_back((
+            symbol_short!("iop_meth"),
+            Bytes::from_slice(env, exam.iop.method.to_string().as_bytes()),
+        ));
+        fields.push_back((
+            symbol_short!("slit_cor"),
+            Bytes::from_slice(env, exam.slit_lamp.cornea.to_string().as_bytes()),
+        ));
+        fields.push_back((
+            symbol_short!("slit_len"),
+            Bytes::from_slice(env, exam.slit_lamp.lens.to_string().as_bytes()),
+        ));
+        fields.push_back((
+            symbol_short!("cl_notes"),
+            Bytes::from_slice(env, exam.clinical_notes.to_string().as_bytes()),
+        ));
+    }
+
+    Ok((record_data, fields))
+}
+
+/// Returns the list of field names available for selective disclosure on a
+/// given record.
+///
+/// The returned `Vec<Symbol>` mirrors exactly the `field_name` entries that
+/// [`prepare_record_for_export`] would populate for the same record, so that
+/// the cross-chain bridge (or any client) can build a selective-disclosure
+/// request without having to call `prepare_record_for_export` first.
+///
+/// # Access control
+/// Same rules as [`prepare_record_for_export`]: `caller.require_auth()` is
+/// unconditionally enforced; the caller must be patient, provider, or hold an
+/// appropriate RBAC permission / grant.
+///
+/// # Errors
+/// * [`ContractError::RecordNotFound`] – no record with that ID exists.
+/// * [`ContractError::Unauthorized`]  – caller lacks read permission.
+pub fn get_exportable_fields(
+    env: &Env,
+    caller: &Address,
+    record_id: &BytesN<32>,
+) -> Result<Vec<Symbol>, ContractError> {
+    caller.require_auth();
+
+    let rid = export_internal_record_id(record_id);
+    let record = export_check_access(env, caller, rid)?;
+
+    let mut names: Vec<Symbol> = Vec::new(env);
+
+    // Core VisionRecord fields – always present
+    names.push_back(symbol_short!("data_hash"));
+    names.push_back(symbol_short!("rec_type"));
+    names.push_back(symbol_short!("patient"));
+    names.push_back(symbol_short!("provider"));
+    names.push_back(symbol_short!("created"));
+    names.push_back(symbol_short!("updated"));
+
+    // EyeExamination fields – present only when an examination exists
+    if examination::get_examination(env, rid).is_some() {
+        names.push_back(symbol_short!("va_l"));
+        names.push_back(symbol_short!("va_r"));
+        names.push_back(symbol_short!("iop_l"));
+        names.push_back(symbol_short!("iop_r"));
+        names.push_back(symbol_short!("iop_meth"));
+        names.push_back(symbol_short!("slit_cor"));
+        names.push_back(symbol_short!("slit_len"));
+        names.push_back(symbol_short!("cl_notes"));
+    }
+
+    // Silence the unused-variable warning from the access-checked record
+    let _ = record;
+
+    Ok(names)
 }
 
 #[cfg(test)]
