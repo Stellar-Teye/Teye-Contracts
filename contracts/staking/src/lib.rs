@@ -142,7 +142,7 @@ impl StakingContract {
             .ok_or(ContractError::NotInitialized)?;
         token::Client::new(&env, &stake_token).transfer(
             &staker,
-            &env.current_contract_address(),
+            env.current_contract_address(),
             &amount,
         );
 
@@ -251,7 +251,7 @@ impl StakingContract {
             .get(&STAKE_TOKEN)
             .ok_or(ContractError::NotInitialized)?;
         token::Client::new(&env, &stake_token).transfer(
-            &env.current_contract_address(),
+            env.current_contract_address(),
             &staker,
             &request.amount,
         );
@@ -292,7 +292,7 @@ impl StakingContract {
             .get(&REWARD_TOKEN)
             .ok_or(ContractError::NotInitialized)?;
         token::Client::new(&env, &reward_token).transfer(
-            &env.current_contract_address(),
+            env.current_contract_address(),
             &staker,
             &earned,
         );

@@ -14,9 +14,11 @@ use soroban_sdk::contracterror;
 
 // ── Modules ──────────────────────────────────────────────────────────────────
 
+#[allow(clippy::enum_variant_names)]
 pub mod admin_tiers;
 #[cfg(feature = "std")]
 pub mod consent;
+#[cfg(feature = "std")]
 pub mod keys;
 pub mod meta_tx;
 #[cfg(feature = "std")]
@@ -27,6 +29,7 @@ pub mod whitelist;
 pub use admin_tiers::*;
 #[cfg(feature = "std")]
 pub use consent::*;
+#[cfg(feature = "std")]
 pub use keys::*;
 pub use meta_tx::*;
 #[cfg(feature = "std")]
@@ -81,6 +84,9 @@ pub enum CommonError {
     /// The contract is currently paused and cannot process requests.
     Paused = 40,
 }
+
+#[cfg(test)]
+mod keys_test;
 
 #[cfg(test)]
 mod tests {

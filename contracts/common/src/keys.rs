@@ -2,8 +2,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // Aliases to disambiguate from Soroban SDK types
-type StdString = String;
-type StdVec<T> = Vec<T>;
+pub type StdString = String;
+pub type StdVec<T> = Vec<T>;
 
 #[derive(Debug, Clone, Default)]
 pub struct AuditEntry {
@@ -191,10 +191,7 @@ fn hex_decode_and_xor(key: &[u8], hexstr: &str) -> Option<StdString> {
             out.push(b ^ key[i % key.len()]);
         }
     }
-    match StdString::from_utf8(out) {
-        Ok(s) => Some(s),
-        Err(_) => None,
-    }
+    StdString::from_utf8(out).ok()
 }
 
 /// Decode a hex string into raw bytes. Returns `None` on invalid input.

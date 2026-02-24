@@ -19,6 +19,7 @@ use soroban_sdk::{
 };
 
 use teye_common::whitelist;
+use teye_common::{admin_tiers, admin_tiers::AdminTier, hex_to_bytes, KeyManager, StdString, StdVec};
 
 /// Re-export the contract-specific error type at the crate root.
 pub use errors::ContractError;
@@ -671,7 +672,7 @@ impl VisionRecordsContract {
                 .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
             {
                 let hex = sv.to_string();
-                if let Some(bytes) = common::hex_to_bytes(&hex) {
+                if let Some(bytes) = hex_to_bytes(&hex) {
                     master_bytes = bytes;
                 }
             }
@@ -752,7 +753,7 @@ impl VisionRecordsContract {
                 .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
             {
                 let hex = sv.to_string();
-                if let Some(bytes) = common::hex_to_bytes(&hex) {
+                if let Some(bytes) = hex_to_bytes(&hex) {
                     master_bytes_batch = bytes;
                 }
             }
@@ -887,7 +888,7 @@ impl VisionRecordsContract {
                         .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
                     {
                         let hex = sv.to_string();
-                        if let Some(bytes) = common::hex_to_bytes(&hex) {
+                        if let Some(bytes) = hex_to_bytes(&hex) {
                             master_bytes = bytes;
                         }
                     }

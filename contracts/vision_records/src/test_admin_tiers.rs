@@ -1,6 +1,6 @@
 extern crate std;
 
-use common::admin_tiers::AdminTier;
+use teye_common::admin_tiers::AdminTier;
 use soroban_sdk::{testutils::Address as _, Address, Env};
 
 use crate::{
