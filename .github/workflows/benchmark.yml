@@ -58,3 +58,34 @@ jobs:
           name: criterion-report
           path: target/criterion
           retention-days: 14
+
+  zk-benchmarks:
+    name: ZK Proof Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config libudev-dev libhidapi-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: wasm32-unknown-unknown
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-bench-
+
+      - name: Run ZK benchmark tests
+        run: cargo test -p zk_verifier --test bench_verify --verbose -- --nocapture
+
+      - name: Run ZK regression tests
+        run: cargo test -p zk_verifier --test bench_verify regression --verbose -- --nocapture
