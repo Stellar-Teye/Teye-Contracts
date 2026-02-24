@@ -14,6 +14,7 @@ use timelock::UnstakeRequest;
 // ── Storage key constants ────────────────────────────────────────────────────
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
+const PENDING_ADMIN: Symbol = symbol_short!("PEND_ADM");
 const INITIALIZED: Symbol = symbol_short!("INIT");
 const STAKE_TOKEN: Symbol = symbol_short!("STK_TOK");
 const REWARD_TOKEN: Symbol = symbol_short!("RWD_TOK");
@@ -405,6 +406,83 @@ impl StakingContract {
             .instance()
             .get(&ADMIN)
             .ok_or(ContractError::NotInitialized)
+    }
+
+    // ── Admin transfer (two-step) ──────────────────────────────────────────
+
+    /// Propose a new admin address. Only the current admin can call this.
+    /// The new admin must call `accept_admin` to complete the transfer.
+    pub fn propose_admin(
+        env: Env,
+        current_admin: Address,
+        new_admin: Address,
+    ) -> Result<(), ContractError> {
+        Self::require_initialized(&env)?;
+        current_admin.require_auth();
+        Self::require_admin(&env, &current_admin)?;
+
+        env.storage().instance().set(&PENDING_ADMIN, &new_admin);
+
+        events::publish_admin_transfer_proposed(&env, current_admin, new_admin);
+
+        Ok(())
+    }
+
+    /// Accept the pending admin transfer. Only the proposed new admin can call this.
+    /// Completes the two-step admin transfer process.
+    pub fn accept_admin(env: Env, new_admin: Address) -> Result<(), ContractError> {
+        Self::require_initialized(&env)?;
+        new_admin.require_auth();
+
+        let pending: Address = env
+            .storage()
+            .instance()
+            .get(&PENDING_ADMIN)
+            .ok_or(ContractError::InvalidInput)?;
+
+        if new_admin != pending {
+            return Err(ContractError::Unauthorized);
+        }
+
+        let old_admin: Address = env
+            .storage()
+            .instance()
+            .get(&ADMIN)
+            .ok_or(ContractError::NotInitialized)?;
+
+        env.storage().instance().set(&ADMIN, &new_admin);
+        env.storage().instance().remove(&PENDING_ADMIN);
+
+        events::publish_admin_transfer_accepted(&env, old_admin, new_admin);
+
+        Ok(())
+    }
+
+    /// Cancel a pending admin transfer. Only the current admin can call this.
+    pub fn cancel_admin_transfer(
+        env: Env,
+        current_admin: Address,
+    ) -> Result<(), ContractError> {
+        Self::require_initialized(&env)?;
+        current_admin.require_auth();
+        Self::require_admin(&env, &current_admin)?;
+
+        let pending: Address = env
+            .storage()
+            .instance()
+            .get(&PENDING_ADMIN)
+            .ok_or(ContractError::InvalidInput)?;
+
+        env.storage().instance().remove(&PENDING_ADMIN);
+
+        events::publish_admin_transfer_cancelled(&env, current_admin, pending);
+
+        Ok(())
+    }
+
+    /// Get the pending admin address, if any.
+    pub fn get_pending_admin(env: Env) -> Option<Address> {
+        env.storage().instance().get(&PENDING_ADMIN)
     }
 
     // ── Admin functions ──────────────────────────────────────────────────────

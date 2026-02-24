@@ -14,6 +14,33 @@ pub struct InitializedEvent {
     pub timestamp: u64,
 }
 
+/// Event published when an admin transfer is proposed.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminTransferProposedEvent {
+    pub current_admin: Address,
+    pub proposed_admin: Address,
+    pub timestamp: u64,
+}
+
+/// Event published when an admin transfer is accepted.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminTransferAcceptedEvent {
+    pub old_admin: Address,
+    pub new_admin: Address,
+    pub timestamp: u64,
+}
+
+/// Event published when a pending admin transfer is cancelled.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminTransferCancelledEvent {
+    pub admin: Address,
+    pub cancelled_proposed: Address,
+    pub timestamp: u64,
+}
+
 /// Event published when a new user is registered.
 #[soroban_sdk::contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -113,6 +140,36 @@ pub struct ContractResumedEvent {
     pub caller: Address,
     pub scope: PauseScope,
     pub timestamp: u64,
+}
+
+pub fn publish_admin_transfer_proposed(env: &Env, current_admin: Address, proposed_admin: Address) {
+    let topics = (symbol_short!("ADM_PROP"), current_admin.clone());
+    let data = AdminTransferProposedEvent {
+        current_admin,
+        proposed_admin,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+pub fn publish_admin_transfer_accepted(env: &Env, old_admin: Address, new_admin: Address) {
+    let topics = (symbol_short!("ADM_ACPT"), new_admin.clone());
+    let data = AdminTransferAcceptedEvent {
+        old_admin,
+        new_admin,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+pub fn publish_admin_transfer_cancelled(env: &Env, admin: Address, cancelled_proposed: Address) {
+    let topics = (symbol_short!("ADM_CNCL"), admin.clone());
+    let data = AdminTransferCancelledEvent {
+        admin,
+        cancelled_proposed,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
 }
 
 pub fn publish_initialized(env: &Env, admin: Address) {
