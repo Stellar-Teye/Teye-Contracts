@@ -92,6 +92,7 @@ pub struct FundusPhotography {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum OptFundusPhotography {
     None,
     Some(FundusPhotography),

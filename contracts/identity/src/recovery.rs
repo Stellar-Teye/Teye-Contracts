@@ -111,11 +111,7 @@ pub fn get_threshold(env: &Env, owner: &Address) -> u32 {
     env.storage().persistent().get(&key).unwrap_or(0)
 }
 
-pub fn add_guardian(
-    env: &Env,
-    owner: &Address,
-    guardian: Address,
-) -> Result<(), RecoveryError> {
+pub fn add_guardian(env: &Env, owner: &Address, guardian: Address) -> Result<(), RecoveryError> {
     let key = guardians_key(owner);
     let mut guardians: Vec<Address> = env
         .storage()
@@ -169,11 +165,7 @@ pub fn remove_guardian(
     Ok(())
 }
 
-pub fn set_threshold(
-    env: &Env,
-    owner: &Address,
-    threshold: u32,
-) -> Result<(), RecoveryError> {
+pub fn set_threshold(env: &Env, owner: &Address, threshold: u32) -> Result<(), RecoveryError> {
     let guardians = get_guardians(env, owner);
     if threshold == 0 || threshold > guardians.len() {
         return Err(RecoveryError::InvalidThreshold);
@@ -256,10 +248,7 @@ pub fn approve_recovery(
     Ok(())
 }
 
-pub fn execute_recovery(
-    env: &Env,
-    owner: &Address,
-) -> Result<Address, RecoveryError> {
+pub fn execute_recovery(env: &Env, owner: &Address) -> Result<Address, RecoveryError> {
     let key = recovery_key(owner);
     let request: RecoveryRequest = env
         .storage()

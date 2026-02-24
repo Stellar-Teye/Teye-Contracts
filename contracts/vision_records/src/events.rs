@@ -1,5 +1,6 @@
 use crate::appointment::AppointmentType;
 use crate::audit::{AccessAction, AccessResult, AuditEntry};
+use crate::circuit_breaker::PauseScope;
 use crate::emergency::EmergencyCondition;
 use crate::errors::{ErrorCategory, ErrorContext, ErrorSeverity};
 use crate::{AccessLevel, RecordType, Role, VerificationStatus};
@@ -55,6 +56,16 @@ pub struct AccessRevokedEvent {
     pub timestamp: u64,
 }
 
+/// Event published when an expired access grant is purged.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccessExpiredEvent {
+    pub patient: Address,
+    pub grantee: Address,
+    pub expired_at: u64,
+    pub purged_at: u64,
+}
+
 /// Event published when a batch of records is added.
 #[soroban_sdk::contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -70,6 +81,24 @@ pub struct BatchRecordsAddedEvent {
 pub struct BatchAccessGrantedEvent {
     pub patient: Address,
     pub count: u32,
+    pub timestamp: u64,
+}
+
+/// Event published when circuit breaker is enabled.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContractPausedEvent {
+    pub caller: Address,
+    pub scope: PauseScope,
+    pub timestamp: u64,
+}
+
+/// Event published when circuit breaker is disabled.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContractResumedEvent {
+    pub caller: Address,
+    pub scope: PauseScope,
     pub timestamp: u64,
 }
 
@@ -149,12 +178,37 @@ pub fn publish_access_revoked(env: &Env, patient: Address, grantee: Address) {
     env.events().publish(topics, data);
 }
 
-pub fn publish_access_expired(
-    env: &Env,
-    patient: Address,
-    grantee: Address,
-    expired_at: u64,
-) {
+pub fn publish_batch_records_added(env: &Env, provider: Address, count: u32) {
+    let topics = (symbol_short!("BATCH_R"), provider.clone());
+    let data = BatchRecordsAddedEvent {
+        provider,
+        count,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+pub fn publish_contract_paused(env: &Env, caller: Address, scope: PauseScope) {
+    let topics = (symbol_short!("PAUSE"),);
+    let data = ContractPausedEvent {
+        caller,
+        scope,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+pub fn publish_contract_resumed(env: &Env, caller: Address, scope: PauseScope) {
+    let topics = (symbol_short!("RESUME"),);
+    let data = ContractResumedEvent {
+        caller,
+        scope,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+pub fn publish_access_expired(env: &Env, patient: Address, grantee: Address, expired_at: u64) {
     let topics = (symbol_short!("ACC_EXP"), patient.clone(), grantee.clone());
     let data = AccessExpiredEvent {
         patient,
@@ -228,7 +282,8 @@ pub fn publish_provider_verified(
     );
     let data = ProviderVerifiedEvent {
         provider,
-        count,
+        verifier,
+        status,
         timestamp: env.ledger().timestamp(),
     };
     env.events().publish(topics, data);
@@ -336,6 +391,40 @@ pub fn publish_consent_revoked(env: &Env, patient: Address, grantee: Address) {
     let data = ConsentRevokedEvent {
         patient,
         grantee,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+/// Event published when a patient profile is created.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProfileCreatedEvent {
+    pub patient: Address,
+    pub timestamp: u64,
+}
+
+/// Event published when a patient profile is updated.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProfileUpdatedEvent {
+    pub patient: Address,
+    pub timestamp: u64,
+}
+
+pub fn publish_profile_created(env: &Env, patient: Address) {
+    let topics = (symbol_short!("PROF_C"), patient.clone());
+    let data = ProfileCreatedEvent {
+        patient,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+pub fn publish_profile_updated(env: &Env, patient: Address) {
+    let topics = (symbol_short!("PROF_U"), patient.clone());
+    let data = ProfileUpdatedEvent {
+        patient,
         timestamp: env.ledger().timestamp(),
     };
     env.events().publish(topics, data);

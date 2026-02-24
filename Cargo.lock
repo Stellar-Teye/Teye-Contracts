@@ -2166,6 +2166,7 @@ dependencies = [
 name = "zk_verifier"
 version = "1.2.2"
 dependencies = [
+ "common",
  "soroban-sdk",
 ]
 

@@ -96,10 +96,7 @@ pub fn user_assignment_key(user: &Address) -> (soroban_sdk::Symbol, Address) {
     (symbol_short!("ROLE_ASN"), user.clone())
 }
 
-pub fn delegation_key(
-    delegator: &Address,
-    delegatee: &Address,
-) -> (Symbol, Address, Address) {
+pub fn delegation_key(delegator: &Address, delegatee: &Address) -> (Symbol, Address, Address) {
     (
         symbol_short!("DELEGATE"),
         delegator.clone(),
@@ -113,6 +110,10 @@ pub fn acl_group_key(name: &String) -> (Symbol, String) {
 
 pub fn user_groups_key(user: &Address) -> (Symbol, Address) {
     (symbol_short!("USR_GRPS"), user.clone())
+}
+
+pub fn delegatee_index_key(delegatee: &Address) -> (Symbol, Address) {
+    (symbol_short!("DEL_IDX"), delegatee.clone())
 }
 
 // ======================== Core RBAC Engine ========================
@@ -269,10 +270,7 @@ pub fn delete_group(env: &Env, name: String) {
 
 pub fn add_to_group(env: &Env, user: Address, group_name: String) -> Result<(), ()> {
     // Verify group exists
-    if !env.storage()
-        .persistent()
-        .has(&acl_group_key(&group_name))
-    {
+    if !env.storage().persistent().has(&acl_group_key(&group_name)) {
         return Err(());
     }
 

@@ -8,8 +8,10 @@ pub use crate::audit::{AuditRecord, AuditTrail};
 pub use crate::helpers::ZkAccessHelper;
 pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof};
 
+use common::whitelist;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, BytesN, Env,
+    Symbol, Vec,
 };
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
@@ -18,35 +20,6 @@ const RATE_TRACK: Symbol = symbol_short!("RLTRK");
 
 /// Maximum number of public inputs accepted per proof verification.
 const MAX_PUBLIC_INPUTS: u32 = 16;
-
-/// Contract errors for the ZK verifier.
-#[soroban_sdk::contracterror]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-#[repr(u32)]
-pub enum ContractError {
-    /// The public inputs vector is empty.
-    EmptyPublicInputs = 1,
-    /// Too many public inputs supplied.
-    TooManyPublicInputs = 2,
-    /// A proof component is all zeros (degenerate / trivially invalid).
-    DegenerateProof = 3,
-}
-
-/// Maximum number of public inputs accepted per proof verification.
-const MAX_PUBLIC_INPUTS: u32 = 16;
-
-/// Contract errors for the ZK verifier.
-#[soroban_sdk::contracterror]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-#[repr(u32)]
-pub enum ContractError {
-    /// The public inputs vector is empty.
-    EmptyPublicInputs = 1,
-    /// Too many public inputs supplied.
-    TooManyPublicInputs = 2,
-    /// A proof component is all zeros (degenerate / trivially invalid).
-    DegenerateProof = 3,
-}
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -57,13 +30,17 @@ pub struct AccessRequest {
     pub public_inputs: Vec<BytesN<32>>,
 }
 
-#[soroban_sdk::contracterror]
+/// Contract errors for the ZK verifier.
+#[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum ContractError {
     Unauthorized = 1,
     RateLimited = 2,
     InvalidConfig = 3,
+    EmptyPublicInputs = 4,
+    TooManyPublicInputs = 5,
+    DegenerateProof = 6,
 }
 
 #[contract]
@@ -84,20 +61,16 @@ fn is_all_zeros<const N: usize>(data: &BytesN<N>) -> bool {
     all_zero
 }
 
-/// Validate the structural integrity of an [`AccessRequest`] before
-/// performing the (expensive) cryptographic verification.
+/// Validate request shape before running proof verification.
 fn validate_request(request: &AccessRequest) -> Result<(), ContractError> {
-    // Must have at least one public input.
     if request.public_inputs.is_empty() {
         return Err(ContractError::EmptyPublicInputs);
     }
 
-    // Cap the number of public inputs to prevent excessive computation.
     if request.public_inputs.len() > MAX_PUBLIC_INPUTS {
         return Err(ContractError::TooManyPublicInputs);
     }
 
-    // Reject degenerate proof components (all zero bytes).
     if is_all_zeros(&request.proof.a)
         || is_all_zeros(&request.proof.b)
         || is_all_zeros(&request.proof.c)
@@ -111,8 +84,6 @@ fn validate_request(request: &AccessRequest) -> Result<(), ContractError> {
 #[contractimpl]
 impl ZkVerifierContract {
     /// One-time initialization to set the admin address.
-    ///
-    /// Subsequent calls are ignored once the admin is set.
     pub fn initialize(env: Env, admin: Address) {
         if env.storage().instance().has(&ADMIN) {
             return;
@@ -122,18 +93,8 @@ impl ZkVerifierContract {
         env.storage().instance().set(&ADMIN, &admin);
     }
 
-    /// Configure per-address rate limiting for this contract.
-    pub fn set_rate_limit_config(
-        env: Env,
-        caller: Address,
-        max_requests_per_window: u64,
-        window_duration_seconds: u64,
-    ) -> Result<(), ContractError> {
+    fn require_admin(env: &Env, caller: &Address) -> Result<(), ContractError> {
         caller.require_auth();
-
-        if max_requests_per_window == 0 || window_duration_seconds == 0 {
-            return Err(ContractError::InvalidConfig);
-        }
 
         let admin: Address = env
             .storage()
@@ -141,8 +102,24 @@ impl ZkVerifierContract {
             .get(&ADMIN)
             .ok_or(ContractError::Unauthorized)?;
 
-        if caller != admin {
+        if caller != &admin {
             return Err(ContractError::Unauthorized);
+        }
+
+        Ok(())
+    }
+
+    /// Configure per-address rate limiting for this contract.
+    pub fn set_rate_limit_config(
+        env: Env,
+        caller: Address,
+        max_requests_per_window: u64,
+        window_duration_seconds: u64,
+    ) -> Result<(), ContractError> {
+        Self::require_admin(&env, &caller)?;
+
+        if max_requests_per_window == 0 || window_duration_seconds == 0 {
+            return Err(ContractError::InvalidConfig);
         }
 
         env.storage().instance().set(
@@ -158,15 +135,51 @@ impl ZkVerifierContract {
         env.storage().instance().get(&RATE_CFG)
     }
 
+    /// Enables or disables whitelist enforcement.
+    pub fn set_whitelist_enabled(
+        env: Env,
+        caller: Address,
+        enabled: bool,
+    ) -> Result<(), ContractError> {
+        Self::require_admin(&env, &caller)?;
+        whitelist::set_whitelist_enabled(&env, enabled);
+        Ok(())
+    }
+
+    /// Adds an address to the whitelist.
+    pub fn add_to_whitelist(env: Env, caller: Address, user: Address) -> Result<(), ContractError> {
+        Self::require_admin(&env, &caller)?;
+        whitelist::add_to_whitelist(&env, &user);
+        Ok(())
+    }
+
+    /// Removes an address from the whitelist.
+    pub fn remove_from_whitelist(
+        env: Env,
+        caller: Address,
+        user: Address,
+    ) -> Result<(), ContractError> {
+        Self::require_admin(&env, &caller)?;
+        whitelist::remove_from_whitelist(&env, &user);
+        Ok(())
+    }
+
+    pub fn is_whitelist_enabled(env: Env) -> bool {
+        whitelist::is_whitelist_enabled(&env)
+    }
+
+    pub fn is_whitelisted(env: Env, user: Address) -> bool {
+        whitelist::is_whitelisted(&env, &user)
+    }
+
     fn check_and_update_rate_limit(env: &Env, user: &Address) -> Result<(), ContractError> {
         let cfg: Option<(u64, u64)> = env.storage().instance().get(&RATE_CFG);
         let (max_requests_per_window, window_duration_seconds) = match cfg {
             Some(c) => c,
-            None => return Ok(()), // No config set -> unlimited
+            None => return Ok(()),
         };
 
         if max_requests_per_window == 0 || window_duration_seconds == 0 {
-            // Explicitly disabled
             return Ok(());
         }
 
@@ -194,6 +207,12 @@ impl ZkVerifierContract {
 
     pub fn verify_access(env: Env, request: AccessRequest) -> Result<bool, ContractError> {
         request.user.require_auth();
+
+        validate_request(&request)?;
+
+        if !whitelist::check_whitelist_access(&env, &request.user) {
+            return Err(ContractError::Unauthorized);
+        }
 
         Self::check_and_update_rate_limit(&env, &request.user)?;
 

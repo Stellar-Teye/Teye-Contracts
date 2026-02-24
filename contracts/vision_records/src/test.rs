@@ -6,7 +6,7 @@
 )]
 
 use super::*;
-use soroban_sdk::testutils::{Address as _, Events};
+use soroban_sdk::testutils::{Address as _, Events, Ledger};
 use soroban_sdk::{symbol_short, Env, IntoVal, TryIntoVal};
 
 #[test]
@@ -32,6 +32,159 @@ fn test_initialize() {
     assert_eq!(event.1, (symbol_short!("INIT"),).into_val(&env));
     let payload: events::InitializedEvent = event.2.try_into_val(&env).unwrap();
     assert_eq!(payload.admin, admin);
+}
+
+#[test]
+fn test_whitelist_register_user_and_add_record_enforcement() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(VisionRecordsContract, ());
+    let client = VisionRecordsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let user = Address::generate(&env);
+    let patient = Address::generate(&env);
+    let provider = Address::generate(&env);
+    let data_hash = String::from_str(&env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
+
+    client.set_whitelist_enabled(&admin, &true);
+
+    // Admin removed from whitelist should be blocked from protected calls.
+    client.remove_from_whitelist(&admin, &admin);
+    let reg_blocked = client.try_register_user(
+        &admin,
+        &user,
+        &Role::Patient,
+        &String::from_str(&env, "Alice"),
+    );
+    assert!(reg_blocked.is_err());
+    assert!(matches!(
+        reg_blocked.unwrap_err(),
+        Ok(ContractError::Unauthorized)
+    ));
+
+    let add_blocked = client.try_add_record(
+        &admin,
+        &patient,
+        &provider,
+        &RecordType::Examination,
+        &data_hash,
+    );
+    assert!(add_blocked.is_err());
+    assert!(matches!(
+        add_blocked.unwrap_err(),
+        Ok(ContractError::Unauthorized)
+    ));
+
+    // Admin can restore access by adding self back.
+    client.add_to_whitelist(&admin, &admin);
+    let reg_allowed = client.try_register_user(
+        &admin,
+        &user,
+        &Role::Patient,
+        &String::from_str(&env, "Alice"),
+    );
+    assert!(reg_allowed.is_ok());
+
+    let add_allowed = client.try_add_record(
+        &admin,
+        &patient,
+        &provider,
+        &RecordType::Examination,
+        &data_hash,
+    );
+    assert!(add_allowed.is_ok());
+
+    // Global disable should bypass whitelist entries.
+    client.set_whitelist_enabled(&admin, &false);
+    client.remove_from_whitelist(&admin, &admin);
+    let add_when_disabled = client.try_add_record(
+        &admin,
+        &patient,
+        &provider,
+        &RecordType::Examination,
+        &data_hash,
+    );
+    assert!(add_when_disabled.is_ok());
+}
+
+#[test]
+fn test_whitelist_enforced_for_add_records_batch() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(VisionRecordsContract, ());
+    let client = VisionRecordsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let provider = Address::generate(&env);
+    let patient = Address::generate(&env);
+    client.initialize(&admin);
+    client.register_user(
+        &admin,
+        &provider,
+        &Role::Optometrist,
+        &String::from_str(&env, "Provider"),
+    );
+
+    client.set_whitelist_enabled(&admin, &true);
+    assert!(!client.is_whitelisted(&provider));
+
+    let mut records = Vec::new(&env);
+    records.push_back(BatchRecordInput {
+        patient: patient.clone(),
+        record_type: RecordType::Examination,
+        data_hash: String::from_str(&env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG"),
+    });
+
+    let blocked = client.try_add_records(&provider, &records);
+    assert!(blocked.is_err());
+    assert!(matches!(
+        blocked.unwrap_err(),
+        Ok(ContractError::Unauthorized)
+    ));
+
+    client.add_to_whitelist(&admin, &provider);
+    let allowed = client.try_add_records(&provider, &records);
+    assert!(allowed.is_ok());
+}
+
+#[test]
+fn test_whitelist_admin_only_management() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(VisionRecordsContract, ());
+    let client = VisionRecordsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let non_admin = Address::generate(&env);
+    let target = Address::generate(&env);
+    client.initialize(&admin);
+
+    let add_res = client.try_add_to_whitelist(&non_admin, &target);
+    assert!(add_res.is_err());
+    assert!(matches!(
+        add_res.unwrap_err(),
+        Ok(ContractError::Unauthorized)
+    ));
+
+    let remove_res = client.try_remove_from_whitelist(&non_admin, &target);
+    assert!(remove_res.is_err());
+    assert!(matches!(
+        remove_res.unwrap_err(),
+        Ok(ContractError::Unauthorized)
+    ));
+
+    let toggle_res = client.try_set_whitelist_enabled(&non_admin, &true);
+    assert!(toggle_res.is_err());
+    assert!(matches!(
+        toggle_res.unwrap_err(),
+        Ok(ContractError::Unauthorized)
+    ));
 }
 
 #[test]

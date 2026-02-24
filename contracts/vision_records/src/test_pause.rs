@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use crate::{
     circuit_breaker::PauseScope, rbac::Role, ContractError, RecordType, VisionRecordsContract,
     VisionRecordsContractClient,
@@ -74,7 +72,7 @@ fn test_granular_pause() {
     client.pause_contract(&admin, &add_rec_scope);
 
     // Adding a record should fail
-    let hash = String::from_str(&env, "hash");
+    let hash = String::from_str(&env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
     let res = client.try_add_record(&doctor, &patient, &doctor, &RecordType::Examination, &hash);
     assert_eq!(res.unwrap_err().unwrap(), ContractError::Paused);
 

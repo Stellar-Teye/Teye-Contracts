@@ -117,7 +117,8 @@ fn test_rate_limit_enforcement_and_reset() {
 
     let mut proof_a = [0u8; 64];
     proof_a[0] = 1;
-    let proof_b = [0u8; 128];
+    let mut proof_b = [0u8; 128];
+    proof_b[0] = 1;
     let mut proof_c = [0u8; 64];
     proof_c[0] = 1;
     let mut pi = [0u8; 32];
@@ -149,4 +150,99 @@ fn test_rate_limit_enforcement_and_reset() {
 
     let res_after_reset = client.try_verify_access(&request);
     assert!(res_after_reset.is_ok());
+}
+
+#[test]
+fn test_whitelist_enforcement_and_toggle() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let allowed_user = Address::generate(&env);
+    let blocked_user = Address::generate(&env);
+
+    client.set_whitelist_enabled(&admin, &true);
+    client.add_to_whitelist(&admin, &allowed_user);
+
+    let resource_id = [7u8; 32];
+    let mut proof_a = [0u8; 64];
+    proof_a[0] = 1;
+    let mut proof_b = [0u8; 128];
+    proof_b[0] = 1;
+    let mut proof_c = [0u8; 64];
+    proof_c[0] = 1;
+    let mut pi = [0u8; 32];
+    pi[0] = 1;
+
+    let allowed_request = ZkAccessHelper::create_request(
+        &env,
+        allowed_user.clone(),
+        resource_id,
+        proof_a,
+        proof_b,
+        proof_c,
+        &[&pi],
+    );
+    assert!(client.verify_access(&allowed_request));
+
+    let blocked_request = ZkAccessHelper::create_request(
+        &env,
+        blocked_user,
+        resource_id,
+        proof_a,
+        proof_b,
+        proof_c,
+        &[&pi],
+    );
+    let blocked = client.try_verify_access(&blocked_request);
+    assert!(blocked.is_err());
+    assert!(matches!(
+        blocked.unwrap_err(),
+        Ok(ContractError::Unauthorized)
+    ));
+
+    client.set_whitelist_enabled(&admin, &false);
+    let allowed_when_disabled = client.try_verify_access(&blocked_request);
+    assert!(allowed_when_disabled.is_ok());
+}
+
+#[test]
+fn test_whitelist_admin_only_management() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let non_admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    let add_res = client.try_add_to_whitelist(&non_admin, &user);
+    assert!(add_res.is_err());
+    assert!(matches!(
+        add_res.unwrap_err(),
+        Ok(ContractError::Unauthorized)
+    ));
+
+    let remove_res = client.try_remove_from_whitelist(&non_admin, &user);
+    assert!(remove_res.is_err());
+    assert!(matches!(
+        remove_res.unwrap_err(),
+        Ok(ContractError::Unauthorized)
+    ));
+
+    let toggle_res = client.try_set_whitelist_enabled(&non_admin, &true);
+    assert!(toggle_res.is_err());
+    assert!(matches!(
+        toggle_res.unwrap_err(),
+        Ok(ContractError::Unauthorized)
+    ));
 }
