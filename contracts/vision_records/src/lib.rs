@@ -18,6 +18,7 @@ pub mod patient_profile;
 
 use crate::audit::{AccessAction, AccessResult};
 use crate::prescription::{LensType, OptionalContactLensData, Prescription, PrescriptionData};
+use common::admin_tiers::{self, AdminTier};
 use common::whitelist;
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol, Vec,
@@ -272,6 +273,10 @@ impl VisionRecordsContract {
         // Assign the Admin RBAC role so the admin has permissions
         rbac::assign_role(&env, admin.clone(), Role::Admin, 0);
 
+        // Bootstrap the initializing admin as SuperAdmin in the tier system
+        admin_tiers::set_super_admin(&env, &admin);
+        admin_tiers::track_admin(&env, &admin);
+
         events::publish_initialized(&env, admin);
 
         Ok(())
@@ -301,6 +306,8 @@ impl VisionRecordsContract {
     }
 
     /// Configure per-address rate limiting for this contract.
+    ///
+    /// Requires at least `ContractAdmin` tier, or legacy admin/SystemAdmin.
     pub fn set_rate_limit_config(
         env: Env,
         caller: Address,
@@ -313,10 +320,7 @@ impl VisionRecordsContract {
             return Err(ContractError::InvalidInput);
         }
 
-        let admin = Self::get_admin(env.clone())?;
-        let has_system_admin = rbac::has_permission(&env, &caller, &Permission::SystemAdmin);
-
-        if caller != admin && !has_system_admin {
+        if !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin) {
             return Err(ContractError::Unauthorized);
         }
 
@@ -334,16 +338,15 @@ impl VisionRecordsContract {
     }
 
     /// Enables or disables whitelist enforcement globally.
-    /// Callable by owner admin or SystemAdmin.
+    ///
+    /// Requires at least `ContractAdmin` tier, or legacy admin/SystemAdmin.
     pub fn set_whitelist_enabled(
         env: Env,
         caller: Address,
         enabled: bool,
     ) -> Result<(), ContractError> {
         caller.require_auth();
-        let admin = Self::get_admin(env.clone())?;
-        let has_system_admin = rbac::has_permission(&env, &caller, &Permission::SystemAdmin);
-        if caller != admin && !has_system_admin {
+        if !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin) {
             return Err(ContractError::Unauthorized);
         }
         whitelist::set_whitelist_enabled(&env, enabled);
@@ -351,12 +354,11 @@ impl VisionRecordsContract {
     }
 
     /// Adds an address to the whitelist.
-    /// Callable by owner admin or SystemAdmin.
+    ///
+    /// Requires at least `ContractAdmin` tier, or legacy admin/SystemAdmin.
     pub fn add_to_whitelist(env: Env, caller: Address, user: Address) -> Result<(), ContractError> {
         caller.require_auth();
-        let admin = Self::get_admin(env.clone())?;
-        let has_system_admin = rbac::has_permission(&env, &caller, &Permission::SystemAdmin);
-        if caller != admin && !has_system_admin {
+        if !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin) {
             return Err(ContractError::Unauthorized);
         }
         whitelist::add_to_whitelist(&env, &user);
@@ -364,16 +366,15 @@ impl VisionRecordsContract {
     }
 
     /// Removes an address from the whitelist.
-    /// Callable by owner admin or SystemAdmin.
+    ///
+    /// Requires at least `ContractAdmin` tier, or legacy admin/SystemAdmin.
     pub fn remove_from_whitelist(
         env: Env,
         caller: Address,
         user: Address,
     ) -> Result<(), ContractError> {
         caller.require_auth();
-        let admin = Self::get_admin(env.clone())?;
-        let has_system_admin = rbac::has_permission(&env, &caller, &Permission::SystemAdmin);
-        if caller != admin && !has_system_admin {
+        if !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin) {
             return Err(ContractError::Unauthorized);
         }
         whitelist::remove_from_whitelist(&env, &user);
@@ -1543,6 +1544,65 @@ impl VisionRecordsContract {
     pub fn check_permission(env: Env, user: Address, permission: Permission) -> bool {
         rbac::has_permission(&env, &user, &permission)
     }
+
+    // ======================== Admin Tier Management ========================
+
+    /// Promotes or assigns a target address to the specified admin tier.
+    ///
+    /// Only a `SuperAdmin` may call this.
+    pub fn promote_admin(
+        env: Env,
+        caller: Address,
+        target: Address,
+        tier: AdminTier,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+        if !admin_tiers::promote_admin(&env, &caller, &target, tier) {
+            return Err(ContractError::Unauthorized);
+        }
+        admin_tiers::track_admin(&env, &target);
+        Ok(())
+    }
+
+    /// Removes the admin tier from the target address entirely.
+    ///
+    /// Only a `SuperAdmin` may call this.
+    pub fn demote_admin(
+        env: Env,
+        caller: Address,
+        target: Address,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+        if !admin_tiers::demote_admin(&env, &caller, &target) {
+            return Err(ContractError::Unauthorized);
+        }
+        admin_tiers::untrack_admin(&env, &target);
+        Ok(())
+    }
+
+    /// Returns the admin tier of the given address, if any.
+    pub fn get_admin_tier(env: Env, admin: Address) -> Option<AdminTier> {
+        admin_tiers::get_admin_tier(&env, &admin)
+    }
+
+    // ======================== Internal Helpers ========================
+
+    /// Unified check: returns true if caller has at least the specified admin
+    /// tier, OR is the legacy ADMIN address, OR has SystemAdmin RBAC permission.
+    fn has_admin_access(env: &Env, caller: &Address, min_tier: &AdminTier) -> bool {
+        // 1. Check tiered admin system
+        if admin_tiers::require_tier(env, caller, min_tier) {
+            return true;
+        }
+        // 2. Fall back to legacy admin address
+        if let Some(admin) = env.storage().instance().get::<Symbol, Address>(&ADMIN) {
+            if *caller == admin {
+                return true;
+            }
+        }
+        // 3. Fall back to RBAC SystemAdmin
+        rbac::has_permission(env, caller, &Permission::SystemAdmin)
+    }
 }
 
 #[cfg(test)]
@@ -1555,3 +1615,6 @@ mod test_rbac;
 
 #[cfg(test)]
 mod test_batch;
+
+#[cfg(test)]
+mod test_admin_tiers;

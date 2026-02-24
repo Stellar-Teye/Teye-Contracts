@@ -1,5 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+pub mod admin_tiers;
 #[cfg(feature = "std")]
 pub mod consent;
 #[cfg(feature = "std")]
@@ -10,6 +11,7 @@ pub mod multisig;
 pub mod rate_limit;
 pub mod whitelist;
 
+pub use admin_tiers::*;
 #[cfg(feature = "std")]
 pub use consent::*;
 #[cfg(feature = "std")]
