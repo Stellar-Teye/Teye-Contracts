@@ -3,14 +3,20 @@ resolver = "2"
 
 members = [
     "contracts/vision_records",
+    "contracts/ai_integration",
     "contracts/staking",
     "contracts/compliance",
     "contracts/common",
     "contracts/identity",
     "contracts/zk_verifier",
+    "contracts/fhir",
+    "contracts/cross_chain",
+    "contracts/analytics",
+    "contracts/treasury",
 ]
 
 [workspace.package]
+version = "1.0.0"
 version = "1.2.2"
 authors = ["Stellar-Teye Contributors"]
 license = "MIT"

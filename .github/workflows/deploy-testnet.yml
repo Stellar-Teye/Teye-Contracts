@@ -1,0 +1,115 @@
+name: Deploy to Stellar Testnet
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "contracts/**"
+      - "scripts/**"
+      - ".github/workflows/deploy-testnet.yml"
+  workflow_dispatch:
+    inputs:
+      contract:
+        description: "Contract name to deploy (folder name under contracts/)"
+        required: false
+        default: "vision_records"
+
+env:
+  RUST_VERSION: "1.92.0"
+  SOROBAN_VERSION: "23.1.4"
+
+jobs:
+  deploy-testnet:
+    name: Deploy Contracts to Testnet
+    runs-on: ubuntu-latest
+    environment: testnet
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config libudev-dev libhidapi-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: wasm32-unknown-unknown
+
+      - name: Install Soroban CLI
+        run: |
+          cargo install --locked --version ${{ env.SOROBAN_VERSION }} soroban-cli
+
+      - name: Show Soroban configuration
+        run: soroban config network ls || true
+
+      - name: Configure Soroban networks (idempotent)
+        run: |
+          soroban config network add testnet \
+            --rpc-url https://soroban-testnet.stellar.org:443 \
+            --network-passphrase "Test SDF Network ; September 2015" \
+            2>/dev/null || true
+
+      - name: Deploy contract to testnet
+        id: deploy
+        env:
+          GITHUB_CONTRACT_INPUT: ${{ github.event.inputs.contract }}
+        run: |
+          chmod +x scripts/deploy.sh scripts/deploy_testnet.sh
+
+          CONTRACT="$GITHUB_CONTRACT_INPUT"
+          if [ -z "$CONTRACT" ]; then
+            CONTRACT="vision_records"
+          fi
+
+          echo "Deploying contract: $CONTRACT"
+
+          OUTPUT="$(./scripts/deploy_testnet.sh "$CONTRACT")"
+          echo "$OUTPUT"
+
+          CONTRACT_ID=$(echo "$OUTPUT" | sed -n 's/^VERIFIED_CONTRACT_ID=//p')
+          if [ -z "$CONTRACT_ID" ]; then
+            echo "Failed to parse VERIFIED_CONTRACT_ID from deploy_testnet output."
+            exit 1
+          fi
+
+          echo "contract_name=$CONTRACT" >> "$GITHUB_OUTPUT"
+          echo "contract_id=$CONTRACT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Deployment report
+        id: report
+        run: |
+          echo "## Testnet Deployment Report" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Contract: \`${{ steps.deploy.outputs.contract_name }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Network: \`testnet\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Contract ID: \`${{ steps.deploy.outputs.contract_id }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Trigger: \`${{ github.event_name }}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Optional deployment notification (Slack)
+        if: ${{ success() && env.SLACK_WEBHOOK_URL != '' }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          payload=$(cat <<EOF
+          {
+            "text": "Stellar Teye - Testnet deployment completed successfully.",
+            "attachments": [
+              {
+                "color": "#36a64f",
+                "fields": [
+                  { "title": "Contract", "value": "${{ steps.deploy.outputs.contract_name }}", "short": true },
+                  { "title": "Network", "value": "testnet", "short": true },
+                  { "title": "Contract ID", "value": "${{ steps.deploy.outputs.contract_id }}", "short": false },
+                  { "title": "Run", "value": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                ]
+              }
+            ]
+          }
+          EOF
+          )
+
+          curl -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK_URL"
+

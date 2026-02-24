@@ -106,6 +106,9 @@ else
     echo "See docs/deployment-security.md for the secure deployment procedure."
 fi
 
+# Emit a machine-readable line for CI parsing
+echo "DEPLOYMENT_CONTRACT_ID=$CONTRACT_ID"
+
 # Save deployment info
 DEPLOY_DIR="deployments"
 mkdir -p "$DEPLOY_DIR"

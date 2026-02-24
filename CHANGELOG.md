@@ -1,3 +1,12 @@
+## 1.0.0 (2026-02-21)
+
+### Features
+
+* add automated release management workflow ([6856459](https://github.com/ChukwuemekaP1/Teye-Contracts/commit/6856459e18c1000b2121171b11112bb64f5aaa8e))
+* implement event monitoring system ([d6f6c25](https://github.com/ChukwuemekaP1/Teye-Contracts/commit/d6f6c2546805cfb0b92f42fd455f08f7793b98b8))
+* implement record versioning and history tracking ([5b6a6ea](https://github.com/ChukwuemekaP1/Teye-Contracts/commit/5b6a6ea5d2089510641b23e9b9ec8fa1347f0175))
+* implement role based access control ([ef86cbf](https://github.com/ChukwuemekaP1/Teye-Contracts/commit/ef86cbf68b3db9a246901c06e146824d01d7c2cf))
+* initial project scaffolding for Stellar-Teye vision care platform ([aca3c01](https://github.com/ChukwuemekaP1/Teye-Contracts/commit/aca3c015fa100b765343bac881beffd165deb2e2))
 ## [1.2.2](https://github.com/Stellar-Teye/Teye-Contracts/compare/v1.2.1...v1.2.2) (2026-02-22)
 
 ### Bug Fixes
