@@ -17,7 +17,7 @@ impl AuditLog {
     pub fn record(&mut self, actor: &str, action: &str, target: &str) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs();
         self.entries.push(AuditEntry {
             actor: actor.to_string(),

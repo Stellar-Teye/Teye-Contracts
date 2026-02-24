@@ -34,6 +34,9 @@ echo "✅ Deployment successful!"
 echo "📋 Contract ID: $CONTRACT_ID"
 echo ""
 
+# Emit a machine-readable line for CI parsing
+echo "DEPLOYMENT_CONTRACT_ID=$CONTRACT_ID"
+
 # Save deployment info
 DEPLOY_DIR="deployments"
 mkdir -p "$DEPLOY_DIR"

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::arithmetic_side_effects)]
 mod common;
 
 use common::{create_test_record, create_test_user, setup_test_env};
@@ -43,7 +44,7 @@ fn test_add_and_get_record() {
         &patient,
         &provider,
         RecordType::Examination,
-        "QmHash123",
+        "e3b0c44298fc1c149afbf4c8996fb924",
     );
 
     assert_eq!(record_id, 1);
@@ -108,7 +109,7 @@ fn test_get_record_count_and_patient_records() {
         &patient,
         &provider,
         RecordType::Examination,
-        "Hash1",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     );
     assert_eq!(ctx.client.get_record_count(), 1);
 
@@ -118,7 +119,7 @@ fn test_get_record_count_and_patient_records() {
         &patient,
         &provider,
         RecordType::Diagnosis,
-        "Hash2",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     );
     assert_eq!(ctx.client.get_record_count(), 2);
 
@@ -134,8 +135,7 @@ fn test_add_record_unauthorized_and_admin() {
     let ctx = setup_test_env();
     let patient = create_test_user(&ctx, Role::Patient, "Patient");
     let random_user = create_test_user(&ctx, Role::Patient, "Random");
-    let hash = String::from_str(&ctx.env, "Hash123");
-
+    let hash = String::from_str(&ctx.env, "cccccccccccccccccccccccccccccccc");
     // Random user cannot add typical record
     let res = ctx.client.try_add_record(
         &random_user,
@@ -187,7 +187,7 @@ fn test_events_and_version() {
 
     // Test add record event
     let provider = create_test_user(&ctx, Role::Optometrist, "Provider");
-    let hash = String::from_str(&ctx.env, "Hash123");
+    let hash = String::from_str(&ctx.env, "dddddddddddddddddddddddddddddddd");
     ctx.client
         .add_record(&provider, &user, &provider, &RecordType::Examination, &hash);
     assert_eq!(ctx.env.events().all().len(), 1); // Kills publish_record_added mutant

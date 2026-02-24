@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::arithmetic_side_effects)]
 //! Property-based test suite entry point.
 //!
 //! This file loads all property test sub-modules. Run with:

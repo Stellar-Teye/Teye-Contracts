@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::arithmetic_side_effects)]
 mod common;
 
 use common::{create_test_user, setup_test_env};
@@ -208,7 +209,7 @@ fn test_record_factory_creates_default_data() {
         &patient,
         &provider,
         vision_records::RecordType::Diagnosis,
-        "QmFactory",
+        "e3b0c44298fc1c149afbf4c8996fb924",
     );
     let record = ctx.client.get_record(&id);
     assert_eq!(record.id, id);
@@ -218,8 +219,8 @@ fn test_record_factory_creates_default_data() {
 #[test]
 fn test_user_factory_returns_unique_users() {
     let ctx = setup_test_env();
-    let a = create_test_user(&ctx, Role::Staff, "A");
-    let b = create_test_user(&ctx, Role::Staff, "B");
+    let a = create_test_user(&ctx, Role::Staff, "UserA");
+    let b = create_test_user(&ctx, Role::Staff, "UserB");
     assert_ne!(a, b);
 }
 
