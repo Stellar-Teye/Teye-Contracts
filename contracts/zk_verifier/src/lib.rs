@@ -34,7 +34,7 @@ const PENDING_ADMIN: Symbol = symbol_short!("PEND_ADM");
 const VK: Symbol = symbol_short!("VK");
 const RATE_CFG: Symbol = symbol_short!("RATECFG");
 const RATE_TRACK: Symbol = symbol_short!("RLTRK");
-const VK: Symbol = symbol_short!("VK");
+
 
 /// Maximum number of public inputs accepted per proof verification.
 const MAX_PUBLIC_INPUTS: u32 = 16;
