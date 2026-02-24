@@ -138,7 +138,11 @@ impl ConsentManager {
     }
 
     /// Get all active consents for a specific grantee
-    pub fn get_active_consents_for_grantee(&self, grantee: &str, now: u64) -> Vec<ConsentAttribute> {
+    pub fn get_active_consents_for_grantee(
+        &self,
+        grantee: &str,
+        now: u64,
+    ) -> Vec<ConsentAttribute> {
         self.records
             .values()
             .filter(|record| record.grantee == grantee)
@@ -148,7 +152,11 @@ impl ConsentManager {
     }
 
     /// Get all active consents for a specific subject
-    pub fn get_active_consents_for_subject(&self, subject: &str, now: u64) -> Vec<ConsentAttribute> {
+    pub fn get_active_consents_for_subject(
+        &self,
+        subject: &str,
+        now: u64,
+    ) -> Vec<ConsentAttribute> {
         self.records
             .values()
             .filter(|record| record.subject == subject)

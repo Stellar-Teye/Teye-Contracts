@@ -17,7 +17,7 @@ use soroban_sdk::contracterror;
 pub mod admin_tiers;
 #[cfg(feature = "std")]
 pub mod consent;
-#[cfg(feature = "std")]
+pub mod admin_tiers;
 pub mod keys;
 pub mod meta_tx;
 #[cfg(feature = "std")]
