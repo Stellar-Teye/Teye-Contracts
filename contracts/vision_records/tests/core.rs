@@ -100,6 +100,103 @@ fn test_access_control() {
 }
 
 #[test]
+fn test_record_level_access_is_scoped_per_record() {
+    let ctx = setup_test_env();
+    let patient = create_test_user(&ctx, Role::Patient, "Patient");
+    let provider = create_test_user(&ctx, Role::Optometrist, "Provider");
+    let doctor = create_test_user(&ctx, Role::Optometrist, "Doctor");
+
+    let record1 = create_test_record(
+        &ctx,
+        &provider,
+        &patient,
+        &provider,
+        RecordType::Examination,
+        "11111111111111111111111111111111",
+    );
+    let record2 = create_test_record(
+        &ctx,
+        &provider,
+        &patient,
+        &provider,
+        RecordType::Diagnosis,
+        "22222222222222222222222222222222",
+    );
+
+    assert_eq!(
+        ctx.client.check_record_access(&record1, &doctor),
+        AccessLevel::None
+    );
+    assert_eq!(
+        ctx.client.check_record_access(&record2, &doctor),
+        AccessLevel::None
+    );
+
+    ctx.client
+        .grant_record_access(&patient, &doctor, &record1, &AccessLevel::Read, &3_600);
+
+    assert_eq!(
+        ctx.client.check_record_access(&record1, &doctor),
+        AccessLevel::Read
+    );
+    assert_eq!(
+        ctx.client.check_record_access(&record2, &doctor),
+        AccessLevel::None
+    );
+
+    let ok = ctx.client.try_get_record(&doctor, &record1);
+    assert!(ok.is_ok());
+
+    let denied = ctx.client.try_get_record(&doctor, &record2);
+    assert!(denied.is_err());
+}
+
+#[test]
+fn test_record_level_access_revoke_and_expiry() {
+    let ctx = setup_test_env();
+    let patient = create_test_user(&ctx, Role::Patient, "Patient");
+    let provider = create_test_user(&ctx, Role::Optometrist, "Provider");
+    let doctor = create_test_user(&ctx, Role::Optometrist, "Doctor");
+
+    let record_id = create_test_record(
+        &ctx,
+        &provider,
+        &patient,
+        &provider,
+        RecordType::Examination,
+        "33333333333333333333333333333333",
+    );
+
+    ctx.env.ledger().set_timestamp(1_000);
+    ctx.client
+        .grant_record_access(&patient, &doctor, &record_id, &AccessLevel::Read, &10);
+    assert_eq!(
+        ctx.client.check_record_access(&record_id, &doctor),
+        AccessLevel::Read
+    );
+
+    ctx.env.ledger().set_timestamp(1_011);
+    assert_eq!(
+        ctx.client.check_record_access(&record_id, &doctor),
+        AccessLevel::None
+    );
+
+    ctx.env.ledger().set_timestamp(2_000);
+    ctx.client
+        .grant_record_access(&patient, &doctor, &record_id, &AccessLevel::Read, &100);
+    assert_eq!(
+        ctx.client.check_record_access(&record_id, &doctor),
+        AccessLevel::Read
+    );
+    ctx.client
+        .revoke_record_access(&patient, &doctor, &record_id);
+    assert_eq!(
+        ctx.client.check_record_access(&record_id, &doctor),
+        AccessLevel::None
+    );
+}
+
+#[test]
 fn test_get_record_count_and_patient_records() {
     let ctx = setup_test_env();
     assert_eq!(ctx.client.get_record_count(), 0);
@@ -352,4 +449,18 @@ fn test_purge_expired_grants_unauthorized_fails() {
 
     let result = ctx.client.try_purge_expired_grants(&stranger, &patient);
     assert!(result.is_err());
+}
+
+#[test]
+fn test_encrypt_decrypt_roundtrip() {
+    use common::KeyManager;
+
+    let mut km = KeyManager::new(vec![0x0f, 0x1e, 0x2d, 0x3c]);
+    km.create_data_key("dkey1", vec![0xaa, 0xbb, 0xcc], None);
+
+    let plaintext = "e3b0c44298fc1c149afbf4c8996fb924";
+    let ciphertext = km.encrypt(Some("dkey1"), plaintext);
+    let decrypted = km.decrypt(Some("dkey1"), &ciphertext).expect("decrypt failed");
+
+    assert_eq!(decrypted, plaintext);
 }
