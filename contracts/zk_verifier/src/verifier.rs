@@ -144,6 +144,7 @@ impl Bn254Verifier {
     /// Verify a Groth16 proof over BN254.
     pub fn verify_proof(
         _env: &Env,
+        _vk: &VerificationKey,
         proof: &Proof,
         public_inputs: &Vec<BytesN<32>>,
     ) -> bool {

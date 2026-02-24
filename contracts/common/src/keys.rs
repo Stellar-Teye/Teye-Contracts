@@ -5,8 +5,8 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 // Aliases to disambiguate from Soroban SDK types
-type StdString = String;
-type StdVec<T> = Vec<T>;
+pub type StdString = String;
+pub type StdVec<T> = Vec<T>;
 
 #[derive(Debug, Clone, Default)]
 pub struct AuditEntry {

@@ -17,23 +17,23 @@ use soroban_sdk::contracterror;
 pub mod admin_tiers;
 #[cfg(feature = "std")]
 pub mod consent;
-pub mod admin_tiers;
 pub mod keys;
 pub mod meta_tx;
 #[cfg(feature = "std")]
 pub mod multisig;
 pub mod rate_limit;
+pub mod reentrancy_guard;
 pub mod whitelist;
 
 pub use admin_tiers::*;
 #[cfg(feature = "std")]
 pub use consent::*;
-#[cfg(feature = "std")]
 pub use keys::*;
 pub use meta_tx::*;
 #[cfg(feature = "std")]
 pub use multisig::*;
 pub use rate_limit::*;
+pub use reentrancy_guard::*;
 pub use whitelist::*;
 
 // ── Shared error enum ────────────────────────────────────────────────────────

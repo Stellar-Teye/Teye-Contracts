@@ -127,6 +127,7 @@ impl StakingContract {
     /// The global reward accumulator is updated first so the staker does not
     /// retroactively earn rewards on the newly deposited tokens.
     pub fn stake(env: Env, staker: Address, amount: i128) -> Result<(), ContractError> {
+        let _guard = common::ReentrancyGuard::new(&env);
         Self::require_initialized(&env)?;
         staker.require_auth();
 
@@ -226,6 +227,7 @@ impl StakingContract {
     /// Fails with `TimelockNotExpired` if called before `unlock_at`, and
     /// with `AlreadyWithdrawn` on duplicate calls.
     pub fn withdraw(env: Env, staker: Address, request_id: u64) -> Result<(), ContractError> {
+        let _guard = common::ReentrancyGuard::new(&env);
         Self::require_initialized(&env)?;
         staker.require_auth();
 
@@ -271,6 +273,7 @@ impl StakingContract {
     /// Rewards are transferred from the contract's reward-token balance.
     /// The contract must hold sufficient reward tokens (funded by the admin).
     pub fn claim_rewards(env: Env, staker: Address) -> Result<i128, ContractError> {
+        let _guard = common::ReentrancyGuard::new(&env);
         Self::require_initialized(&env)?;
         staker.require_auth();
 

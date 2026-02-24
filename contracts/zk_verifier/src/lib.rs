@@ -30,7 +30,6 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, BytesN, Env,
     Symbol, Vec,
 };
-use verifier::ProofValidationError;
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
 const PENDING_ADMIN: Symbol = symbol_short!("PEND_ADM");
@@ -254,6 +253,18 @@ impl ZkVerifierContract {
 
         Ok(())
     }
+
+    /// Sets the ZK Verification Key for Groth16.
+    pub fn set_verification_key(env: Env, caller: Address, vk: VerificationKey) -> Result<(), ContractError> {
+        Self::require_admin(&env, &caller)?;
+        env.storage().instance().set(&symbol_short!("VK"), &vk);
+        Ok(())
+    }
+
+    /// Gets the configured Verification Key.
+    pub fn get_verification_key(env: Env) -> Option<VerificationKey> {
+        env.storage().instance().get(&symbol_short!("VK"))
+    }
     /// Return the current rate limiting configuration, if any.
     pub fn get_rate_limit_config(env: Env) -> Option<(u64, u64)> {
         env.storage().instance().get(&RATE_CFG)
@@ -373,7 +384,8 @@ impl ZkVerifierContract {
             err
         })?;
 
-        let is_valid = Bn254Verifier::verify_proof(&env, &request.proof, &request.public_inputs);
+        let vk = Self::get_verification_key(env.clone()).ok_or(ContractError::InvalidConfig)?;
+        let is_valid = Bn254Verifier::verify_proof(&env, &vk, &request.proof, &request.public_inputs);
         if is_valid {
             let proof_hash = PoseidonHasher::hash(&env, &request.public_inputs);
             AuditTrail::log_access(&env, request.user, request.resource_id, proof_hash);
