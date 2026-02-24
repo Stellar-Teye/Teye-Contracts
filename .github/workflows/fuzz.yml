@@ -1,0 +1,41 @@
+name: Fuzz Testing
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  schedule:
+    # Run a deeper fuzzing campaign nightly
+    - cron: '0 2 * * *'
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust Nightly
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+
+      - name: Fuzz Vision Records
+        run: |
+          cd fuzz
+          # Run the fuzzer for a short time (e.g. 60 seconds) in PRs, longer on nightly
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            cargo +nightly run --bin vision_records_fuzz -- -max_total_time=1800
+          else
+            cargo +nightly run --bin vision_records_fuzz -- -max_total_time=60
+          fi
+
+      - name: Fuzz Staking
+        run: |
+          cd fuzz
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            cargo +nightly run --bin staking_fuzz -- -max_total_time=1800
+          else
+            cargo +nightly run --bin staking_fuzz -- -max_total_time=60
+          fi

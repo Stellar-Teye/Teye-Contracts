@@ -6,6 +6,7 @@ license.workspace = true
 edition.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+autotests = false
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -13,7 +14,7 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
-common = { path = "../common", default-features = false }
+teye-common = { path = "../common", package = "common" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }

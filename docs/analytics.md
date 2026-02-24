@@ -135,4 +135,3 @@ These tests verify:
 - Metric accumulation for a given `MetricDimensions`
 - Trend generation across time buckets
 - Population metrics for the anonymous bucket
-

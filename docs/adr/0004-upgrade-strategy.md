@@ -69,4 +69,3 @@ Soroban contracts are immutable once deployed. At the same time, Stellar Teye:
   - Future Soroban-native governance contracts are expected to manage:
     - Mapping from logical service names to contract IDs.
     - Timelocked upgrades and configuration changes.
-

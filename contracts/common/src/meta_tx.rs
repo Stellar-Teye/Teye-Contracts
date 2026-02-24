@@ -31,6 +31,5 @@ pub fn verify_meta_signature(
     message: &Bytes,
     signature: &BytesN<64>,
 ) {
-    env.crypto()
-        .ed25519_verify(public_key, message, signature);
+    env.crypto().ed25519_verify(public_key, message, signature);
 }

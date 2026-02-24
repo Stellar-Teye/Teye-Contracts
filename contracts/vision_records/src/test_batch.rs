@@ -72,7 +72,7 @@ fn test_batch_add_records_single() {
     assert_eq!(ids.len(), 1);
     assert_eq!(ids.get(0).unwrap(), 1);
 
-    let record = client.get_record(&1);
+    let record = client.get_record(&provider, &1);
     assert_eq!(record.patient, patient);
     assert_eq!(record.provider, provider);
     assert_eq!(record.record_type, RecordType::Examination);
@@ -110,15 +110,15 @@ fn test_batch_add_records_multiple() {
     assert_eq!(ids.get(2).unwrap(), 3);
 
     // Verify records stored correctly
-    let rec1 = client.get_record(&1);
+    let rec1 = client.get_record(&provider, &1);
     assert_eq!(rec1.patient, patient_a);
     assert_eq!(rec1.record_type, RecordType::Examination);
 
-    let rec2 = client.get_record(&2);
+    let rec2 = client.get_record(&provider, &2);
     assert_eq!(rec2.patient, patient_b);
     assert_eq!(rec2.record_type, RecordType::Prescription);
 
-    let rec3 = client.get_record(&3);
+    let rec3 = client.get_record(&provider, &3);
     assert_eq!(rec3.patient, patient_a);
     assert_eq!(rec3.record_type, RecordType::LabResult);
 
@@ -177,7 +177,7 @@ fn test_batch_add_records_admin_can_create() {
 
     let ids = client.add_records(&admin, &inputs);
     assert_eq!(ids.len(), 1);
-    let record = client.get_record(&ids.get(0).unwrap());
+    let record = client.get_record(&admin, &ids.get(0).unwrap());
     assert_eq!(record.record_type, RecordType::Surgery);
 }
 
@@ -193,7 +193,7 @@ fn test_batch_add_records_counter_continuity() {
         &patient,
         &provider,
         &RecordType::Examination,
-        &String::from_str(&env, "single_hash"),
+        &String::from_str(&env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG"),
     );
     assert_eq!(client.get_record_count(), 1);
 
@@ -317,6 +317,8 @@ fn test_batch_grant_access_multiple() {
         duration_seconds: 7200,
     });
 
+    client.grant_consent(&patient, &doc1, &super::ConsentType::Treatment, &7200);
+    client.grant_consent(&patient, &doc2, &super::ConsentType::Treatment, &7200);
     client.grant_access_batch(&patient, &grants);
 
     assert_eq!(client.check_access(&patient, &doc1), AccessLevel::Read);
@@ -348,6 +350,7 @@ fn test_batch_grant_access_expiration() {
         duration_seconds: 500, // expires at 1500
     });
 
+    client.grant_consent(&patient, &doc, &super::ConsentType::Treatment, &500);
     client.grant_access_batch(&patient, &grants);
     assert_eq!(client.check_access(&patient, &doc), AccessLevel::Read);
 
@@ -371,6 +374,7 @@ fn test_batch_grant_access_overwrite() {
         level: AccessLevel::Read,
         duration_seconds: 3600,
     });
+    client.grant_consent(&patient, &doc, &super::ConsentType::Treatment, &7200);
     client.grant_access_batch(&patient, &grants1);
     assert_eq!(client.check_access(&patient, &doc), AccessLevel::Read);
 

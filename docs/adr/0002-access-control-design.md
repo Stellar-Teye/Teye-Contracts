@@ -68,4 +68,3 @@ Stellar Teye manages highly sensitive medical data and must:
   - `contracts/compliance/src/access_control.rs`
   - `docs/error-handling.md`
   - `docs/fhir.md`
-

@@ -31,11 +31,7 @@ impl IdentityContract {
     }
 
     /// Add a guardian address for social recovery (max 5).
-    pub fn add_guardian(
-        env: Env,
-        caller: Address,
-        guardian: Address,
-    ) -> Result<(), RecoveryError> {
+    pub fn add_guardian(env: Env, caller: Address, guardian: Address) -> Result<(), RecoveryError> {
         caller.require_auth();
         Self::require_active_owner(&env, &caller)?;
         recovery::add_guardian(&env, &caller, guardian)

@@ -5,7 +5,7 @@
     clippy::arithmetic_side_effects
 )]
 
-use super::{Permission, Role, VisionRecordsContract, VisionRecordsContractClient};
+use super::{ConsentType, Permission, Role, VisionRecordsContract, VisionRecordsContractClient};
 use soroban_sdk::{testutils::Address as _, testutils::Ledger as _, Address, Env, String, Vec};
 
 fn setup_test() -> (Env, VisionRecordsContractClient<'static>, Address) {
@@ -209,7 +209,12 @@ fn test_acl_group_lifecycle_and_permissions() {
     let (env, client, admin) = setup_test();
 
     let user = Address::generate(&env);
-    client.register_user(&admin, &user, &Role::Patient, &String::from_str(&env, "User"));
+    client.register_user(
+        &admin,
+        &user,
+        &Role::Patient,
+        &String::from_str(&env, "User"),
+    );
 
     let group_name = String::from_str(&env, "Retina Specialists");
     let mut perms = Vec::new(&env);
@@ -241,7 +246,12 @@ fn test_acl_group_multiple_groups() {
     let (env, client, admin) = setup_test();
 
     let user = Address::generate(&env);
-    client.register_user(&admin, &user, &Role::Patient, &String::from_str(&env, "User"));
+    client.register_user(
+        &admin,
+        &user,
+        &Role::Patient,
+        &String::from_str(&env, "User"),
+    );
 
     let group1_name = String::from_str(&env, "Group 1");
     let mut perms1 = Vec::new(&env);

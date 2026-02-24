@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::arithmetic_side_effects)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::arithmetic_side_effects
+)]
 mod common;
 
 use common::{create_test_record, create_test_user, setup_test_env};
@@ -91,6 +95,103 @@ fn test_access_control() {
     ctx.client.revoke_access(&patient, &patient, &doctor);
     assert_eq!(
         ctx.client.check_access(&patient, &doctor),
+        AccessLevel::None
+    );
+}
+
+#[test]
+fn test_record_level_access_is_scoped_per_record() {
+    let ctx = setup_test_env();
+    let patient = create_test_user(&ctx, Role::Patient, "Patient");
+    let provider = create_test_user(&ctx, Role::Optometrist, "Provider");
+    let doctor = create_test_user(&ctx, Role::Optometrist, "Doctor");
+
+    let record1 = create_test_record(
+        &ctx,
+        &provider,
+        &patient,
+        &provider,
+        RecordType::Examination,
+        "11111111111111111111111111111111",
+    );
+    let record2 = create_test_record(
+        &ctx,
+        &provider,
+        &patient,
+        &provider,
+        RecordType::Diagnosis,
+        "22222222222222222222222222222222",
+    );
+
+    assert_eq!(
+        ctx.client.check_record_access(&record1, &doctor),
+        AccessLevel::None
+    );
+    assert_eq!(
+        ctx.client.check_record_access(&record2, &doctor),
+        AccessLevel::None
+    );
+
+    ctx.client
+        .grant_record_access(&patient, &doctor, &record1, &AccessLevel::Read, &3_600);
+
+    assert_eq!(
+        ctx.client.check_record_access(&record1, &doctor),
+        AccessLevel::Read
+    );
+    assert_eq!(
+        ctx.client.check_record_access(&record2, &doctor),
+        AccessLevel::None
+    );
+
+    let ok = ctx.client.try_get_record(&doctor, &record1);
+    assert!(ok.is_ok());
+
+    let denied = ctx.client.try_get_record(&doctor, &record2);
+    assert!(denied.is_err());
+}
+
+#[test]
+fn test_record_level_access_revoke_and_expiry() {
+    let ctx = setup_test_env();
+    let patient = create_test_user(&ctx, Role::Patient, "Patient");
+    let provider = create_test_user(&ctx, Role::Optometrist, "Provider");
+    let doctor = create_test_user(&ctx, Role::Optometrist, "Doctor");
+
+    let record_id = create_test_record(
+        &ctx,
+        &provider,
+        &patient,
+        &provider,
+        RecordType::Examination,
+        "33333333333333333333333333333333",
+    );
+
+    ctx.env.ledger().set_timestamp(1_000);
+    ctx.client
+        .grant_record_access(&patient, &doctor, &record_id, &AccessLevel::Read, &10);
+    assert_eq!(
+        ctx.client.check_record_access(&record_id, &doctor),
+        AccessLevel::Read
+    );
+
+    ctx.env.ledger().set_timestamp(1_011);
+    assert_eq!(
+        ctx.client.check_record_access(&record_id, &doctor),
+        AccessLevel::None
+    );
+
+    ctx.env.ledger().set_timestamp(2_000);
+    ctx.client
+        .grant_record_access(&patient, &doctor, &record_id, &AccessLevel::Read, &100);
+    assert_eq!(
+        ctx.client.check_record_access(&record_id, &doctor),
+        AccessLevel::Read
+    );
+    ctx.client
+        .revoke_record_access(&patient, &doctor, &record_id);
+    assert_eq!(
+        ctx.client.check_record_access(&record_id, &doctor),
         AccessLevel::None
     );
 }

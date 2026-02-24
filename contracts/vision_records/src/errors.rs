@@ -104,6 +104,15 @@ pub enum ContractError {
     TransientFailure = 25,
     MetaTxExpired = 26,
     NonceAlreadyUsed = 27,
+    ConsentRequired = 28,
+    ConsentExpired = 29,
+    EmergencyAccessNotFound = 30,
+    AppointmentNotFound = 31,
+    AppointmentNotVerified = 32,
+    InvalidEmergencyCondition = 33,
+    InvalidAttestation = 34,
+    InvalidAppointmentTime = 35,
+    InvalidAppointmentStatus = 36,
 }
 
 impl ContractError {
@@ -121,6 +130,11 @@ impl ContractError {
             | ContractError::InvalidDataHash
             | ContractError::InvalidRecordType
             | ContractError::InvalidVerificationStatus
+            | ContractError::InvalidEmergencyCondition
+            | ContractError::InvalidAttestation
+            | ContractError::InvalidAppointmentTime
+            | ContractError::InvalidAppointmentStatus
+            | ContractError::AppointmentNotVerified
             | ContractError::MetaTxExpired => ErrorCategory::Validation,
             ContractError::Unauthorized
             | ContractError::AccessDenied
@@ -142,7 +156,6 @@ impl ContractError {
                 ErrorCategory::Transient
             }
             ContractError::Paused | ContractError::ContractPaused => ErrorCategory::System,
-            ContractError::AppointmentNotVerified => ErrorCategory::Validation,
         }
     }
 
@@ -173,10 +186,15 @@ impl ContractError {
             | ContractError::AccessDenied
             | ContractError::InsufficientPermissions
             | ContractError::ExpiredAccess
+            | ContractError::ConsentRequired
+            | ContractError::ConsentExpired
             | ContractError::ProviderAlreadyRegistered
             | ContractError::DelegationExpired
             | ContractError::RateLimitExceeded
             | ContractError::NonceAlreadyUsed => ErrorSeverity::Medium,
+            ContractError::EmergencyAccessNotFound
+            | ContractError::AppointmentNotFound
+            | ContractError::AppointmentNotVerified => ErrorSeverity::Low,
             ContractError::StorageError | ContractError::TransientFailure => ErrorSeverity::High,
             ContractError::Paused | ContractError::ContractPaused => ErrorSeverity::Critical,
         }
@@ -224,6 +242,15 @@ impl ContractError {
             ContractError::TransientFailure => "Transient failure, operation may succeed on retry",
             ContractError::MetaTxExpired => "Meta-transaction has expired",
             ContractError::NonceAlreadyUsed => "Nonce has already been used",
+            ContractError::ConsentRequired => "Active patient consent is required",
+            ContractError::ConsentExpired => "Patient consent has expired",
+            ContractError::EmergencyAccessNotFound => "Emergency access request not found",
+            ContractError::AppointmentNotFound => "Appointment not found",
+            ContractError::AppointmentNotVerified => "Appointment is not verified",
+            ContractError::InvalidEmergencyCondition => "Invalid emergency condition provided",
+            ContractError::InvalidAttestation => "Invalid emergency attestation provided",
+            ContractError::InvalidAppointmentTime => "Invalid appointment time provided",
+            ContractError::InvalidAppointmentStatus => "Invalid appointment status provided",
         }
     }
 }

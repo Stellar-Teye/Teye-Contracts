@@ -60,7 +60,11 @@ impl CrossChainContract {
     /// Add a trusted relayer allowed to submit cross-chain messages
     pub fn add_relayer(env: Env, caller: Address, relayer: Address) -> Result<(), CrossChainError> {
         caller.require_auth();
-        let admin: Address = env.storage().instance().get(&ADMIN).ok_or(CrossChainError::NotInitialized)?;
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&ADMIN)
+            .ok_or(CrossChainError::NotInitialized)?;
         if caller != admin {
             return Err(CrossChainError::Unauthorized);
         }
@@ -97,7 +101,11 @@ impl CrossChainContract {
         local_address: Address,
     ) -> Result<(), CrossChainError> {
         caller.require_auth();
-        let admin: Address = env.storage().instance().get(&ADMIN).ok_or(CrossChainError::NotInitialized)?;
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&ADMIN)
+            .ok_or(CrossChainError::NotInitialized)?;
         if caller != admin {
             return Err(CrossChainError::Unauthorized);
         }
@@ -182,6 +190,11 @@ impl CrossChainContract {
             // Example:
             // let client = VisionRecordsContractClient::new(&env, &vision_contract);
             // client.grant_access(&env.current_contract_address(), &patient_addr, &grantee, &level, &duration);
+
+            env.storage().persistent().set(&processed_key, &true);
+            env.storage()
+                .persistent()
+                .extend_ttl(&processed_key, TTL_THRESHOLD, TTL_EXTEND_TO);
 
             events::publish_message_processed(&env, message.source_chain, message_id, true);
             Ok(())
