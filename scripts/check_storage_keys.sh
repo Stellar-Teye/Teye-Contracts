@@ -1,31 +1,59 @@
 #!/bin/bash
-# Script: check_storage_keys.sh
-# Purpose: Detect duplicate symbol_short! storage keys within each contract
+# Storage Key Collision Detection Script (Refined)
+# Scans for storage key definitions (const or let) using symbol_short!
+# and checks for duplicates within each contract's source.
 
-set -e
-
-# Find all contracts
-CONTRACT_DIRS=$(find contracts -mindepth 2 -maxdepth 2 -type d)
-
+ROOT_DIR=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+CONTRACTS_DIR="$ROOT_DIR/contracts"
 EXIT_CODE=0
 
-for CONTRACT in $CONTRACT_DIRS; do
-    echo "Checking $CONTRACT..."
-    # Grep for symbol_short! usages, extract key names
-    KEYS=$(grep -rho 'symbol_short!\([A-Z0-9_]*\)' "$CONTRACT" | sed 's/symbol_short!\([A-Z0-9_]*\)/\1/' | sort)
-    if [ -z "$KEYS" ]; then
-        echo "  No symbol_short! keys found."
-        continue
+echo "Checking for storage key collisions in $CONTRACTS_DIR..."
+
+for contract in "$CONTRACTS_DIR"/*/; do
+    if [ -d "$contract/src" ]; then
+        contract_name=$(basename "$contract")
+        
+        # We want to find actual DEFINITIONS or unique usages that represent keys.
+        # This is tricky without a full parser, but we can look for:
+        # 1. const DEFINITION: Symbol = symbol_short!("...")
+        # 2. let key = symbol_short!("...")
+        # We should ignore tests and event files if they are just REPRODUCING the symbol
+        # for publication or testing purposes.
+        
+        # For now, let's grep for all symbol_short! and filter out common false positives
+        # or just be more specific about what constitutes a "definition".
+        
+        # Get all symbols and their locations, excluding tests and events if possible
+        # but the prompt says "across all contracts" and "dangerous if merged".
+        # The key risk is when two different logic pieces use the same string for different data.
+        
+        symbols=$(grep -r "symbol_short!(" "$contract/src" | \
+                  grep -v "_test.rs" | grep -v "test/" | \
+                  sed -n 's/.*symbol_short!("\([^"]*\)").*/\1/p' | \
+                  sort)
+        
+        # If the same symbol is used multiple times, it might be fine (e.g. get/set).
+        # But if it's defined as a CONST multiple times, that's a collision.
+        
+        const_definitions=$(grep -r "const .*Symbol = symbol_short!(" "$contract/src" | \
+                            sed -n 's/.*symbol_short!("\([^"]*\)").*/\1/p' | \
+                            sort)
+        
+        duplicates=$(echo "$const_definitions" | uniq -d)
+        
+        if [ -n "$duplicates" ]; then
+            echo "❌ Collision(s) found in contract: $contract_name"
+            while IFS= read -r dup; do
+                echo "   Symbol: $dup"
+                grep -r "const .*symbol_short!(\"$dup\")" "$contract/src" | sed 's/^/      /'
+            done <<< "$duplicates"
+            EXIT_CODE=1
+        fi
     fi
-    # Check for duplicates
-    DUPES=$(echo "$KEYS" | uniq -d)
-    if [ -n "$DUPES" ]; then
-        echo "  Duplicate keys detected: $DUPES"
-        EXIT_CODE=1
-    else
-        echo "  No duplicates found."
-    fi
-    echo
 done
+
+if [ $EXIT_CODE -eq 0 ]; then
+    echo "✅ No storage key collisions detected."
+fi
 
 exit $EXIT_CODE
