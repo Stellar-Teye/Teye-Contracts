@@ -1,4 +1,17 @@
-#![no_std]
+//! # ZK Verifier Module
+//!
+//! This module provides a Zero-Knowledge (ZK) proof verification system for the Soroban ecosystem.
+//! It specifically implements support for Groth16 proofs over the BN254 (Alt-BN128) curve.
+//!
+//! The ZK subsystem is designed to provide privacy-preserving access control by allowing users
+//! to prove they possess certain credentials or meet specific criteria without revealing
+//! the underlying sensitive data.
+//!
+//! ## Key Components
+//! - `ZkVerifierContract`: The main contract implementation handling access requests and auditing.
+//! - `Bn254Verifier`: The core library for verifying Groth16 proofs.
+//! - `AuditTrail`: A persistence layer for logging successful verifications.
+//! - `ZkAccessHelper`: A utility for formatting binary proof data into interoperable requests.
 
 mod audit;
 mod helpers;
@@ -21,12 +34,17 @@ const RATE_TRACK: Symbol = symbol_short!("RLTRK");
 /// Maximum number of public inputs accepted per proof verification.
 const MAX_PUBLIC_INPUTS: u32 = 16;
 
+/// Request structure for ZK access verification.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AccessRequest {
+    /// The address of the user requesting access.
     pub user: Address,
+    /// Unique identifier for the resource being accessed.
     pub resource_id: BytesN<32>,
+    /// The Groth16 proof (points A, B, and C).
     pub proof: Proof,
+    /// Public inputs associated with the proof.
     pub public_inputs: Vec<BytesN<32>>,
 }
 
@@ -205,6 +223,17 @@ impl ZkVerifierContract {
         Ok(())
     }
 
+    /// Verifies a ZK proof for resource access.
+    ///
+    /// This is the primary entry point for users to gain access to protected resources.
+    /// It performs the following steps:
+    /// 1. Authorizes the user.
+    /// 2. Validates the request shape.
+    /// 3. Checks whitelist and rate limits.
+    /// 4. Verifies the Groth16 proof via `Bn254Verifier`.
+    /// 5. Logs the access in the `AuditTrail` if successful.
+    ///
+    /// Returns `true` if the proof is valid and all checks pass, otherwise returns an error or `false`.
     pub fn verify_access(env: Env, request: AccessRequest) -> Result<bool, ContractError> {
         request.user.require_auth();
 
@@ -224,6 +253,9 @@ impl ZkVerifierContract {
         Ok(is_valid)
     }
 
+    /// Retrieves an audit record for a specific user and resource.
+    ///
+    /// Returns the `AuditRecord` if it exists, otherwise `None`.
     pub fn get_audit_record(
         env: Env,
         user: Address,
