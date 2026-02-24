@@ -2,10 +2,14 @@ use crate::verifier::Proof;
 use crate::AccessRequest;
 use soroban_sdk::{BytesN, Env, Vec};
 
+/// Helper utility for creating ZK access requests.
 pub struct ZkAccessHelper;
 
 impl ZkAccessHelper {
-    /// Helper to format raw byte arrays into the contract's standard `AccessRequest`.
+    /// Formats raw cryptographic proof points and public inputs into a standard `AccessRequest`.
+    ///
+    /// This helper is intended for use in tests and off-chain tools to ensure consistent
+    /// formatting of the `AccessRequest` structure submitted to the `ZkVerifierContract`.
     pub fn create_request(
         env: &Env,
         user: soroban_sdk::Address,
