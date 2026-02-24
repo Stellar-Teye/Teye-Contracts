@@ -21,7 +21,8 @@ use soroban_sdk::{
 };
 
 use alloc::string::ToString;
-use teye_common::{multisig, whitelist, KeyManager, StdString, StdVec, admin_tiers, AdminTier};
+use key_manager::{DerivedKey, KeyManagerContractClient};
+use teye_common::{admin_tiers, multisig, whitelist, AdminTier, KeyManager, StdString, StdVec};
 use teye_common::metering::{MeteringHook, MeteringOpType};
 
 /// Re-export the contract-specific error type at the crate root.
@@ -57,6 +58,8 @@ const TTL_EXTEND_TO: u32 = 10368000;
 
 const ENC_CUR: Symbol = symbol_short!("ENC_CUR");
 const ENC_KEY: Symbol = symbol_short!("ENC_KEY");
+const KEY_MGR: Symbol = symbol_short!("KEY_MGR");
+const KEY_MGR_KEY: Symbol = symbol_short!("KEY_MGRK");
 
 /// Extends the time-to-live (TTL) for a storage key containing an Address.
 /// This ensures the data remains accessible for the extended period.
@@ -284,6 +287,42 @@ impl VisionRecordsContract {
     ) -> Result<T, ContractError> {
         Self::emit_access_violation(env, caller, action, required_permission);
         Err(ContractError::AccessDenied)
+    }
+
+    fn get_key_manager_config(env: &Env) -> Option<(Address, BytesN<32>)> {
+        let manager: Option<Address> = env.storage().instance().get(&KEY_MGR);
+        let key_id: Option<BytesN<32>> = env.storage().instance().get(&KEY_MGR_KEY);
+        match (manager, key_id) {
+            (Some(mgr), Some(key)) => Some((mgr, key)),
+            _ => None,
+        }
+    }
+
+    fn derive_key_manager_bytes(
+        env: &Env,
+        record_id: u64,
+        version: Option<u32>,
+    ) -> Result<Option<(StdVec<u8>, String)>, ContractError> {
+        let (manager, key_id) = match Self::get_key_manager_config(env) {
+            Some(cfg) => cfg,
+            None => return Ok(None),
+        };
+
+        let client = KeyManagerContractClient::new(env, &manager);
+        let derived: DerivedKey = match version {
+            Some(ver) => client.derive_record_key_with_version(&key_id, &record_id, &ver),
+            None => client.derive_record_key(&key_id, &record_id),
+        };
+        let bytes = derived.key.to_array().to_vec();
+        let version_str = derived.version.to_string();
+        Ok(Some((
+            bytes,
+            String::from_str(env, &version_str),
+        )))
+    }
+
+    fn parse_key_version_u32(version: &String) -> Option<u32> {
+        version.to_string().parse::<u32>().ok()
     }
 
     fn enforce_rate_limit(env: &Env, caller: &Address) -> Result<(), ContractError> {
@@ -702,6 +741,25 @@ impl VisionRecordsContract {
         Ok(())
     }
 
+    /// Configure the external Key Manager used for per-record key derivation.
+    /// Requires at least `ContractAdmin` tier, or legacy admin/SystemAdmin.
+    pub fn set_key_manager(
+        env: Env,
+        caller: Address,
+        manager: Address,
+        root_key_id: BytesN<32>,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+        if !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin) {
+            return Err(ContractError::Unauthorized);
+        }
+
+        env.storage().instance().set(&KEY_MGR, &manager);
+        env.storage().instance().set(&KEY_MGR_KEY, &root_key_id);
+
+        Ok(())
+    }
+
     /// Return the current rate limiting configuration, if any.
     pub fn get_rate_limit_config(env: Env) -> Option<(u64, u64)> {
         env.storage().instance().get(&RATE_CFG)
@@ -941,18 +999,25 @@ impl VisionRecordsContract {
         let record_id: u64 = env.storage().instance().get(&counter_key).unwrap_or(0) + 1;
         env.storage().instance().set(&counter_key, &record_id);
 
-        // Determine current encryption key version (if any) and load master bytes
-        let current_version: Option<String> = env.storage().instance().get(&ENC_CUR);
+        // Determine encryption key material (KeyManager preferred, fallback to ENC_KEY).
+        let mut key_version: Option<String> = None;
         let mut master_bytes: StdVec<u8> = StdVec::new();
-        if let Some(ver) = current_version.clone() {
-            if let Some(sv) = env
-                .storage()
-                .persistent()
-                .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
-            {
-                let hex = sv.to_string();
-                if let Some(bytes) = teye_common::hex_to_bytes(&hex) {
-                    master_bytes = bytes;
+        if let Some((bytes, ver)) = Self::derive_key_manager_bytes(&env, record_id, None)? {
+            master_bytes = bytes;
+            key_version = Some(ver);
+        } else {
+            let current_version: Option<String> = env.storage().instance().get(&ENC_CUR);
+            key_version = current_version.clone();
+            if let Some(ver) = current_version.clone() {
+                if let Some(sv) = env
+                    .storage()
+                    .persistent()
+                    .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
+                {
+                    let hex = sv.to_string();
+                    if let Some(bytes) = teye_common::hex_to_bytes(&hex) {
+                        master_bytes = bytes;
+                    }
                 }
             }
         }
@@ -969,7 +1034,7 @@ impl VisionRecordsContract {
             provider: provider.clone(),
             record_type: record_type.clone(),
             data_hash: stored_hash,
-            key_version: current_version.clone(),
+            key_version,
             created_at: env.ledger().timestamp(),
             updated_at: env.ledger().timestamp(),
         };
@@ -1031,18 +1096,24 @@ impl VisionRecordsContract {
         let mut current_id: u64 = env.storage().instance().get(&counter_key).unwrap_or(0);
         let mut record_ids = Vec::new(&env);
 
-        // Load current encryption key/version once for the batch
-        let current_version: Option<String> = env.storage().instance().get(&ENC_CUR);
+        let key_manager_cfg = Self::get_key_manager_config(&env);
+        let key_manager_client = key_manager_cfg
+            .as_ref()
+            .map(|(mgr, _)| KeyManagerContractClient::new(&env, mgr));
         let mut master_bytes_batch: StdVec<u8> = StdVec::new();
-        if let Some(ver) = current_version.clone() {
-            if let Some(sv) = env
-                .storage()
-                .persistent()
-                .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
-            {
-                let hex = sv.to_string();
-                if let Some(bytes) = teye_common::hex_to_bytes(&hex) {
-                    master_bytes_batch = bytes;
+        let mut current_version: Option<String> = None;
+        if key_manager_cfg.is_none() {
+            current_version = env.storage().instance().get(&ENC_CUR);
+            if let Some(ver) = current_version.clone() {
+                if let Some(sv) = env
+                    .storage()
+                    .persistent()
+                    .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
+                {
+                    let hex = sv.to_string();
+                    if let Some(bytes) = teye_common::hex_to_bytes(&hex) {
+                        master_bytes_batch = bytes;
+                    }
                 }
             }
         }
@@ -1050,8 +1121,18 @@ impl VisionRecordsContract {
         for input in records.iter() {
             current_id += 1;
 
-            // Encrypt input.data_hash with batch master
-            let km = KeyManager::new(master_bytes_batch.clone());
+            let mut master_bytes = master_bytes_batch.clone();
+            let mut key_version = current_version.clone();
+            if let Some((_, key_id)) = key_manager_cfg.as_ref() {
+                if let Some(client) = key_manager_client.as_ref() {
+                    let derived = client.derive_record_key(key_id, &current_id);
+                    master_bytes = derived.key.to_array().to_vec();
+                    key_version = Some(String::from_str(&env, &derived.version.to_string()));
+                }
+            }
+
+            // Encrypt input.data_hash with master bytes
+            let km = KeyManager::new(master_bytes);
             let plaintext: StdString = input.data_hash.to_string();
             let ciphertext = km.encrypt(None, &plaintext);
             let stored_hash = String::from_str(&env, &ciphertext);
@@ -1062,7 +1143,7 @@ impl VisionRecordsContract {
                 provider: provider.clone(),
                 record_type: input.record_type.clone(),
                 data_hash: stored_hash,
-                key_version: current_version.clone(),
+                key_version,
                 created_at: env.ledger().timestamp(),
                 updated_at: env.ledger().timestamp(),
             };
@@ -1166,21 +1247,41 @@ impl VisionRecordsContract {
 
                 // Decrypt data_hash for authorized caller before returning
                 let mut out_record = record.clone();
-                // Prefer record's key_version, fall back to current instance version
-                let key_ver = out_record
-                    .key_version
-                    .clone()
-                    .or_else(|| env.storage().instance().get(&ENC_CUR));
+                // Prefer KeyManager-derived key when configured; fallback to ENC_KEY
                 let mut master_bytes: StdVec<u8> = StdVec::new();
-                if let Some(ver) = key_ver {
-                    if let Some(sv) = env
-                        .storage()
-                        .persistent()
-                        .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
-                    {
-                        let hex = sv.to_string();
-                        if let Some(bytes) = teye_common::hex_to_bytes(&hex) {
+                let mut used_key_manager = false;
+                if let Some(_cfg) = Self::get_key_manager_config(&env) {
+                    let version_u32 = out_record
+                        .key_version
+                        .as_ref()
+                        .and_then(|ver| Self::parse_key_version_u32(ver));
+                    let allow_key_manager =
+                        out_record.key_version.is_none() || version_u32.is_some();
+                    if allow_key_manager {
+                        if let Some((bytes, _)) =
+                            Self::derive_key_manager_bytes(&env, record_id, version_u32)?
+                        {
                             master_bytes = bytes;
+                            used_key_manager = true;
+                        }
+                    }
+                }
+
+                if !used_key_manager {
+                    let key_ver = out_record
+                        .key_version
+                        .clone()
+                        .or_else(|| env.storage().instance().get(&ENC_CUR));
+                    if let Some(ver) = key_ver {
+                        if let Some(sv) = env
+                            .storage()
+                            .persistent()
+                            .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
+                        {
+                            let hex = sv.to_string();
+                            if let Some(bytes) = teye_common::hex_to_bytes(&hex) {
+                                master_bytes = bytes;
+                            }
                         }
                     }
                 }
