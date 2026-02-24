@@ -43,7 +43,7 @@ const MAX_PUBLIC_INPUTS: u32 = 16;
 
 /// Request structure for ZK access verification.
 // TODO: post-quantum migration - This struct currently hardcodes a Groth16 `Proof`.
-// Future PQ systems (like STARKs) will require an `enum ProofType` or dynamically sized bytes 
+// Future PQ systems (like STARKs) will require an `enum ProofType` or dynamically sized bytes
 // to encapsulate changing proof shapes and public inputs matrices.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -278,7 +278,11 @@ impl ZkVerifierContract {
     }
 
     /// Sets the ZK Verification Key for Groth16.
-    pub fn set_verification_key(env: Env, caller: Address, vk: VerificationKey) -> Result<(), ContractError> {
+    pub fn set_verification_key(
+        env: Env,
+        caller: Address,
+        vk: VerificationKey,
+    ) -> Result<(), ContractError> {
         Self::require_admin(&env, &caller, "set_verification_key")?;
         env.storage().instance().set(&symbol_short!("VK"), &vk);
         Ok(())
@@ -423,7 +427,8 @@ impl ZkVerifierContract {
         // During migration, checking `request.proof_type` should branch to `PostQuantumVerifier::verify_proof`
         // or a native host-function call if STARK verification limits CPU budgets.
         let vk = Self::get_verification_key(env.clone()).ok_or(ContractError::InvalidConfig)?;
-        let is_valid = Bn254Verifier::verify_proof(&env, &vk, &request.proof, &request.public_inputs);
+        let is_valid =
+            Bn254Verifier::verify_proof(&env, &vk, &request.proof, &request.public_inputs);
         if is_valid {
             let proof_hash = PoseidonHasher::hash(&env, &request.public_inputs);
             AuditTrail::log_access(&env, request.user, request.resource_id, proof_hash);
@@ -452,11 +457,7 @@ impl ZkVerifierContract {
     /// Verifies the integrity of the audit chain for a given user and resource.
     ///
     /// Returns `true` if all hash links are valid, or if the chain is empty.
-    pub fn verify_audit_chain(
-        env: Env,
-        user: Address,
-        resource_id: BytesN<32>,
-    ) -> bool {
+    pub fn verify_audit_chain(env: Env, user: Address, resource_id: BytesN<32>) -> bool {
         AuditTrail::verify_chain(&env, user, resource_id)
     }
 }

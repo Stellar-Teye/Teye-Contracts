@@ -22,18 +22,18 @@ const TTL_EXTEND_TO: u32 = 10368000;
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum AdminTier {
-    OperatorAdmin = 1,
-    ContractAdmin = 2,
-    SuperAdmin = 3,
+    Operator = 1,
+    Contract = 2,
+    Super = 3,
 }
 
 impl AdminTier {
     /// Returns the numeric rank of this tier for comparison.
     pub fn rank(&self) -> u32 {
         match self {
-            AdminTier::OperatorAdmin => 1,
-            AdminTier::ContractAdmin => 2,
-            AdminTier::SuperAdmin => 3,
+            AdminTier::Operator => 1,
+            AdminTier::Contract => 2,
+            AdminTier::Super => 3,
         }
     }
 
@@ -99,7 +99,7 @@ pub fn require_tier(env: &Env, caller: &Address, min_tier: &AdminTier) -> bool {
 /// This also assigns them the SuperAdmin tier.
 pub fn set_super_admin(env: &Env, admin: &Address) {
     env.storage().instance().set(&SUPER_ADMIN, admin);
-    set_admin_tier(env, admin, AdminTier::SuperAdmin);
+    set_admin_tier(env, admin, AdminTier::Super);
 }
 
 /// Returns the primary super admin address, if set.
@@ -116,7 +116,7 @@ pub fn get_super_admin(env: &Env) -> Option<Address> {
 ///
 /// Returns `true` on success, `false` if the caller is not a SuperAdmin.
 pub fn promote_admin(env: &Env, caller: &Address, target: &Address, tier: AdminTier) -> bool {
-    if !require_tier(env, caller, &AdminTier::SuperAdmin) {
+    if !require_tier(env, caller, &AdminTier::Super) {
         return false;
     }
     set_admin_tier(env, target, tier);
@@ -130,7 +130,7 @@ pub fn promote_admin(env: &Env, caller: &Address, target: &Address, tier: AdminT
 ///
 /// Returns `true` on success, `false` if the caller is not a SuperAdmin.
 pub fn demote_admin(env: &Env, caller: &Address, target: &Address) -> bool {
-    if !require_tier(env, caller, &AdminTier::SuperAdmin) {
+    if !require_tier(env, caller, &AdminTier::Super) {
         return false;
     }
     remove_admin_tier(env, target);

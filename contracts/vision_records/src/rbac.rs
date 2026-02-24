@@ -194,7 +194,6 @@ pub fn user_groups_key(user: &Address) -> (Symbol, Address) {
     (symbol_short!("USR_GRPS"), user.clone())
 }
 
-
 pub fn access_policy_key(id: &String) -> (Symbol, String) {
     (symbol_short!("ACC_POL"), id.clone())
 }
@@ -204,7 +203,7 @@ pub fn user_credential_key(user: &Address) -> (Symbol, Address) {
 }
 
 pub fn record_sensitivity_key(record_id: &u64) -> (Symbol, u64) {
-    (symbol_short!("REC_SENS"), record_id.clone())
+    (symbol_short!("REC_SENS"), *record_id)
 }
 
 // ======================== Core RBAC Engine ========================
@@ -548,7 +547,7 @@ fn satisfies_time_restriction(env: &Env, restriction: &TimeRestriction) -> bool 
         TimeRestriction::BusinessHours => {
             let timestamp = env.ledger().timestamp();
             let hour = (timestamp / 3600) % 24;
-            hour >= 9 && hour <= 17
+            (9..=17).contains(&hour)
         }
         TimeRestriction::HourRange(start, end) => {
             let timestamp = env.ledger().timestamp();
@@ -674,10 +673,10 @@ pub fn evaluate_access_policies(
 ) -> bool {
     // Get all policies (in a real implementation, you might want to index policies by user/resource)
     // For now, we'll check a few default policy IDs
-    let mut default_policy_ids = Vec::new(&env);
-    default_policy_ids.push_back(String::from_str(&env, "default_medical_access"));
-    default_policy_ids.push_back(String::from_str(&env, "emergency_access"));
-    default_policy_ids.push_back(String::from_str(&env, "research_access"));
+    let mut default_policy_ids = Vec::new(env);
+    default_policy_ids.push_back(String::from_str(env, "default_medical_access"));
+    default_policy_ids.push_back(String::from_str(env, "emergency_access"));
+    default_policy_ids.push_back(String::from_str(env, "research_access"));
 
     let context = PolicyContext {
         user: user.clone(),

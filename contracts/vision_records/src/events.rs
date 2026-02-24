@@ -7,7 +7,7 @@ use crate::emergency::EmergencyCondition;
 use crate::errors::{ErrorCategory, ErrorContext, ErrorSeverity};
 use crate::{AccessLevel, RecordType, Role, VerificationStatus};
 use soroban_sdk::{symbol_short, Address, Env, String, Vec};
-use teye_common::concurrency::{ConflictStatus, ResolutionStrategy, UpdateOutcome};
+use teye_common::concurrency::ResolutionStrategy;
 
 /// Event published when the contract is initialized.
 #[soroban_sdk::contracttype]
@@ -1193,12 +1193,7 @@ pub struct OccStrategyChangedEvent {
     pub timestamp: u64,
 }
 
-pub fn publish_occ_update_applied(
-    env: &Env,
-    record_id: u64,
-    new_version: u64,
-    provider: Address,
-) {
+pub fn publish_occ_update_applied(env: &Env, record_id: u64, new_version: u64, provider: Address) {
     let topics = (symbol_short!("OCC_APPL"), record_id, provider.clone());
     let data = OccUpdateAppliedEvent {
         record_id,

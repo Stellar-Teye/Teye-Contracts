@@ -20,10 +20,10 @@ use soroban_sdk::{
 };
 
 use alloc::string::ToString;
-use teye_common::{multisig, whitelist, KeyManager, StdString, StdVec, admin_tiers, AdminTier};
 use teye_common::concurrency::{
     self as occ, FieldChange, ResolutionStrategy, UpdateOutcome, VersionStamp,
 };
+use teye_common::{admin_tiers, multisig, whitelist, AdminTier, KeyManager, StdString, StdVec};
 
 /// Re-export the contract-specific error type at the crate root.
 pub use errors::ContractError;
@@ -448,14 +448,13 @@ impl VisionRecordsContract {
             return Err(ContractError::NotInitialized);
         }
         caller.require_auth();
-        
+
         let admin = Self::get_admin(env.clone())?;
         if caller != admin {
             return Err(ContractError::Unauthorized);
         }
 
-        multisig::configure(&env, signers, threshold)
-            .map_err(|_| ContractError::InvalidInput)
+        multisig::configure(&env, signers, threshold).map_err(|_| ContractError::InvalidInput)
     }
 
     pub fn propose_admin_action(
@@ -483,8 +482,7 @@ impl VisionRecordsContract {
         }
         approver.require_auth();
 
-        multisig::approve(&env, &approver, proposal_id)
-            .map_err(|_| ContractError::Unauthorized)
+        multisig::approve(&env, &approver, proposal_id).map_err(|_| ContractError::Unauthorized)
     }
 
     pub fn get_multisig_config(env: Env) -> Option<multisig::MultisigConfig> {
@@ -506,7 +504,7 @@ impl VisionRecordsContract {
         caller: Address,
         max_requests_per_window: u64,
         window_duration_seconds: u64,
-        proposal_id: u64,
+        _proposal_id: u64,
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
@@ -514,7 +512,7 @@ impl VisionRecordsContract {
             return Err(ContractError::InvalidInput);
         }
 
-        if !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin) {
+        if !Self::has_admin_access(&env, &caller, &AdminTier::Contract) {
             return Self::unauthorized(
                 &env,
                 &caller,
@@ -538,7 +536,7 @@ impl VisionRecordsContract {
         caller: Address,
         version: String,
         key: String,
-        proposal_id: u64,
+        _proposal_id: u64,
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
@@ -577,7 +575,7 @@ impl VisionRecordsContract {
         enabled: bool,
     ) -> Result<(), ContractError> {
         caller.require_auth();
-        if !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin) {
+        if !Self::has_admin_access(&env, &caller, &AdminTier::Contract) {
             return Self::unauthorized(
                 &env,
                 &caller,
@@ -594,7 +592,7 @@ impl VisionRecordsContract {
     /// Requires at least `ContractAdmin` tier, or legacy admin/SystemAdmin.
     pub fn add_to_whitelist(env: Env, caller: Address, user: Address) -> Result<(), ContractError> {
         caller.require_auth();
-        if !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin) {
+        if !Self::has_admin_access(&env, &caller, &AdminTier::Contract) {
             return Self::unauthorized(
                 &env,
                 &caller,
@@ -615,7 +613,7 @@ impl VisionRecordsContract {
         user: Address,
     ) -> Result<(), ContractError> {
         caller.require_auth();
-        if !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin) {
+        if !Self::has_admin_access(&env, &caller, &AdminTier::Contract) {
             return Self::unauthorized(
                 &env,
                 &caller,
@@ -2174,8 +2172,8 @@ impl VisionRecordsContract {
     ) -> Result<UpdateOutcome, ContractError> {
         caller.require_auth();
 
-        let existing = prescription::get_prescription(&env, rx_id)
-            .ok_or(ContractError::RecordNotFound)?;
+        let existing =
+            prescription::get_prescription(&env, rx_id).ok_or(ContractError::RecordNotFound)?;
 
         // Only the original provider (or delegatee / admin) may update.
         let has_perm = if caller == existing.provider {
@@ -2317,12 +2315,7 @@ impl VisionRecordsContract {
         caller.require_auth();
 
         if !rbac::has_permission(&env, &caller, &Permission::SystemAdmin) {
-            return Self::unauthorized(
-                &env,
-                &caller,
-                "resolve_conflict",
-                "permission:SystemAdmin",
-            );
+            return Self::unauthorized(&env, &caller, "resolve_conflict", "permission:SystemAdmin");
         }
 
         if !occ::resolve_conflict(&env, conflict_id, &caller) {

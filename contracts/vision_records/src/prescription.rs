@@ -28,6 +28,7 @@ pub struct ContactLensData {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum OptionalContactLensData {
     None,
     Some(ContactLensData),

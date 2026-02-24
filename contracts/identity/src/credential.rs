@@ -112,6 +112,7 @@ pub fn verify_zk_credential(
 
     // 4. Emit event on success (privacy-preserving: only user + resource hash).
     if is_valid {
+        #[allow(deprecated)]
         env.events()
             .publish((symbol_short!("ZK_CRED"), user.clone()), resource_id);
     }

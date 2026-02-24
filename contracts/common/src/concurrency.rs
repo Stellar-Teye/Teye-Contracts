@@ -353,11 +353,7 @@ fn conflict_queue_key() -> Symbol {
 }
 
 fn next_conflict_id(env: &Env) -> u64 {
-    let current: u64 = env
-        .storage()
-        .persistent()
-        .get(&CONFLICT_CTR)
-        .unwrap_or(0);
+    let current: u64 = env.storage().persistent().get(&CONFLICT_CTR).unwrap_or(0);
     let next = current.saturating_add(1);
     env.storage().persistent().set(&CONFLICT_CTR, &next);
     next

@@ -6,11 +6,10 @@
 )]
 
 use super::*;
+use alloc::boxed::Box;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Env, String, Vec};
-use teye_common::concurrency::{
-    FieldChange, ResolutionStrategy, UpdateOutcome, VersionStamp,
-};
+use teye_common::concurrency::{FieldChange, ResolutionStrategy, UpdateOutcome};
 
 fn setup_env() -> (Env, Address, VisionRecordsContractClient<'static>) {
     let env = Env::default();
@@ -25,11 +24,7 @@ fn setup_env() -> (Env, Address, VisionRecordsContractClient<'static>) {
     (env.clone(), admin, client)
 }
 
-fn register_provider(
-    client: &VisionRecordsContractClient,
-    env: &Env,
-    admin: &Address,
-) -> Address {
+fn register_provider(client: &VisionRecordsContractClient, env: &Env, admin: &Address) -> Address {
     let provider = Address::generate(env);
     client.register_user(
         admin,
@@ -40,11 +35,7 @@ fn register_provider(
     provider
 }
 
-fn register_patient(
-    client: &VisionRecordsContractClient,
-    env: &Env,
-    admin: &Address,
-) -> Address {
+fn register_patient(client: &VisionRecordsContractClient, env: &Env, admin: &Address) -> Address {
     let patient = Address::generate(env);
     client.register_user(
         admin,
@@ -187,11 +178,7 @@ fn test_stale_version_triggers_conflict_manual_review() {
     );
 
     // Set strategy to ManualReview.
-    client.set_record_resolution_strategy(
-        &provider,
-        &record_id,
-        &ResolutionStrategy::ManualReview,
-    );
+    client.set_record_resolution_strategy(&provider, &record_id, &ResolutionStrategy::ManualReview);
 
     let stamp_v1 = client.get_record_version_stamp(&record_id);
 
@@ -383,11 +370,7 @@ fn test_resolve_conflict() {
         &157_680_000u64,
     );
 
-    client.set_record_resolution_strategy(
-        &provider,
-        &record_id,
-        &ResolutionStrategy::ManualReview,
-    );
+    client.set_record_resolution_strategy(&provider, &record_id, &ResolutionStrategy::ManualReview);
 
     let stamp_v1 = client.get_record_version_stamp(&record_id);
 
@@ -480,11 +463,7 @@ fn test_merge_strategy_non_overlapping_fields() {
         &157_680_000u64,
     );
 
-    client.set_record_resolution_strategy(
-        &provider,
-        &record_id,
-        &ResolutionStrategy::Merge,
-    );
+    client.set_record_resolution_strategy(&provider, &record_id, &ResolutionStrategy::Merge);
 
     let stamp_v1 = client.get_record_version_stamp(&record_id);
 
@@ -580,11 +559,7 @@ fn test_get_record_conflicts_returns_for_specific_record() {
         &157_680_000u64,
     );
 
-    client.set_record_resolution_strategy(
-        &provider,
-        &record_id,
-        &ResolutionStrategy::ManualReview,
-    );
+    client.set_record_resolution_strategy(&provider, &record_id, &ResolutionStrategy::ManualReview);
 
     let stamp_v1 = client.get_record_version_stamp(&record_id);
 

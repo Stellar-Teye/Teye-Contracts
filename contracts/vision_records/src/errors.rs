@@ -261,7 +261,9 @@ impl ContractError {
             ContractError::InvalidAttestation => "Invalid emergency attestation provided",
             ContractError::InvalidAppointmentTime => "Invalid appointment time provided",
             ContractError::InvalidAppointmentStatus => "Invalid appointment status provided",
-            ContractError::VersionConflict => "Record version conflict detected, retry with current version",
+            ContractError::VersionConflict => {
+                "Record version conflict detected, retry with current version"
+            }
             ContractError::ConflictQueued => "Concurrent modification conflict queued for review",
             ContractError::ConflictNotFound => "Conflict entry not found",
         }
