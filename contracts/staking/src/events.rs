@@ -99,7 +99,7 @@ pub struct AdminTransferCancelledEvent {
     pub timestamp: u64,
 }
 
-/// Fired when a reward rate change is proposed.
+/// Fired when a reward-rate change is proposed (with a timelock delay).
 #[soroban_sdk::contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RewardRateProposedEvent {
@@ -108,7 +108,7 @@ pub struct RewardRateProposedEvent {
     pub timestamp: u64,
 }
 
-/// Fired when a reward rate change is applied.
+/// Fired when a previously proposed reward-rate change is applied.
 #[soroban_sdk::contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RewardRateAppliedEvent {
@@ -116,11 +116,11 @@ pub struct RewardRateAppliedEvent {
     pub timestamp: u64,
 }
 
-/// Fired when the admin changes the rate change delay.
+/// Fired when the rate-change delay is updated.
 #[soroban_sdk::contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RateChangeDelaySetEvent {
-    pub new_delay: u64,
+    pub delay: u64,
     pub timestamp: u64,
 }
 
@@ -267,7 +267,7 @@ pub fn publish_reward_rate_proposed(env: &Env, new_rate: i128, effective_at: u64
 
 pub fn publish_reward_rate_applied(env: &Env, new_rate: i128) {
     env.events().publish(
-        (symbol_short!("RWD_APLY"),),
+        (symbol_short!("RWD_APPL"),),
         RewardRateAppliedEvent {
             new_rate,
             timestamp: env.ledger().timestamp(),
@@ -275,11 +275,11 @@ pub fn publish_reward_rate_applied(env: &Env, new_rate: i128) {
     );
 }
 
-pub fn publish_rate_change_delay_set(env: &Env, new_delay: u64) {
+pub fn publish_rate_change_delay_set(env: &Env, delay: u64) {
     env.events().publish(
-        (symbol_short!("DLY_SET"),),
+        (symbol_short!("RY_DELAY"),),
         RateChangeDelaySetEvent {
-            new_delay,
+            delay,
             timestamp: env.ledger().timestamp(),
         },
     );

@@ -10,19 +10,29 @@ use zk_voting::{ZkVoting, ZkVotingClient};
 /// Build a valid Groth16 proof (matches Bn254Verifier mock rules:
 /// a[0]==1, c[0]==1, public_inputs[0][0]==1).
 fn valid_proof(env: &Env) -> (Proof, Vec<BytesN<32>>) {
-    let mut a = [0u8; 64];
-    a[0] = 1;
-    let mut b = [0u8; 128];
-    let mut c = [0u8; 64];
-    c[0] = 1;
+    let mut a_bytes = [0u8; 32];
+    a_bytes[0] = 1;
+    let mut c_bytes = [0u8; 32];
+    c_bytes[0] = 1;
+
+    let proof = Proof {
+        a: zk_verifier::verifier::G1Point {
+            x: BytesN::from_array(env, &a_bytes),
+            y: BytesN::from_array(env, &[0u8; 32]),
+        },
+        b: zk_verifier::verifier::G2Point {
+            x: (BytesN::from_array(env, &[0u8; 32]), BytesN::from_array(env, &[0u8; 32])),
+            y: (BytesN::from_array(env, &[0u8; 32]), BytesN::from_array(env, &[0u8; 32])),
+        },
+        c: zk_verifier::verifier::G1Point {
+            x: BytesN::from_array(env, &c_bytes),
+            y: BytesN::from_array(env, &[0u8; 32]),
+        },
+    };
+    
     let mut pi = [0u8; 32];
     pi[0] = 1;
 
-    let proof = Proof {
-        a: BytesN::from_array(env, &a),
-        b: BytesN::from_array(env, &b),
-        c: BytesN::from_array(env, &c),
-    };
     let mut inputs: Vec<BytesN<32>> = Vec::new(env);
     inputs.push_back(BytesN::from_array(env, &pi));
     (proof, inputs)
@@ -30,16 +40,23 @@ fn valid_proof(env: &Env) -> (Proof, Vec<BytesN<32>>) {
 
 /// Build an invalid proof (a[0]==0 fails the mock verifier).
 fn invalid_proof(env: &Env) -> (Proof, Vec<BytesN<32>>) {
-    let a = [0u8; 64];
-    let b = [0u8; 128];
-    let c = [0u8; 64];
+    let proof = Proof {
+        a: zk_verifier::verifier::G1Point {
+            x: BytesN::from_array(env, &[0u8; 32]),
+            y: BytesN::from_array(env, &[0u8; 32]),
+        },
+        b: zk_verifier::verifier::G2Point {
+            x: (BytesN::from_array(env, &[0u8; 32]), BytesN::from_array(env, &[0u8; 32])),
+            y: (BytesN::from_array(env, &[0u8; 32]), BytesN::from_array(env, &[0u8; 32])),
+        },
+        c: zk_verifier::verifier::G1Point {
+            x: BytesN::from_array(env, &[0u8; 32]),
+            y: BytesN::from_array(env, &[0u8; 32]),
+        },
+    };
+    
     let pi = [0u8; 32];
 
-    let proof = Proof {
-        a: BytesN::from_array(env, &a),
-        b: BytesN::from_array(env, &b),
-        c: BytesN::from_array(env, &c),
-    };
     let mut inputs: Vec<BytesN<32>> = Vec::new(env);
     inputs.push_back(BytesN::from_array(env, &pi));
     (proof, inputs)
@@ -72,6 +89,20 @@ fn setup() -> (Env, Address, ZkVotingClient<'static>, BytesN<32>) {
     let root = tree.root();
 
     client.set_merkle_root(&admin, &root);
+
+    // Setup verification key
+    let g1 = zk_verifier::vk::G1Point { x: BytesN::from_array(&env, &[0u8; 32]), y: BytesN::from_array(&env, &[0u8; 32]) };
+    let g2 = zk_verifier::vk::G2Point { x: (BytesN::from_array(&env, &[0u8; 32]), BytesN::from_array(&env, &[0u8; 32])), y: (BytesN::from_array(&env, &[0u8; 32]), BytesN::from_array(&env, &[0u8; 32])) };
+    let mut ic = Vec::new(&env);
+    ic.push_back(g1.clone());
+    let vk = zk_verifier::vk::VerificationKey {
+        alpha_g1: g1.clone(),
+        beta_g2: g2.clone(),
+        gamma_g2: g2.clone(),
+        delta_g2: g2.clone(),
+        ic,
+    };
+    client.set_verification_key(&admin, &vk);
 
     (env, admin, client, root)
 }

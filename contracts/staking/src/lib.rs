@@ -5,8 +5,9 @@ pub mod rewards;
 pub mod timelock;
 
 use common::admin_tiers::{self, AdminTier};
+use common::multisig;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, token, Address, Env, Symbol,
+    contract, contractimpl, contracttype, symbol_short, token, Address, BytesN, Env, Symbol,
 };
 
 use timelock::{RateChangeProposal, UnstakeRequest};
@@ -47,6 +48,8 @@ pub enum ContractError {
     TokensIdentical = 9,
     RateChangeNotReady = 10,
     NoPendingRateChange = 11,
+    MultisigRequired = 12,
+    MultisigError = 13,
 }
 
 // ── Public-facing types (re-exported for test consumers) ─────────────────────
@@ -498,6 +501,68 @@ impl StakingContract {
         env.storage().instance().get(&PENDING_ADMIN)
     }
 
+    // ── Multisig management ──────────────────────────────────────────────────
+
+    /// Configure M-of-N multisig for admin operations.
+    ///
+    /// Only the current admin can call this.  Once configured, critical
+    /// admin operations (`set_reward_rate`, `set_lock_period`) require
+    /// a fully-approved multisig proposal.
+    pub fn configure_multisig(
+        env: Env,
+        caller: Address,
+        signers: soroban_sdk::Vec<Address>,
+        threshold: u32,
+    ) -> Result<(), ContractError> {
+        Self::require_initialized(&env)?;
+        caller.require_auth();
+        Self::require_admin(&env, &caller)?;
+
+        multisig::configure(&env, signers, threshold)
+            .map_err(|_| ContractError::InvalidInput)
+    }
+
+    /// Create a multisig proposal for an admin action.
+    ///
+    /// `action` is a short tag (e.g. `symbol_short!("SET_RATE")`).
+    /// `data_hash` is a SHA-256 hash of the action parameters so
+    /// approvers can verify intent.
+    pub fn propose_admin_action(
+        env: Env,
+        proposer: Address,
+        action: Symbol,
+        data_hash: BytesN<32>,
+    ) -> Result<u64, ContractError> {
+        Self::require_initialized(&env)?;
+        proposer.require_auth();
+
+        multisig::propose(&env, &proposer, action, data_hash)
+            .map_err(|_| ContractError::MultisigError)
+    }
+
+    /// Approve a pending multisig proposal.
+    pub fn approve_admin_action(
+        env: Env,
+        approver: Address,
+        proposal_id: u64,
+    ) -> Result<(), ContractError> {
+        Self::require_initialized(&env)?;
+        approver.require_auth();
+
+        multisig::approve(&env, &approver, proposal_id)
+            .map_err(|_| ContractError::MultisigError)
+    }
+
+    /// Return the current multisig configuration, if any.
+    pub fn get_multisig_config(env: Env) -> Option<multisig::MultisigConfig> {
+        multisig::get_config(&env)
+    }
+
+    /// Return a pending proposal by ID.
+    pub fn get_proposal(env: Env, proposal_id: u64) -> Option<multisig::Proposal> {
+        multisig::get_proposal(&env, proposal_id)
+    }
+
     // ── Admin functions ──────────────────────────────────────────────────────
 
     /// Propose a reward-rate change.
@@ -506,11 +571,28 @@ impl StakingContract {
     /// rate changes, so existing stakers never lose or gain rewards
     /// retroactively.
     ///
-    /// Requires at least `ContractAdmin` tier.
-    pub fn set_reward_rate(env: Env, caller: Address, new_rate: i128) -> Result<(), ContractError> {
+    /// When multisig is configured, `proposal_id` must reference a fully
+    /// approved proposal with action `"SET_RATE"`.  When multisig is not
+    /// configured, pass `0` and the legacy single-admin path is used.
+    pub fn set_reward_rate(
+        env: Env,
+        caller: Address,
+        new_rate: i128,
+        proposal_id: u64,
+    ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
-        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin)?;
+
+        // -- Multisig gate --
+        if !multisig::is_legacy_admin_allowed(&env) {
+            if !multisig::is_executable(&env, proposal_id) {
+                return Err(ContractError::MultisigRequired);
+            }
+            multisig::mark_executed(&env, proposal_id)
+                .map_err(|_| ContractError::MultisigError)?;
+        } else {
+            Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin)?;
+        }
 
         if new_rate < 0 {
             return Err(ContractError::InvalidInput);
@@ -579,15 +661,28 @@ impl StakingContract {
 
     /// Update the unstake lock period (affects only *future* requests).
     ///
-    /// Requires at least `ContractAdmin` tier.
+    /// When multisig is configured, `proposal_id` must reference a fully
+    /// approved proposal with action `"SET_LOCK"`.  When multisig is not
+    /// configured, pass `0` and the legacy single-admin path is used.
     pub fn set_lock_period(
         env: Env,
         caller: Address,
         new_period: u64,
+        proposal_id: u64,
     ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
-        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin)?;
+
+        // -- Multisig gate --
+        if !multisig::is_legacy_admin_allowed(&env) {
+            if !multisig::is_executable(&env, proposal_id) {
+                return Err(ContractError::MultisigRequired);
+            }
+            multisig::mark_executed(&env, proposal_id)
+                .map_err(|_| ContractError::MultisigError)?;
+        } else {
+            Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin)?;
+        }
 
         env.storage().instance().set(&LOCK_PERIOD, &new_period);
 
@@ -736,3 +831,6 @@ mod test;
 
 #[cfg(test)]
 mod test_admin_tiers;
+
+#[cfg(test)]
+mod test_multisig;
