@@ -1,9 +1,114 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 #![cfg(test)]
 
-use soroban_sdk::{testutils::Address as _, testutils::Ledger, Address, BytesN, Env};
-use zk_verifier::ZkAccessHelper;
-use zk_verifier::{ContractError, ZkVerifierContract, ZkVerifierContractClient};
+use soroban_sdk::{testutils::Address as _, testutils::Ledger, Address, BytesN, Env, Vec};
+use zk_verifier::{ContractError, VerificationKey, ZkAccessHelper, ZkVerifierContract, ZkVerifierContractClient};
+
+#[test]
+fn test_set_verification_key_as_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    // Create a test verification key
+    let vk = VerificationKey {
+        alpha: BytesN::from_array(&env, &[1u8; 64]),
+        beta: BytesN::from_array(&env, &[2u8; 128]),
+        gamma: BytesN::from_array(&env, &[3u8; 128]),
+        delta: BytesN::from_array(&env, &[4u8; 128]),
+        ic: Vec::from_array(&env, [BytesN::from_array(&env, &[5u8; 64])]),
+    };
+
+    // Admin should be able to set VK
+    let result = client.try_set_verification_key(&admin, &vk);
+    assert!(result.is_ok(), "Admin should be able to set verification key");
+}
+
+#[test]
+fn test_non_admin_cannot_set_verification_key() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let non_admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    // Create a test verification key
+    let vk = VerificationKey {
+        alpha: BytesN::from_array(&env, &[1u8; 64]),
+        beta: BytesN::from_array(&env, &[2u8; 128]),
+        gamma: BytesN::from_array(&env, &[3u8; 128]),
+        delta: BytesN::from_array(&env, &[4u8; 128]),
+        ic: Vec::from_array(&env, [BytesN::from_array(&env, &[5u8; 64])]),
+    };
+
+    // Non-admin should NOT be able to set VK
+    let result = client.try_set_verification_key(&non_admin, &vk);
+    assert!(result.is_err(), "Non-admin should not be able to set verification key");
+    assert!(matches!(
+        result.unwrap_err(),
+        Ok(ContractError::Unauthorized)
+    ));
+}
+
+#[test]
+fn test_get_verification_key_after_set() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    // Create a test verification key
+    let vk = VerificationKey {
+        alpha: BytesN::from_array(&env, &[1u8; 64]),
+        beta: BytesN::from_array(&env, &[2u8; 128]),
+        gamma: BytesN::from_array(&env, &[3u8; 128]),
+        delta: BytesN::from_array(&env, &[4u8; 128]),
+        ic: Vec::from_array(&env, [BytesN::from_array(&env, &[5u8; 64])]),
+    };
+
+    // Set the VK
+    client.set_verification_key(&admin, &vk);
+
+    // Retrieve and verify it matches
+    let retrieved_vk = client.get_verification_key();
+    assert!(retrieved_vk.is_some(), "VK should be retrievable after being set");
+
+    let retrieved = retrieved_vk.unwrap();
+    assert_eq!(retrieved.alpha, vk.alpha);
+    assert_eq!(retrieved.beta, vk.beta);
+    assert_eq!(retrieved.gamma, vk.gamma);
+    assert_eq!(retrieved.delta, vk.delta);
+    assert_eq!(retrieved.ic.len(), vk.ic.len());
+}
+
+#[test]
+fn test_get_verification_key_before_set() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    // Try to get VK before it's set
+    let retrieved_vk = client.get_verification_key();
+    assert!(retrieved_vk.is_none(), "VK should be None before being set");
+}
 
 #[test]
 fn test_valid_proof_verification_and_audit() {

@@ -6,7 +6,7 @@ mod verifier;
 
 pub use crate::audit::{AuditRecord, AuditTrail};
 pub use crate::helpers::ZkAccessHelper;
-pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof};
+pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof, VerificationKey};
 
 use common::whitelist;
 use soroban_sdk::{
@@ -15,6 +15,7 @@ use soroban_sdk::{
 };
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
+const VK: Symbol = symbol_short!("VK");
 const RATE_CFG: Symbol = symbol_short!("RATECFG");
 const RATE_TRACK: Symbol = symbol_short!("RLTRK");
 
@@ -107,6 +108,24 @@ impl ZkVerifierContract {
         }
 
         Ok(())
+    }
+
+    /// Set the Groth16 verification key (admin-only).
+    /// This stores the VK for later use in proof verification.
+    pub fn set_verification_key(
+        env: Env,
+        caller: Address,
+        vk: VerificationKey,
+    ) -> Result<(), ContractError> {
+        Self::require_admin(&env, &caller)?;
+        env.storage().instance().set(&VK, &vk);
+        Ok(())
+    }
+
+    /// Get the stored Groth16 verification key.
+    /// Returns the VK if it has been set, or None if not yet configured.
+    pub fn get_verification_key(env: Env) -> Option<VerificationKey> {
+        env.storage().instance().get(&VK)
     }
 
     /// Configure per-address rate limiting for this contract.

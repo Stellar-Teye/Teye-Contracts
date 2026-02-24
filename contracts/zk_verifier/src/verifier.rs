@@ -1,5 +1,21 @@
 use soroban_sdk::{contracttype, BytesN, Env, Vec};
 
+/// Groth16 verification key component structure for BN254 curve.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerificationKey {
+    /// Alpha point (G1 point, 64 bytes)
+    pub alpha: BytesN<64>,
+    /// Beta point (G2 point, 128 bytes)
+    pub beta: BytesN<128>,
+    /// Gamma point (G2 point, 128 bytes)
+    pub gamma: BytesN<128>,
+    /// Delta point (G2 point, 128 bytes)
+    pub delta: BytesN<128>,
+    /// Input commitments (variable-length vector of G1 points)
+    pub ic: Vec<BytesN<64>>,
+}
+
 /// Compressed Groth16 proof points
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
