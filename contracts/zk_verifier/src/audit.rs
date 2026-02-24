@@ -29,6 +29,7 @@ impl AuditTrail {
         env.storage()
             .persistent()
             .set(&(&user, &resource_id), &record);
+        #[allow(deprecated)]
         env.events().publish((user, resource_id), record);
     }
 

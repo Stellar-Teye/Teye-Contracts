@@ -8,9 +8,7 @@
 //! printed to stdout so CI can capture them in build logs.
 
 use soroban_sdk::{testutils::Address as _, Address, Env};
-use zk_verifier::{
-    AccessRequest, ZkAccessHelper, ZkVerifierContract, ZkVerifierContractClient,
-};
+use zk_verifier::{AccessRequest, ZkAccessHelper, ZkVerifierContract, ZkVerifierContractClient};
 
 // ---------------------------------------------------------------------------
 // Helpers

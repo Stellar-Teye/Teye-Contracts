@@ -14,6 +14,7 @@ use soroban_sdk::contracterror;
 
 // ── Modules ──────────────────────────────────────────────────────────────────
 
+pub mod admin_tiers;
 #[cfg(feature = "std")]
 pub mod consent;
 pub mod keys;

@@ -459,10 +459,7 @@ impl StakingContract {
     }
 
     /// Cancel a pending admin transfer. Only the current admin can call this.
-    pub fn cancel_admin_transfer(
-        env: Env,
-        current_admin: Address,
-    ) -> Result<(), ContractError> {
+    pub fn cancel_admin_transfer(env: Env, current_admin: Address) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         current_admin.require_auth();
         Self::require_admin(&env, &current_admin)?;

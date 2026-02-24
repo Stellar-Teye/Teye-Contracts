@@ -1,6 +1,10 @@
 // Minimal audit log for secure rotation
 use std::time::{SystemTime, UNIX_EPOCH};
 
+// Aliases to disambiguate from Soroban SDK types
+type StdString = String;
+type StdVec<T> = Vec<T>;
+
 #[derive(Debug, Clone, Default)]
 pub struct AuditEntry {
     pub actor: String,

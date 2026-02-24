@@ -1,11 +1,7 @@
 extern crate std;
 
 use common::admin_tiers::AdminTier;
-use soroban_sdk::{
-    testutils::Address as _,
-    token::StellarAssetClient,
-    Address, Env,
-};
+use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env};
 
 use crate::{ContractError, StakingContract, StakingContractClient};
 
@@ -55,7 +51,10 @@ fn test_super_admin_promotes_contract_admin() {
     let target = Address::generate(&env);
 
     client.promote_admin(&admin, &target, &AdminTier::ContractAdmin);
-    assert_eq!(client.get_admin_tier(&target), Some(AdminTier::ContractAdmin));
+    assert_eq!(
+        client.get_admin_tier(&target),
+        Some(AdminTier::ContractAdmin)
+    );
 }
 
 #[test]
@@ -64,7 +63,10 @@ fn test_super_admin_promotes_operator_admin() {
     let target = Address::generate(&env);
 
     client.promote_admin(&admin, &target, &AdminTier::OperatorAdmin);
-    assert_eq!(client.get_admin_tier(&target), Some(AdminTier::OperatorAdmin));
+    assert_eq!(
+        client.get_admin_tier(&target),
+        Some(AdminTier::OperatorAdmin)
+    );
 }
 
 #[test]
@@ -84,7 +86,10 @@ fn test_super_admin_demotes_admin() {
     let target = Address::generate(&env);
 
     client.promote_admin(&admin, &target, &AdminTier::ContractAdmin);
-    assert_eq!(client.get_admin_tier(&target), Some(AdminTier::ContractAdmin));
+    assert_eq!(
+        client.get_admin_tier(&target),
+        Some(AdminTier::ContractAdmin)
+    );
 
     client.demote_admin(&admin, &target);
     assert_eq!(client.get_admin_tier(&target), None);
@@ -100,11 +105,7 @@ fn test_contract_admin_cannot_promote() {
 
     client.promote_admin(&admin, &contract_admin, &AdminTier::ContractAdmin);
 
-    let result = client.try_promote_admin(
-        &contract_admin,
-        &target,
-        &AdminTier::OperatorAdmin,
-    );
+    let result = client.try_promote_admin(&contract_admin, &target, &AdminTier::OperatorAdmin);
     match result {
         Err(Ok(e)) => assert_eq!(e, ContractError::Unauthorized),
         _ => unreachable!("Expected Unauthorized error"),
@@ -119,11 +120,7 @@ fn test_operator_admin_cannot_promote() {
 
     client.promote_admin(&admin, &operator, &AdminTier::OperatorAdmin);
 
-    let result = client.try_promote_admin(
-        &operator,
-        &target,
-        &AdminTier::OperatorAdmin,
-    );
+    let result = client.try_promote_admin(&operator, &target, &AdminTier::OperatorAdmin);
     match result {
         Err(Ok(e)) => assert_eq!(e, ContractError::Unauthorized),
         _ => unreachable!("Expected Unauthorized error"),
