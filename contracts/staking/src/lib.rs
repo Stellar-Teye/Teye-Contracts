@@ -30,6 +30,9 @@ const RATE_DELAY: Symbol = symbol_short!("RATE_DLY");
 const USER_STAKE: Symbol = symbol_short!("STK");
 const USER_RPT_PAID: Symbol = symbol_short!("RPT_PAID");
 const USER_EARNED: Symbol = symbol_short!("ERND");
+// Records the ledger timestamp of a user's first-ever stake deposit.
+// Used by the Governor DAO to compute the time-weighted loyalty multiplier.
+const USER_SINCE: Symbol = symbol_short!("SINCE");
 
 // ── Contract errors ──────────────────────────────────────────────────────────
 
@@ -129,6 +132,9 @@ impl StakingContract {
     ///
     /// The global reward accumulator is updated first so the staker does not
     /// retroactively earn rewards on the newly deposited tokens.
+    ///
+    /// On a user's very first deposit the current timestamp is recorded under
+    /// `USER_SINCE` so the Governor DAO can later compute their loyalty age.
     pub fn stake(env: Env, staker: Address, amount: i128) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         staker.require_auth();
@@ -165,6 +171,14 @@ impl StakingContract {
         let prev_total: i128 = env.storage().instance().get(&TOTAL_STAKED).unwrap_or(0);
         let new_total = prev_total.saturating_add(amount);
         env.storage().instance().set(&TOTAL_STAKED, &new_total);
+
+        // 4. Record the first-stake timestamp for loyalty age tracking.
+        //    Only written once; subsequent top-ups do not reset the clock.
+        let since_key = (USER_SINCE, staker.clone());
+        if !env.storage().persistent().has(&since_key) {
+            let now = env.ledger().timestamp();
+            env.storage().persistent().set(&since_key, &now);
+        }
 
         events::publish_staked(&env, staker, amount, new_total);
 
@@ -411,6 +425,35 @@ impl StakingContract {
     /// Return the details of a specific unstake request.
     pub fn get_unstake_request(env: Env, request_id: u64) -> Result<UnstakeRequest, ContractError> {
         timelock::get_request(&env, request_id).ok_or(ContractError::RequestNotFound)
+    }
+
+    /// Return the ledger timestamp when `staker` made their first deposit.
+    ///
+    /// Returns `0` if the address has never staked.
+    pub fn get_stake_since(env: Env, staker: Address) -> u64 {
+        env.storage()
+            .persistent()
+            .get(&(USER_SINCE, staker))
+            .unwrap_or(0u64)
+    }
+
+    /// Return how many seconds `staker` has been continuously staking.
+    ///
+    /// Used by the Governor DAO to compute the time-weighted loyalty multiplier:
+    /// ```text
+    /// loyalty_mult = 1.0 + min(stake_age_days / 365, 1.0)   // up to 2×
+    /// ```
+    /// Returns `0` if the address has never staked.
+    pub fn get_stake_age(env: Env, staker: Address) -> u64 {
+        let since: u64 = env
+            .storage()
+            .persistent()
+            .get(&(USER_SINCE, staker))
+            .unwrap_or(0u64);
+        if since == 0 {
+            return 0;
+        }
+        env.ledger().timestamp().saturating_sub(since)
     }
 
     pub fn is_initialized(env: Env) -> bool {

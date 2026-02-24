@@ -768,6 +768,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "governor"
+version = "1.2.2"
+dependencies = [
+ "common",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "group"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
