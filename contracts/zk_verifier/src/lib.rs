@@ -20,6 +20,7 @@ mod verifier;
 pub mod vk;
 
 pub use crate::audit::{AuditRecord, AuditTrail};
+pub use crate::events::AccessRejectedEvent;
 pub use crate::helpers::ZkAccessHelper;
 pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof, VerificationKey};
 
@@ -31,7 +32,6 @@ use soroban_sdk::{
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
 const PENDING_ADMIN: Symbol = symbol_short!("PEND_ADM");
-const VK: Symbol = symbol_short!("VK");
 const RATE_CFG: Symbol = symbol_short!("RATECFG");
 const RATE_TRACK: Symbol = symbol_short!("RLTRK");
 const VK: Symbol = symbol_short!("VK");
@@ -237,24 +237,6 @@ impl ZkVerifierContract {
         env.storage().instance().get(&PENDING_ADMIN)
     }
 
-    /// Set the Groth16 verification key (admin-only).
-    /// This stores the VK for later use in proof verification.
-    pub fn set_verification_key(
-        env: Env,
-        caller: Address,
-        vk: VerificationKey,
-    ) -> Result<(), ContractError> {
-        Self::require_admin(&env, &caller)?;
-        env.storage().instance().set(&VK, &vk);
-        Ok(())
-    }
-
-    /// Get the stored Groth16 verification key.
-    /// Returns the VK if it has been set, or None if not yet configured.
-    pub fn get_verification_key(env: Env) -> Option<VerificationKey> {
-        env.storage().instance().get(&VK)
-    }
-
     /// Configure per-address rate limiting for this contract.
     pub fn set_rate_limit_config(
         env: Env,
@@ -381,19 +363,40 @@ impl ZkVerifierContract {
     pub fn verify_access(env: Env, request: AccessRequest) -> Result<bool, ContractError> {
         request.user.require_auth();
 
-        validate_request(&request)?;
+        validate_request(&request).map_err(|err| {
+            events::publish_access_rejected(&env, request.user.clone(), request.resource_id.clone(), err);
+            err
+        })?;
 
         if !whitelist::check_whitelist_access(&env, &request.user) {
+            events::publish_access_rejected(
+                &env,
+                request.user.clone(),
+                request.resource_id.clone(),
+                ContractError::Unauthorized,
+            );
             return Err(ContractError::Unauthorized);
         }
 
-        Self::check_and_update_rate_limit(&env, &request.user)?;
+        Self::check_and_update_rate_limit(&env, &request.user).map_err(|err| {
+            events::publish_access_rejected(&env, request.user.clone(), request.resource_id.clone(), err);
+            err
+        })?;
 
         let vk: vk::VerificationKey = env
             .storage()
             .instance()
             .get(&VK)
-            .ok_or(ContractError::Unauthorized)?;
+            .ok_or(ContractError::Unauthorized)
+            .map_err(|err| {
+                events::publish_access_rejected(
+                    &env,
+                    request.user.clone(),
+                    request.resource_id.clone(),
+                    err,
+                );
+                err
+            })?;
 
         let is_valid = Bn254Verifier::verify_proof(&env, &vk, &request.proof, &request.public_inputs);
         if is_valid {
