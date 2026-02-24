@@ -1,6 +1,11 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol, Vec};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol, Vec,
+};
+
+/// Re-export the shared error type so callers can use `ContractError` locally.
+pub use teye_common::CommonError as ContractError;
 
 /// Storage keys for the contract
 const ADMIN: Symbol = symbol_short!("ADMIN");
@@ -71,20 +76,6 @@ pub struct AccessGrant {
     pub level: AccessLevel,
     pub granted_at: u64,
     pub expires_at: u64,
-}
-
-/// Contract errors
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ContractError {
-    NotInitialized,
-    AlreadyInitialized,
-    Unauthorized,
-    UserNotFound,
-    RecordNotFound,
-    InvalidInput,
-    AccessDenied,
-    Paused,
 }
 
 #[contract]
@@ -163,12 +154,7 @@ impl VisionRecordsContract {
 
         // Generate record ID
         let counter_key = symbol_short!("REC_CTR");
-        let record_id: u64 = env
-            .storage()
-            .instance()
-            .get(&counter_key)
-            .unwrap_or(0)
-            + 1;
+        let record_id: u64 = env.storage().instance().get(&counter_key).unwrap_or(0) + 1;
         env.storage().instance().set(&counter_key, &record_id);
 
         let record = VisionRecord {
@@ -192,7 +178,9 @@ impl VisionRecordsContract {
             .get(&patient_key)
             .unwrap_or(Vec::new(&env));
         patient_records.push_back(record_id);
-        env.storage().persistent().set(&patient_key, &patient_records);
+        env.storage()
+            .persistent()
+            .set(&patient_key, &patient_records);
 
         Ok(record_id)
     }
@@ -242,18 +230,22 @@ impl VisionRecordsContract {
     /// Check access level
     pub fn check_access(env: Env, patient: Address, grantee: Address) -> AccessLevel {
         let key = (symbol_short!("ACCESS"), patient, grantee);
-        
+
         if let Some(grant) = env.storage().persistent().get::<_, AccessGrant>(&key) {
             if grant.expires_at > env.ledger().timestamp() {
                 return grant.level;
             }
         }
-        
+
         AccessLevel::None
     }
 
     /// Revoke access
-    pub fn revoke_access(env: Env, patient: Address, grantee: Address) -> Result<(), ContractError> {
+    pub fn revoke_access(
+        env: Env,
+        patient: Address,
+        grantee: Address,
+    ) -> Result<(), ContractError> {
         patient.require_auth();
 
         let key = (symbol_short!("ACCESS"), patient, grantee);
@@ -308,9 +300,9 @@ mod test {
 
         let user = Address::generate(&env);
         let name = String::from_str(&env, "Dr. Smith");
-        
+
         client.register_user(&user, &Role::Optometrist, &name);
-        
+
         let user_data = client.get_user(&user);
         assert_eq!(user_data.role, Role::Optometrist);
         assert!(user_data.is_active);
@@ -331,10 +323,11 @@ mod test {
         let provider = Address::generate(&env);
         let data_hash = String::from_str(&env, "QmHash123");
 
-        let record_id = client.add_record(&patient, &provider, &RecordType::Examination, &data_hash);
-        
+        let record_id =
+            client.add_record(&patient, &provider, &RecordType::Examination, &data_hash);
+
         assert_eq!(record_id, 1);
-        
+
         let record = client.get_record(&record_id);
         assert_eq!(record.patient, patient);
         assert_eq!(record.provider, provider);
@@ -359,7 +352,7 @@ mod test {
 
         // Grant access
         client.grant_access(&patient, &doctor, &AccessLevel::Read, &86400);
-        
+
         assert_eq!(client.check_access(&patient, &doctor), AccessLevel::Read);
 
         // Revoke access
