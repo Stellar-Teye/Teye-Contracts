@@ -16,10 +16,11 @@
 mod audit;
 mod helpers;
 mod verifier;
+pub mod vk;
 
 pub use crate::audit::{AuditRecord, AuditTrail};
 pub use crate::helpers::ZkAccessHelper;
-pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof};
+pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof, VerificationKey};
 
 use common::whitelist;
 use soroban_sdk::{
@@ -28,8 +29,10 @@ use soroban_sdk::{
 };
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
+const VK: Symbol = symbol_short!("VK");
 const RATE_CFG: Symbol = symbol_short!("RATECFG");
 const RATE_TRACK: Symbol = symbol_short!("RLTRK");
+const VK: Symbol = symbol_short!("VK");
 
 /// Maximum number of public inputs accepted per proof verification.
 const MAX_PUBLIC_INPUTS: u32 = 16;
@@ -65,11 +68,11 @@ pub enum ContractError {
 pub struct ZkVerifierContract;
 
 /// Return `true` if every byte in `data` is zero.
-fn is_all_zeros<const N: usize>(data: &BytesN<N>) -> bool {
+fn is_all_zeros(data: &BytesN<32>) -> bool {
     let arr = data.to_array();
     let mut all_zero = true;
     let mut i = 0;
-    while i < N {
+    while i < 32 {
         if arr[i] != 0 {
             all_zero = false;
             break;
@@ -89,9 +92,12 @@ fn validate_request(request: &AccessRequest) -> Result<(), ContractError> {
         return Err(ContractError::TooManyPublicInputs);
     }
 
-    if is_all_zeros(&request.proof.a)
-        || is_all_zeros(&request.proof.b)
-        || is_all_zeros(&request.proof.c)
+    if (is_all_zeros(&request.proof.a.x) && is_all_zeros(&request.proof.a.y))
+        || (is_all_zeros(&request.proof.b.x.0)
+            && is_all_zeros(&request.proof.b.x.1)
+            && is_all_zeros(&request.proof.b.y.0)
+            && is_all_zeros(&request.proof.b.y.1))
+        || (is_all_zeros(&request.proof.c.x) && is_all_zeros(&request.proof.c.y))
     {
         return Err(ContractError::DegenerateProof);
     }
@@ -127,6 +133,24 @@ impl ZkVerifierContract {
         Ok(())
     }
 
+    /// Set the Groth16 verification key (admin-only).
+    /// This stores the VK for later use in proof verification.
+    pub fn set_verification_key(
+        env: Env,
+        caller: Address,
+        vk: VerificationKey,
+    ) -> Result<(), ContractError> {
+        Self::require_admin(&env, &caller)?;
+        env.storage().instance().set(&VK, &vk);
+        Ok(())
+    }
+
+    /// Get the stored Groth16 verification key.
+    /// Returns the VK if it has been set, or None if not yet configured.
+    pub fn get_verification_key(env: Env) -> Option<VerificationKey> {
+        env.storage().instance().get(&VK)
+    }
+
     /// Configure per-address rate limiting for this contract.
     pub fn set_rate_limit_config(
         env: Env,
@@ -146,6 +170,22 @@ impl ZkVerifierContract {
         );
 
         Ok(())
+    }
+
+    /// Set the ZK verification key.
+    pub fn set_verification_key(
+        env: Env,
+        caller: Address,
+        vk: vk::VerificationKey,
+    ) -> Result<(), ContractError> {
+        Self::require_admin(&env, &caller)?;
+        env.storage().instance().set(&VK, &vk);
+        Ok(())
+    }
+
+    /// Get the ZK verification key.
+    pub fn get_verification_key(env: Env) -> Option<vk::VerificationKey> {
+        env.storage().instance().get(&VK)
     }
 
     /// Return the current rate limiting configuration, if any.
@@ -245,7 +285,13 @@ impl ZkVerifierContract {
 
         Self::check_and_update_rate_limit(&env, &request.user)?;
 
-        let is_valid = Bn254Verifier::verify_proof(&env, &request.proof, &request.public_inputs);
+        let vk: vk::VerificationKey = env
+            .storage()
+            .instance()
+            .get(&VK)
+            .ok_or(ContractError::Unauthorized)?;
+
+        let is_valid = Bn254Verifier::verify_proof(&env, &vk, &request.proof, &request.public_inputs);
         if is_valid {
             let proof_hash = PoseidonHasher::hash(&env, &request.public_inputs);
             AuditTrail::log_access(&env, request.user, request.resource_id, proof_hash);

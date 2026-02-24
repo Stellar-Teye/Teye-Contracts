@@ -47,6 +47,19 @@ pub struct AccessGrantedEvent {
     pub timestamp: u64,
 }
 
+/// Event published when access is granted to a specific record.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecordAccessGrantedEvent {
+    pub patient: Address,
+    pub grantee: Address,
+    pub record_id: u64,
+    pub level: AccessLevel,
+    pub duration_seconds: u64,
+    pub expires_at: u64,
+    pub timestamp: u64,
+}
+
 /// Event published when access is revoked.
 #[soroban_sdk::contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -158,6 +171,33 @@ pub fn publish_access_granted(
     let data = AccessGrantedEvent {
         patient,
         grantee,
+        level,
+        duration_seconds,
+        expires_at,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+pub fn publish_record_access_granted(
+    env: &Env,
+    patient: Address,
+    grantee: Address,
+    record_id: u64,
+    level: AccessLevel,
+    duration_seconds: u64,
+    expires_at: u64,
+) {
+    let topics = (
+        symbol_short!("REC_GRT"),
+        patient.clone(),
+        grantee.clone(),
+        record_id,
+    );
+    let data = RecordAccessGrantedEvent {
+        patient,
+        grantee,
+        record_id,
         level,
         duration_seconds,
         expires_at,
