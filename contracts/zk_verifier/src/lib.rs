@@ -387,7 +387,7 @@ impl ZkVerifierContract {
             .storage()
             .instance()
             .get(&VK)
-            .ok_or(ContractError::Unauthorized)
+            .ok_or(ContractError::InvalidConfig)
             .map_err(|err| {
                 events::publish_access_rejected(
                     &env,
