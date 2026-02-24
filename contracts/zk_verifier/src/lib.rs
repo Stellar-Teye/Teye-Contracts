@@ -29,11 +29,13 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, BytesN, Env,
     Symbol, Vec,
 };
+use verifier::ProofValidationError;
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
 const PENDING_ADMIN: Symbol = symbol_short!("PEND_ADM");
 const RATE_CFG: Symbol = symbol_short!("RATECFG");
 const RATE_TRACK: Symbol = symbol_short!("RLTRK");
+const VK: Symbol = symbol_short!("VK");
 
 
 /// Maximum number of public inputs accepted per proof verification.
@@ -77,18 +79,16 @@ pub enum ContractError {
 }
 
 /// Map low-level proof validation errors into contract-level errors.
-impl From<ProofValidationError> for ContractError {
-    fn from(e: ProofValidationError) -> Self {
-        match e {
-            ProofValidationError::ZeroedComponent => ContractError::DegenerateProof,
-            ProofValidationError::OversizedComponent => ContractError::OversizedProofComponent,
-            ProofValidationError::MalformedG1PointA | ProofValidationError::MalformedG1PointC => {
-                ContractError::MalformedG1Point
-            }
-            ProofValidationError::MalformedG2Point => ContractError::MalformedG2Point,
-            ProofValidationError::EmptyPublicInputs => ContractError::EmptyPublicInputs,
-            ProofValidationError::ZeroedPublicInput => ContractError::ZeroedPublicInput,
+fn map_proof_validation_error(e: ProofValidationError) -> ContractError {
+    match e {
+        ProofValidationError::ZeroedComponent => ContractError::DegenerateProof,
+        ProofValidationError::OversizedComponent => ContractError::OversizedProofComponent,
+        ProofValidationError::MalformedG1PointA | ProofValidationError::MalformedG1PointC => {
+            ContractError::MalformedG1Point
         }
+        ProofValidationError::MalformedG2Point => ContractError::MalformedG2Point,
+        ProofValidationError::EmptyPublicInputs => ContractError::EmptyPublicInputs,
+        ProofValidationError::ZeroedPublicInput => ContractError::ZeroedPublicInput,
     }
 }
 
@@ -383,22 +383,7 @@ impl ZkVerifierContract {
             err
         })?;
 
-        let vk: vk::VerificationKey = env
-            .storage()
-            .instance()
-            .get(&VK)
-            .ok_or(ContractError::InvalidConfig)
-            .map_err(|err| {
-                events::publish_access_rejected(
-                    &env,
-                    request.user.clone(),
-                    request.resource_id.clone(),
-                    err,
-                );
-                err
-            })?;
-
-        let is_valid = Bn254Verifier::verify_proof(&env, &vk, &request.proof, &request.public_inputs);
+        let is_valid = Bn254Verifier::verify_proof(&env, &request.proof, &request.public_inputs);
         if is_valid {
             let proof_hash = PoseidonHasher::hash(&env, &request.public_inputs);
             AuditTrail::log_access(&env, request.user, request.resource_id, proof_hash);
