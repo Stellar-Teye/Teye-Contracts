@@ -329,7 +329,7 @@ pub fn delegate_role(
         .unwrap_or(Vec::new(env));
 
     if !delegators.contains(&delegator) {
-        delegators.push_back(delegator);
+        delegators.push_back(delegator.clone());
     }
     env.storage().persistent().set(&idx_key, &delegators);
     extend_ttl_address_key(env, &idx_key);
@@ -401,7 +401,7 @@ pub fn delegate_permissions(
         .unwrap_or(Vec::new(env));
 
     if !delegators.contains(&delegator) {
-        delegators.push_back(delegator);
+        delegators.push_back(delegator.clone());
     }
     env.storage().persistent().set(&idx_key, &delegators);
     extend_ttl_address_key(env, &idx_key);

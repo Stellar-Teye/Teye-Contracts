@@ -19,7 +19,6 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, String, Symbol, Vec,
 };
 
-extern crate alloc;
 use alloc::string::ToString;
 use teye_common::{multisig, whitelist, KeyManager, StdString, StdVec, admin_tiers, AdminTier};
 
