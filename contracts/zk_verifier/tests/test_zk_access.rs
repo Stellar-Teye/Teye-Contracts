@@ -712,3 +712,90 @@ fn test_exactly_max_public_inputs_accepted() {
         "Exactly MAX_PUBLIC_INPUTS (16) should be accepted"
     );
 }
+
+#[test]
+fn test_audit_chain_integrity() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let vk = setup_vk(&env);
+    client.set_verification_key(&admin, &vk);
+
+    let user = Address::generate(&env);
+    let resource_id = [20u8; 32];
+    let rid = BytesN::from_array(&env, &resource_id);
+
+    let mut proof_a = [0u8; 64];
+    proof_a[0] = 1;
+    proof_a[32] = 0x02;
+    let mut proof_b = [0u8; 128];
+    proof_b[0] = 1;
+    proof_b[32] = 0x02;
+    proof_b[64] = 0x03;
+    proof_b[96] = 0x04;
+    let mut proof_c = [0u8; 64];
+    proof_c[0] = 1;
+    proof_c[32] = 0x02;
+    let mut pi = [0u8; 32];
+    pi[0] = 1;
+
+    let request = ZkAccessHelper::create_request(
+        &env,
+        user.clone(),
+        resource_id,
+        proof_a,
+        proof_b,
+        proof_c,
+        &[&pi],
+    );
+
+    // First verification — first record has zero prev_hash
+    assert!(client.verify_access(&request));
+    let first = client.get_audit_record(&user, &rid).unwrap();
+    assert_eq!(first.prev_hash, BytesN::from_array(&env, &[0u8; 32]));
+
+    // Advance ledger to get a distinct timestamp
+    env.ledger().set_timestamp(env.ledger().timestamp() + 10);
+
+    // Second verification — chained to first
+    assert!(client.verify_access(&request));
+    let second = client.get_audit_record(&user, &rid).unwrap();
+    assert_ne!(second.prev_hash, BytesN::from_array(&env, &[0u8; 32]));
+
+    // Third verification
+    env.ledger().set_timestamp(env.ledger().timestamp() + 10);
+    assert!(client.verify_access(&request));
+
+    // Chain must be valid
+    assert!(
+        client.verify_audit_chain(&user, &rid),
+        "Audit chain should be valid"
+    );
+}
+
+#[test]
+fn test_audit_chain_empty_is_valid() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let user = Address::generate(&env);
+    let rid = BytesN::from_array(&env, &[21u8; 32]);
+
+    // Empty chain is valid
+    assert!(
+        client.verify_audit_chain(&user, &rid),
+        "Empty audit chain should be valid"
+    );
+}
