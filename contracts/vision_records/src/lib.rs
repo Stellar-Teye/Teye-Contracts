@@ -15,10 +15,10 @@ pub mod rbac;
 pub mod validation;
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol, Vec,
+    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, String, Symbol, Vec,
 };
 
-use teye_common::whitelist;
+use teye_common::{multisig, whitelist};
 
 /// Re-export the contract-specific error type at the crate root.
 pub use errors::ContractError;
@@ -396,14 +396,78 @@ impl VisionRecordsContract {
         env.storage().instance().get(&PENDING_ADMIN)
     }
 
+    // ── Multisig management ──────────────────────────────────────────────────
+
+    /// Configure M-of-N multisig for admin operations.
+    pub fn configure_multisig(
+        env: Env,
+        caller: Address,
+        signers: soroban_sdk::Vec<Address>,
+        threshold: u32,
+    ) -> Result<(), ContractError> {
+        if !Self::is_initialized(env.clone()) {
+            return Err(ContractError::NotInitialized);
+        }
+        caller.require_auth();
+        
+        let admin = Self::get_admin(env.clone())?;
+        if caller != admin {
+            return Err(ContractError::Unauthorized);
+        }
+
+        multisig::configure(&env, signers, threshold)
+            .map_err(|_| ContractError::InvalidInput)
+    }
+
+    pub fn propose_admin_action(
+        env: Env,
+        proposer: Address,
+        action: Symbol,
+        data_hash: BytesN<32>,
+    ) -> Result<u64, ContractError> {
+        if !Self::is_initialized(env.clone()) {
+            return Err(ContractError::NotInitialized);
+        }
+        proposer.require_auth();
+
+        multisig::propose(&env, &proposer, action, data_hash)
+            .map_err(|_| ContractError::Unauthorized)
+    }
+
+    pub fn approve_admin_action(
+        env: Env,
+        approver: Address,
+        proposal_id: u64,
+    ) -> Result<(), ContractError> {
+        if !Self::is_initialized(env.clone()) {
+            return Err(ContractError::NotInitialized);
+        }
+        approver.require_auth();
+
+        multisig::approve(&env, &approver, proposal_id)
+            .map_err(|_| ContractError::Unauthorized)
+    }
+
+    pub fn get_multisig_config(env: Env) -> Option<multisig::MultisigConfig> {
+        multisig::get_config(&env)
+    }
+
+    pub fn get_proposal(env: Env, proposal_id: u64) -> Option<multisig::Proposal> {
+        multisig::get_proposal(&env, proposal_id)
+    }
+
+    // ── Admin configuration ──────────────────────────────────────────────────
+
     /// Configure per-address rate limiting for this contract.
     ///
     /// Requires at least `ContractAdmin` tier, or legacy admin/SystemAdmin.
+    /// Uses multisig if configured.
     pub fn set_rate_limit_config(
         env: Env,
         caller: Address,
         max_requests_per_window: u64,
         window_duration_seconds: u64,
+        proposal_id: u64,
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
@@ -411,7 +475,13 @@ impl VisionRecordsContract {
             return Err(ContractError::InvalidInput);
         }
 
-        if !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin) {
+        if !multisig::is_legacy_admin_allowed(&env) {
+            if !multisig::is_executable(&env, proposal_id) {
+                return Err(ContractError::Unauthorized); // Use Unauthorized for multisig rejection
+            }
+            multisig::mark_executed(&env, proposal_id)
+                .map_err(|_| ContractError::Unauthorized)?;
+        } else if !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin) {
             return Err(ContractError::Unauthorized);
         }
 
@@ -430,13 +500,22 @@ impl VisionRecordsContract {
         caller: Address,
         version: String,
         key: String,
+        proposal_id: u64,
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
-        let admin = Self::get_admin(env.clone())?;
-        let has_system_admin = rbac::has_permission(&env, &caller, &Permission::SystemAdmin);
-        if caller != admin && !has_system_admin {
-            return Err(ContractError::Unauthorized);
+        if !multisig::is_legacy_admin_allowed(&env) {
+            if !multisig::is_executable(&env, proposal_id) {
+                return Err(ContractError::Unauthorized);
+            }
+            multisig::mark_executed(&env, proposal_id)
+                .map_err(|_| ContractError::Unauthorized)?;
+        } else {
+            let admin = Self::get_admin(env.clone())?;
+            let has_system_admin = rbac::has_permission(&env, &caller, &Permission::SystemAdmin);
+            if caller != admin && !has_system_admin {
+                return Err(ContractError::Unauthorized);
+            }
         }
 
         // Persist the key hex string under (ENC_KEY, version)
