@@ -23,6 +23,13 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol, Vec,
 };
 
+extern crate alloc;
+
+use alloc::string::String as StdString;
+use alloc::string::ToString;
+use alloc::vec::Vec as StdVec;
+use common::KeyManager;
+
 use crate::patient_profile::{
     EmergencyContact, InsuranceInfo, OptionalEmergencyContact, OptionalInsuranceInfo,
     PatientProfile,
@@ -46,6 +53,9 @@ const RATE_TRACK: Symbol = symbol_short!("RL_TRK");
 
 const TTL_THRESHOLD: u32 = 5184000;
 const TTL_EXTEND_TO: u32 = 10368000;
+
+const ENC_CUR: Symbol = symbol_short!("ENC_CUR");
+const ENC_KEY: Symbol = symbol_short!("ENC_KEY");
 
 /// Extends the time-to-live (TTL) for a storage key containing an Address.
 /// This ensures the data remains accessible for the extended period.
@@ -155,6 +165,7 @@ pub struct VisionRecord {
     pub provider: Address,
     pub record_type: RecordType,
     pub data_hash: String,
+    pub key_version: Option<String>,
     pub created_at: u64,
     pub updated_at: u64,
 }
@@ -324,6 +335,32 @@ impl VisionRecordsContract {
             &RATE_CFG,
             &(max_requests_per_window, window_duration_seconds),
         );
+
+        Ok(())
+    }
+
+    /// Set or rotate an encryption master key under a given `version`.
+    /// Stores the key bytes persistently under (ENC_KEY, version) and updates current.
+    pub fn set_encryption_key(
+        env: Env,
+        caller: Address,
+        version: String,
+        key: String,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+
+        let admin = Self::get_admin(env.clone())?;
+        let has_system_admin = rbac::has_permission(&env, &caller, &Permission::SystemAdmin);
+        if caller != admin && !has_system_admin {
+            return Err(ContractError::Unauthorized);
+        }
+
+        // Persist the key hex string under (ENC_KEY, version)
+        env.storage()
+            .persistent()
+            .set(&(ENC_KEY, version.clone()), &key);
+        // Update current active version
+        env.storage().instance().set(&ENC_CUR, &version);
 
         Ok(())
     }
@@ -548,12 +585,35 @@ impl VisionRecordsContract {
             .saturating_add(1u64);
         env.storage().instance().set(&counter_key, &record_id);
 
+        // Determine current encryption key version (if any) and load master bytes
+        let current_version: Option<String> = env.storage().instance().get(&ENC_CUR);
+        let mut master_bytes: StdVec<u8> = StdVec::new();
+        if let Some(ver) = current_version.clone() {
+            if let Some(sv) = env
+                .storage()
+                .persistent()
+                .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
+            {
+                let hex = sv.to_string();
+                if let Some(bytes) = common::hex_to_bytes(&hex) {
+                    master_bytes = bytes;
+                }
+            }
+        }
+
+        // Build KeyManager and encrypt the provided data_hash
+        let km = KeyManager::new(master_bytes);
+        let plaintext: StdString = data_hash.to_string();
+        let ciphertext = km.encrypt(None, &plaintext);
+        let stored_hash = String::from_str(&env, &ciphertext);
+
         let record = VisionRecord {
             id: record_id,
             patient: patient.clone(),
             provider: provider.clone(),
             record_type: record_type.clone(),
-            data_hash,
+            data_hash: stored_hash,
+            key_version: current_version.clone(),
             created_at: env.ledger().timestamp(),
             updated_at: env.ledger().timestamp(),
         };
@@ -607,15 +667,38 @@ impl VisionRecordsContract {
         let mut current_id: u64 = env.storage().instance().get(&counter_key).unwrap_or(0);
         let mut record_ids = Vec::new(&env);
 
+        // Load current encryption key/version once for the batch
+        let current_version: Option<String> = env.storage().instance().get(&ENC_CUR);
+        let mut master_bytes_batch: StdVec<u8> = StdVec::new();
+        if let Some(ver) = current_version.clone() {
+            if let Some(sv) = env
+                .storage()
+                .persistent()
+                .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
+            {
+                let hex = sv.to_string();
+                if let Some(bytes) = common::hex_to_bytes(&hex) {
+                    master_bytes_batch = bytes;
+                }
+            }
+        }
+
         for input in records.iter() {
             current_id += 1;
+
+            // Encrypt input.data_hash with batch master
+            let km = KeyManager::new(master_bytes_batch.clone());
+            let plaintext: StdString = input.data_hash.to_string();
+            let ciphertext = km.encrypt(None, &plaintext);
+            let stored_hash = String::from_str(&env, &ciphertext);
 
             let record = VisionRecord {
                 id: current_id,
                 patient: input.patient.clone(),
                 provider: provider.clone(),
                 record_type: input.record_type.clone(),
-                data_hash: input.data_hash.clone(),
+                data_hash: stored_hash,
+                key_version: current_version.clone(),
                 created_at: env.ledger().timestamp(),
                 updated_at: env.ledger().timestamp(),
             };
@@ -712,7 +795,36 @@ impl VisionRecordsContract {
                 audit::add_audit_entry(&env, &audit_entry);
                 events::publish_audit_log_entry(&env, &audit_entry);
 
-                Ok(record)
+                // Decrypt data_hash for authorized caller before returning
+                let mut out_record = record.clone();
+                // Prefer record's key_version, fall back to current instance version
+                let key_ver = out_record
+                    .key_version
+                    .clone()
+                    .or_else(|| env.storage().instance().get(&ENC_CUR));
+                let mut master_bytes: StdVec<u8> = StdVec::new();
+                if let Some(ver) = key_ver {
+                    if let Some(sv) = env
+                        .storage()
+                        .persistent()
+                        .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
+                    {
+                        let hex = sv.to_string();
+                        if let Some(bytes) = common::hex_to_bytes(&hex) {
+                            master_bytes = bytes;
+                        }
+                    }
+                }
+
+                if !master_bytes.is_empty() || out_record.key_version.is_none() {
+                    let km = KeyManager::new(master_bytes);
+                    let ciphertext_std: StdString = out_record.data_hash.to_string();
+                    if let Some(plain) = km.decrypt(None, &ciphertext_std) {
+                        out_record.data_hash = String::from_str(&env, &plain);
+                    }
+                }
+
+                Ok(out_record)
             }
             None => {
                 // Log failed access attempt (record not found)
