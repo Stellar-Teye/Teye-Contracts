@@ -1,5 +1,8 @@
 #![no_std]
 #![allow(clippy::too_many_arguments)]
+
+extern crate alloc;
+use alloc::string::ToString;
 pub mod appointment;
 pub mod audit;
 pub mod circuit_breaker;
