@@ -30,6 +30,7 @@ deployments/*.json
 test_snapshots/
 contracts/*/test_snapshots/
 *.snap
+test_errors*.txt
 
 # Coverage
 coverage/

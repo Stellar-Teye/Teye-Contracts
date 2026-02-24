@@ -26,7 +26,7 @@ impl KeyManager {
     pub fn create_data_key(&mut self, id: &str, key: Vec<u8>, ttl: Option<u64>) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs();
         self.data_keys.insert(
             id.to_string(),
@@ -34,7 +34,7 @@ impl KeyManager {
                 id: id.to_string(),
                 key,
                 created: now,
-                expires: ttl.map(|t| now + t),
+                expires: ttl.and_then(|t| now.checked_add(t)),
             },
         );
     }
