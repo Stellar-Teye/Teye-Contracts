@@ -23,10 +23,25 @@ impl ZkAccessHelper {
         AccessRequest {
             user,
             resource_id: BytesN::from_array(env, &resource_id),
-            proof: Proof {
-                a: BytesN::from_array(env, &proof_a),
-                b: BytesN::from_array(env, &proof_b),
-                c: BytesN::from_array(env, &proof_c),
+            proof: crate::verifier::Proof {
+                a: crate::verifier::G1Point {
+                    x: BytesN::from_array(env, &proof_a[0..32].try_into().unwrap()),
+                    y: BytesN::from_array(env, &proof_a[32..64].try_into().unwrap()),
+                },
+                b: crate::verifier::G2Point {
+                    x: (
+                        BytesN::from_array(env, &proof_b[0..32].try_into().unwrap()),
+                        BytesN::from_array(env, &proof_b[32..64].try_into().unwrap()),
+                    ),
+                    y: (
+                        BytesN::from_array(env, &proof_b[64..96].try_into().unwrap()),
+                        BytesN::from_array(env, &proof_b[96..128].try_into().unwrap()),
+                    ),
+                },
+                c: crate::verifier::G1Point {
+                    x: BytesN::from_array(env, &proof_c[0..32].try_into().unwrap()),
+                    y: BytesN::from_array(env, &proof_c[32..64].try_into().unwrap()),
+                },
             },
             public_inputs: pi_vec,
         }
