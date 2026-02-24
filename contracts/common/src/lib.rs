@@ -21,16 +21,17 @@ pub mod keys;
 pub mod meta_tx;
 pub mod multisig;
 pub mod rate_limit;
+pub mod reentrancy_guard;
 pub mod whitelist;
 
 pub use admin_tiers::*;
 #[cfg(feature = "std")]
 pub use consent::*;
-#[cfg(feature = "std")]
 pub use keys::*;
 pub use meta_tx::*;
 pub use multisig::*;
 pub use rate_limit::*;
+pub use reentrancy_guard::*;
 pub use whitelist::*;
 
 // ── Shared error enum ────────────────────────────────────────────────────────

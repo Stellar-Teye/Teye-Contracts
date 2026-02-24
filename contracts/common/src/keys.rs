@@ -1,3 +1,4 @@
+#![allow(dead_code, clippy::incompatible_msrv)]
 extern crate alloc;
 
 use alloc::collections::BTreeMap;
@@ -5,8 +6,8 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 // Aliases to disambiguate from Soroban SDK types
-type StdString = String;
-type StdVec<T> = Vec<T>;
+pub type StdString = String;
+pub type StdVec<T> = Vec<T>;
 
 #[derive(Debug, Clone, Default)]
 pub struct AuditEntry {
@@ -181,7 +182,7 @@ fn hex_decode_and_xor(key: &[u8], hexstr: &str) -> Option<String> {
 
 pub fn hex_to_bytes(hexstr: &str) -> Option<Vec<u8>> {
     let chars: Vec<char> = hexstr.chars().collect();
-    if !chars.len().is_multiple_of(2) {
+    if chars.len() % 2 != 0 {
         return None;
     }
 

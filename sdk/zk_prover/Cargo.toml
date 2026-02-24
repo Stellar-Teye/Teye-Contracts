@@ -1,0 +1,12 @@
+[package]
+name = "zk_prover"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+soroban-sdk = "25.0.0"
+zk_verifier = { path = "../../contracts/zk_verifier" }
+
+[dev-dependencies]
+soroban-sdk = { version = "25.0.0", features = ["testutils"] }
