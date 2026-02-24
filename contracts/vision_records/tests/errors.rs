@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::arithmetic_side_effects)]
 mod common;
 
 use common::setup_test_env;
@@ -204,16 +205,16 @@ fn test_retry_operation() {
     let operation = String::from_str(&ctx.env, "test_operation");
 
     let can_retry1 = ctx.client.retry_operation(&caller, &operation, &3);
-    assert_eq!(can_retry1, true);
+    assert!(can_retry1);
 
     let can_retry2 = ctx.client.retry_operation(&caller, &operation, &3);
-    assert_eq!(can_retry2, true);
+    assert!(can_retry2);
 
     let can_retry3 = ctx.client.retry_operation(&caller, &operation, &3);
-    assert_eq!(can_retry3, true);
+    assert!(can_retry3);
 
     let can_retry4 = ctx.client.retry_operation(&caller, &operation, &3);
-    assert_eq!(can_retry4, false);
+    assert!(!can_retry4);
 }
 
 #[test]
@@ -243,7 +244,7 @@ fn test_reset_retry_count() {
     ctx.client.reset_retry_count(&caller, &operation);
 
     let can_retry = ctx.client.retry_operation(&caller, &operation, &3);
-    assert_eq!(can_retry, true);
+    assert!(can_retry);
 }
 
 #[test]

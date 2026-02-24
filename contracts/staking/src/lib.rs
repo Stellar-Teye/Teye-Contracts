@@ -41,6 +41,7 @@ pub enum ContractError {
     TimelockNotExpired = 6,
     AlreadyWithdrawn = 7,
     RequestNotFound = 8,
+    TokensIdentical = 9,
 }
 
 // ── Public-facing types (re-exported for test consumers) ─────────────────────
@@ -81,6 +82,9 @@ impl StakingContract {
         }
         if reward_rate < 0 {
             return Err(ContractError::InvalidInput);
+        }
+        if stake_token == reward_token {
+            return Err(ContractError::TokensIdentical);
         }
 
         let now = env.ledger().timestamp();

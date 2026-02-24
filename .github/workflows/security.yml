@@ -52,6 +52,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config libudev-dev libhidapi-dev
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -129,10 +132,11 @@ jobs:
           echo "- Dependency Audit: ${{ needs.audit.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Clippy Security: ${{ needs.clippy-security.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Secret Scanning: ${{ needs.secret-scanning.result }}" >> $GITHUB_STEP_SUMMARY
-
+          
           if [ "${{ needs.audit.result }}" != "success" ] || \
              [ "${{ needs.clippy-security.result }}" != "success" ] || \
              [ "${{ needs.secret-scanning.result }}" != "success" ]; then
             echo "⚠️ Security issues detected. Please review the results." >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
+
