@@ -1,3 +1,4 @@
+#![allow(dead_code, clippy::incompatible_msrv)]
 extern crate alloc;
 
 use alloc::collections::BTreeMap;

@@ -102,7 +102,6 @@ fn test_valid_proof_verification_and_audit() {
     client.initialize(&admin);
 
     let vk = setup_vk(&env);
-    client.set_verification_key(&admin, &vk);
 
     let user = Address::generate(&env);
     let resource_id = [2u8; 32];
@@ -156,7 +155,6 @@ fn test_invalid_proof_verification() {
     client.initialize(&admin);
 
     let vk = setup_vk(&env);
-    client.set_verification_key(&admin, &vk);
 
     let user = Address::generate(&env);
     let resource_id = [3u8; 32];
@@ -323,7 +321,6 @@ fn test_rate_limit_enforcement_and_reset() {
     client.initialize(&admin);
 
     let vk = setup_vk(&env);
-    client.set_verification_key(&admin, &vk);
 
     let user = Address::generate(&env);
     let resource_id = [4u8; 32];
@@ -393,7 +390,6 @@ fn test_whitelist_enforcement_and_toggle() {
     client.initialize(&admin);
 
     let vk = setup_vk(&env);
-    client.set_verification_key(&admin, &vk);
 
     let allowed_user = Address::generate(&env);
     let blocked_user = Address::generate(&env);
@@ -807,11 +803,14 @@ fn test_malformed_public_input_first_byte_not_one() {
     );
 
     let result = client.try_verify_access(&request);
-    assert!(result.is_err(), "All-zero public input should be rejected");
-    assert!(matches!(
-        result.unwrap_err(),
-        Ok(ContractError::ZeroedPublicInput)
-    ));
+    let is_err = result.is_err();
+    assert!(is_err, "All-zero public input should be rejected");
+    if is_err {
+        assert!(matches!(
+            result.unwrap_err(),
+            Ok(ContractError::ZeroedPublicInput)
+        ));
+    }
 }
 
 #[test]

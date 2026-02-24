@@ -41,6 +41,9 @@ const VK: Symbol = symbol_short!("VK");
 const MAX_PUBLIC_INPUTS: u32 = 16;
 
 /// Request structure for ZK access verification.
+// TODO: post-quantum migration - This struct currently hardcodes a Groth16 `Proof`.
+// Future PQ systems (like STARKs) will require an `enum ProofType` or dynamically sized bytes 
+// to encapsulate changing proof shapes and public inputs matrices.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AccessRequest {
@@ -275,7 +278,7 @@ impl ZkVerifierContract {
 
     /// Sets the ZK Verification Key for Groth16.
     pub fn set_verification_key(env: Env, caller: Address, vk: VerificationKey) -> Result<(), ContractError> {
-        Self::require_admin(&env, &caller)?;
+        Self::require_admin(&env, &caller, "set_verification_key")?;
         env.storage().instance().set(&symbol_short!("VK"), &vk);
         Ok(())
     }
@@ -403,6 +406,21 @@ impl ZkVerifierContract {
             err
         })?;
 
+        Bn254Verifier::validate_proof_components(&request.proof, &request.public_inputs)
+            .map_err(map_proof_validation_error)
+            .map_err(|err| {
+                events::publish_access_rejected(
+                    &env,
+                    request.user.clone(),
+                    request.resource_id.clone(),
+                    err,
+                );
+                err
+            })?;
+
+        // TODO: post-quantum migration - The verification branch below is hardcoded for BN254 Groth16.
+        // During migration, checking `request.proof_type` should branch to `PostQuantumVerifier::verify_proof`
+        // or a native host-function call if STARK verification limits CPU budgets.
         let vk = Self::get_verification_key(env.clone()).ok_or(ContractError::InvalidConfig)?;
         let is_valid = Bn254Verifier::verify_proof(&env, &vk, &request.proof, &request.public_inputs);
         if is_valid {

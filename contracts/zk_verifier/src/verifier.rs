@@ -2,6 +2,9 @@ use soroban_sdk::{contracttype, BytesN, Env, Vec};
 
 pub type VerificationKey = crate::vk::VerificationKey;
 
+// TODO: post-quantum migration - `G1Point`, `G2Point`, and `Proof` map to elliptic curves.
+// For hash-based STARKs or Lattice proofs, replace these representations with Hash paths 
+// or matrix structural analogs.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct G1Point {
@@ -142,6 +145,9 @@ impl Bn254Verifier {
     }
 
     /// Verify a Groth16 proof over BN254.
+    // TODO: post-quantum migration - The mock logic here or actual BN254 pairing checks 
+    // will be superseded by a new implementation validating collision-resistant hash paths 
+    // (for FRI) or LWE assertions (for Lattices).
     pub fn verify_proof(
         _env: &Env,
         _vk: &VerificationKey,
