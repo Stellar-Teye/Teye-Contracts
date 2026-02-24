@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::arithmetic_side_effects)]
 //! Property-based state machine tests for the VisionRecords contract.
 //!
 //! These tests model the contract as a state machine and verify that
@@ -96,8 +97,7 @@ proptest! {
         );
 
         // Provider adds a record for the patient
-        let hash = String::from_str(&env, "QmLifecycle");
-        let record_id = client.add_record(
+        let hash = String::from_str(&env, "lifecycle_hash_value_ffffffffffff");        let record_id = client.add_record(
             &admin,
             &patient,
             &provider,

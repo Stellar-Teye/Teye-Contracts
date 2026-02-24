@@ -16,7 +16,7 @@ impl RetentionManager {
     pub fn new() -> Self {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs();
         Self {
             policies: vec![],
@@ -33,10 +33,10 @@ impl RetentionManager {
 
     pub fn should_purge(&self, created: u64, policy_id: &str) -> bool {
         if let Some(p) = self.policies.iter().find(|p| p.id == policy_id) {
-            return created + p.retention_seconds
+            return created.saturating_add(p.retention_seconds)
                 <= SystemTime::now()
                     .duration_since(UNIX_EPOCH)
-                    .unwrap()
+                    .unwrap_or_default()
                     .as_secs();
         }
         false

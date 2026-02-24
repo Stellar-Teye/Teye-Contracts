@@ -192,3 +192,24 @@ enum ContractError {
     Paused,
 }
 ```
+
+---
+
+## AI Integration Contract
+
+### `initialize(admin: Address, anomaly_threshold_bps: u32)`
+Initialize AI integration with an admin and anomaly threshold.
+
+### `register_provider(caller: Address, provider_id: u32, operator: Address, name: String, model: String, endpoint_hash: String)`
+Register an approved AI provider.
+
+### `submit_analysis_request(caller: Address, provider_id: u32, patient: Address, record_id: u64, input_hash: String, task_type: String)`
+Submit a new AI analysis request and return a request ID.
+
+### `store_analysis_result(caller: Address, request_id: u64, output_hash: String, confidence_bps: u32, anomaly_score_bps: u32)`
+Store provider output and return resulting request status (`Completed` or `Flagged`).
+
+### `verify_analysis_result(caller: Address, request_id: u64, accepted: bool, verification_hash: String)`
+Verify or reject an AI analysis result.
+
+For complete type definitions and flow details, see `docs/ai_integration.md`.

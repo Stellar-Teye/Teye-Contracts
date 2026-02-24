@@ -9,6 +9,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  RUST_VERSION: "1.92.0"
 
 jobs:
   test:
@@ -16,28 +17,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
+      
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: wasm32-unknown-unknown
 
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Cache cargo index
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Cache cargo build
-        uses: actions/cache@v4
-        with:
-          path: target
-          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
       - name: Run tests
         run: cargo test --verbose
@@ -49,9 +46,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
+          toolchain: ${{ env.RUST_VERSION }}
           components: rustfmt
-
+      
       - name: Check formatting
         run: cargo fmt -- --check
 
@@ -62,21 +59,22 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
+          toolchain: ${{ env.RUST_VERSION }}
           components: clippy
-
+          targets: wasm32-unknown-unknown
+      
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-
+      
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
           key: ${{ runner.os }}-cargo-clippy-target-${{ hashFiles('**/Cargo.lock') }}
-
+      
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
@@ -85,19 +83,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
+      
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-
+          toolchain: ${{ env.RUST_VERSION }}
+                
       - name: Install tarpaulin
         run: cargo install cargo-tarpaulin
-
+      
       - name: Generate coverage
         run: |
           cargo tarpaulin --out Xml --output-dir coverage \
                           --timeout 600 --exclude-files tests/*
-
+      
       - name: Upload to codecov
         uses: codecov/codecov-action@v4
         with:
@@ -110,11 +108,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
+      
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: wasm32-unknown-unknown
+                
       - name: Run integration tests
         run: |
           if cargo test --test '*' --no-run 2>/dev/null; then
@@ -128,14 +127,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
+      
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-
+          toolchain: ${{ env.RUST_VERSION }}
+                
       - name: Install cargo-audit
         run: cargo install cargo-audit
-
+      
       - name: Run security audit
         run: cargo audit
 
@@ -144,24 +143,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
+      
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: wasm32-unknown-unknown
+                
       - name: Build
-        run: cargo build --release --verbose
+        run: cargo build --target wasm32-unknown-unknown --release --verbose
 
   doc:
     name: Documentation Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
+      
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-
+          toolchain: ${{ env.RUST_VERSION }}
+                
       - name: Run doc tests
         run: cargo test --doc --verbose
 
@@ -171,11 +171,11 @@ jobs:
     continue-on-error: true  # Optional - no performance tests yet
     steps:
       - uses: actions/checkout@v4
-
+      
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-
+          toolchain: ${{ env.RUST_VERSION }}
+                
       - name: Run performance tests
         run: |
           # Check if any performance tests exist before running
@@ -184,7 +184,7 @@ jobs:
           else
             echo "No performance tests found, skipping..."
           fi
-
+      
       - name: Store benchmark results
         uses: actions/upload-artifact@v4
         if: success()
@@ -195,7 +195,7 @@ jobs:
   results:
     name: Test Results Summary
     runs-on: ubuntu-latest
-    needs: [test, fmt, clippy, coverage, integration-tests]
+    needs: [test, fmt, clippy, coverage, integration-tests, build, doc, security-audit]
     if: always()
     steps:
       - name: Check job statuses
@@ -210,6 +210,18 @@ jobs:
           fi
           if [ "${{ needs.clippy.result }}" != "success" ]; then
             echo "❌ Clippy checks failed"
+            exit 1
+          fi
+          if [ "${{ needs.build.result }}" != "success" ]; then
+            echo "❌ Build failed"
+            exit 1
+          fi
+          if [ "${{ needs.doc.result }}" != "success" ]; then
+            echo "❌ Doc tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.security-audit.result }}" != "success" ]; then
+            echo "❌ Security audit failed"
             exit 1
           fi
           echo "✅ All checks passed!"

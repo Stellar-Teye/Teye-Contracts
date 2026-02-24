@@ -67,3 +67,14 @@ Role-based access control (RBAC) system:
 - Timelock for delayed execution
 - Multi-sig treasury
 - Cross-chain bridges
+
+## AI Integration Layer
+
+The `ai_integration` contract extends the architecture with a controlled interface to AI vision systems:
+
+- Provider registry with admin approval and status controls
+- Request/response contracts for off-chain AI pipelines
+- Result verification workflow before downstream consumption
+- Threshold-based anomaly flagging for triage
+
+See `docs/ai_integration.md` for API and data structures.

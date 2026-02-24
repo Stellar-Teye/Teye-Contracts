@@ -11,7 +11,8 @@ Each message contains:
 - `source_address` (String): e.g., "0xabc123...".
 - `target_action` (Symbol): e.g., `GRANT` for granting access to records.
 - `payload` (Bytes): Additional payload data for the action.
-- `message_id` (Bytes): A unique identifier or hash of the message to prevent replay attacks.
+
+The `process_message` endpoint additionally accepts a separate `message_id: Bytes` argument (a unique identifier or hash of the message) used to prevent replay attacks.
 
 ## Identity Mapping
 Because users on foreign chains use different wallet addressing formats (e.g., Ethereum 20-byte addresses vs. Stellar/Soroban 32-byte Ed25519 public keys or contract addresses), we provide an identity mapping endpoint:
