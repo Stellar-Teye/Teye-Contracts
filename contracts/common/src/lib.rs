@@ -53,3 +53,19 @@ pub enum CommonError {
     /// The contract is currently paused and cannot process requests.
     Paused = 40,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::CommonError;
+
+    #[test]
+    fn common_error_discriminants_are_stable() {
+        assert_eq!(CommonError::NotInitialized as u32, 1);
+        assert_eq!(CommonError::AlreadyInitialized as u32, 2);
+        assert_eq!(CommonError::AccessDenied as u32, 10);
+        assert_eq!(CommonError::UserNotFound as u32, 20);
+        assert_eq!(CommonError::RecordNotFound as u32, 21);
+        assert_eq!(CommonError::InvalidInput as u32, 30);
+        assert_eq!(CommonError::Paused as u32, 40);
+    }
+}
