@@ -1,6 +1,6 @@
 #![allow(deprecated)] // events().publish migration tracked separately
 
-use soroban_sdk::{symbol_short, Address, Env};
+use soroban_sdk::{symbol_short, Address, Env, String};
 
 // ── Event payloads ──────────────────────────────────────────────────────────
 
@@ -96,6 +96,16 @@ pub struct AdminTransferAcceptedEvent {
 pub struct AdminTransferCancelledEvent {
     pub admin: Address,
     pub cancelled_proposed: Address,
+    pub timestamp: u64,
+}
+
+/// Fired when an unauthorized action is attempted.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccessViolationEvent {
+    pub caller: Address,
+    pub action: String,
+    pub required_permission: String,
     pub timestamp: u64,
 }
 
@@ -224,6 +234,23 @@ pub fn publish_admin_transfer_cancelled(env: &Env, admin: Address, cancelled_pro
         AdminTransferCancelledEvent {
             admin,
             cancelled_proposed,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
+}
+
+pub fn publish_access_violation(
+    env: &Env,
+    caller: Address,
+    action: String,
+    required_permission: String,
+) {
+    env.events().publish(
+        (symbol_short!("ACC_VIOL"), caller.clone(), action.clone()),
+        AccessViolationEvent {
+            caller,
+            action,
+            required_permission,
             timestamp: env.ledger().timestamp(),
         },
     );

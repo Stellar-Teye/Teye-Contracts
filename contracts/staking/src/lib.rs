@@ -6,7 +6,7 @@ pub mod timelock;
 
 use common::admin_tiers::{self, AdminTier};
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, token, Address, Env, Symbol,
+    contract, contractimpl, contracttype, symbol_short, token, Address, Env, String, Symbol,
 };
 
 use timelock::{RateChangeProposal, UnstakeRequest};
@@ -66,6 +66,25 @@ pub struct StakingContract;
 
 #[contractimpl]
 impl StakingContract {
+    fn emit_access_violation(env: &Env, caller: &Address, action: &str, required_permission: &str) {
+        events::publish_access_violation(
+            env,
+            caller.clone(),
+            String::from_str(env, action),
+            String::from_str(env, required_permission),
+        );
+    }
+
+    fn unauthorized<T>(
+        env: &Env,
+        caller: &Address,
+        action: &str,
+        required_permission: &str,
+    ) -> Result<T, ContractError> {
+        Self::emit_access_violation(env, caller, action, required_permission);
+        Err(ContractError::Unauthorized)
+    }
+
     // ── Initialisation ──────────────────────────────────────────────────────
 
     /// Bootstrap the contract.
@@ -234,7 +253,7 @@ impl StakingContract {
 
         // Auth: only the original staker may withdraw.
         if request.staker != staker {
-            return Err(ContractError::Unauthorized);
+            return Self::unauthorized(&env, &staker, "withdraw", "request_owner");
         }
         if request.withdrawn {
             return Err(ContractError::AlreadyWithdrawn);
@@ -432,7 +451,7 @@ impl StakingContract {
     ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         current_admin.require_auth();
-        Self::require_admin(&env, &current_admin)?;
+        Self::require_admin(&env, &current_admin, "propose_admin")?;
 
         env.storage().instance().set(&PENDING_ADMIN, &new_admin);
 
@@ -454,7 +473,7 @@ impl StakingContract {
             .ok_or(ContractError::InvalidInput)?;
 
         if new_admin != pending {
-            return Err(ContractError::Unauthorized);
+            return Self::unauthorized(&env, &new_admin, "accept_admin", "pending_admin");
         }
 
         let old_admin: Address = env
@@ -475,7 +494,7 @@ impl StakingContract {
     pub fn cancel_admin_transfer(env: Env, current_admin: Address) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         current_admin.require_auth();
-        Self::require_admin(&env, &current_admin)?;
+        Self::require_admin(&env, &current_admin, "cancel_admin_transfer")?;
 
         let pending: Address = env
             .storage()
@@ -507,7 +526,7 @@ impl StakingContract {
     pub fn set_reward_rate(env: Env, caller: Address, new_rate: i128) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
-        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin)?;
+        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin, "set_reward_rate")?;
 
         if new_rate < 0 {
             return Err(ContractError::InvalidInput);
@@ -537,7 +556,7 @@ impl StakingContract {
     pub fn apply_reward_rate(env: Env, caller: Address) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
-        Self::require_admin(&env, &caller)?;
+        Self::require_admin(&env, &caller, "apply_reward_rate")?;
 
         let proposal =
             timelock::get_rate_proposal(&env).ok_or(ContractError::NoPendingRateChange)?;
@@ -565,7 +584,7 @@ impl StakingContract {
     ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
-        Self::require_admin(&env, &caller)?;
+        Self::require_admin(&env, &caller, "set_rate_change_delay")?;
 
         env.storage().instance().set(&RATE_DELAY, &delay);
 
@@ -584,7 +603,7 @@ impl StakingContract {
     ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
-        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin)?;
+        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin, "set_lock_period")?;
 
         env.storage().instance().set(&LOCK_PERIOD, &new_period);
 
@@ -607,7 +626,7 @@ impl StakingContract {
         Self::require_initialized(&env)?;
         caller.require_auth();
         if !admin_tiers::promote_admin(&env, &caller, &target, tier) {
-            return Err(ContractError::Unauthorized);
+            return Self::unauthorized(&env, &caller, "promote_admin", "admin_tier:SuperAdmin");
         }
         admin_tiers::track_admin(&env, &target);
         Ok(())
@@ -620,7 +639,7 @@ impl StakingContract {
         Self::require_initialized(&env)?;
         caller.require_auth();
         if !admin_tiers::demote_admin(&env, &caller, &target) {
-            return Err(ContractError::Unauthorized);
+            return Self::unauthorized(&env, &caller, "demote_admin", "admin_tier:SuperAdmin");
         }
         admin_tiers::untrack_admin(&env, &target);
         Ok(())
@@ -643,14 +662,14 @@ impl StakingContract {
 
     /// Guard: revert if `caller` is not the stored admin.
     /// Kept for backward compatibility.
-    fn require_admin(env: &Env, caller: &Address) -> Result<(), ContractError> {
+    fn require_admin(env: &Env, caller: &Address, action: &str) -> Result<(), ContractError> {
         let admin: Address = env
             .storage()
             .instance()
             .get(&ADMIN)
             .ok_or(ContractError::NotInitialized)?;
         if *caller != admin {
-            return Err(ContractError::Unauthorized);
+            return Self::unauthorized(env, caller, action, "legacy_admin");
         }
         Ok(())
     }
@@ -661,13 +680,14 @@ impl StakingContract {
         env: &Env,
         caller: &Address,
         min_tier: &AdminTier,
+        action: &str,
     ) -> Result<(), ContractError> {
         // First check the tiered system
         if admin_tiers::require_tier(env, caller, min_tier) {
             return Ok(());
         }
         // Fall back to legacy admin check
-        Self::require_admin(env, caller)
+        Self::require_admin(env, caller, action)
     }
 
     /// Flush the global reward-per-token accumulator without touching any
