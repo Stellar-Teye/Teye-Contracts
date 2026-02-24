@@ -206,23 +206,14 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Build optimized contracts
-        run: |
-          for contract in contracts/*/; do
-            if [ -d "$contract" ]; then
-              contract_name=$(basename "$contract")
-              echo "Building contract: $contract_name"
-              cd "$contract"
-              cargo build --target wasm32-unknown-unknown --release
-              cd - > /dev/null
-            fi
-          done
+        run: cargo build --target wasm32-unknown-unknown --release
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: wasm-contracts
           path: |
-            contracts/*/target/wasm32-unknown-unknown/release/*.wasm
+            target/wasm32-unknown-unknown/release/*.wasm
           retention-days: 7
 
   # Shell script linting
