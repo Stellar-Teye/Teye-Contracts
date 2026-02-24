@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use soroban_sdk::{contracttype, BytesN, Env, Vec};
 
 pub type VerificationKey = crate::vk::VerificationKey;

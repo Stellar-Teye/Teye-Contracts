@@ -15,6 +15,7 @@ members = [
     "contracts/analytics",
     "contracts/treasury",
     "contracts/emr_bridge",
+    "sdk/zk_prover",
 ]
 
 [workspace.package]

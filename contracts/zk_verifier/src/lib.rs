@@ -1,3 +1,4 @@
+#![allow(dead_code, clippy::manual_inspect)]
 //! # ZK Verifier Module
 //!
 //! This module provides a Zero-Knowledge (ZK) proof verification system for the Soroban ecosystem.
@@ -30,7 +31,6 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, BytesN, Env,
     Symbol, Vec,
 };
-use verifier::ProofValidationError;
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
 const PENDING_ADMIN: Symbol = symbol_short!("PEND_ADM");
