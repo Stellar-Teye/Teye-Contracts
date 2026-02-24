@@ -255,3 +255,61 @@ pub fn publish_access_violation(
         },
     );
 }
+
+// ── Structured event streaming helpers ───────────────────────────────────────
+//
+// These functions emit events in a format compatible with the `events` contract
+// streaming system. Each publishes under a hierarchical topic so that external
+// subscribers can filter using wildcard patterns (e.g. `staking.*`).
+
+/// Emit a structured streaming event when tokens are staked.
+pub fn emit_stake_deposited(env: &Env, staker: Address, amount: i128, new_total: i128) {
+    env.events().publish(
+        (symbol_short!("STREAM"), symbol_short!("STK_DEP")),
+        StakedEvent {
+            staker,
+            amount,
+            new_total_staked: new_total,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
+}
+
+/// Emit a structured streaming event when an unstake is requested.
+pub fn emit_unstake_requested(env: &Env, request_id: u64, staker: Address, amount: i128, unlock_at: u64) {
+    env.events().publish(
+        (symbol_short!("STREAM"), symbol_short!("STK_UNS")),
+        UnstakeRequestedEvent {
+            request_id,
+            staker,
+            amount,
+            unlock_at,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
+}
+
+/// Emit a structured streaming event when staked tokens are withdrawn.
+pub fn emit_withdrawal_completed(env: &Env, request_id: u64, staker: Address, amount: i128) {
+    env.events().publish(
+        (symbol_short!("STREAM"), symbol_short!("STK_WDR")),
+        WithdrawnEvent {
+            request_id,
+            staker,
+            amount,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
+}
+
+/// Emit a structured streaming event when rewards are claimed.
+pub fn emit_reward_claimed(env: &Env, staker: Address, amount: i128) {
+    env.events().publish(
+        (symbol_short!("STREAM"), symbol_short!("STK_RWD")),
+        RewardClaimedEvent {
+            staker,
+            amount,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
+}
