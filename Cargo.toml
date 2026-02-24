@@ -2,11 +2,22 @@
 resolver = "2"
 
 members = [
-    "contracts/*",
+    "contracts/vision_records",
+    "contracts/ai_integration",
+    "contracts/staking",
+    "contracts/compliance",
+    "contracts/common",
+    "contracts/identity",
+    "contracts/zk_verifier",
+    "contracts/fhir",
+    "contracts/cross_chain",
+    "contracts/analytics",
+    "contracts/treasury",
+    "contracts/emr_bridge",
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "1.2.2"
 authors = ["Stellar-Teye Contributors"]
 license = "MIT"
 edition = "2021"
@@ -15,6 +26,8 @@ rust-version = "1.78"
 
 [workspace.dependencies]
 soroban-sdk = "22.0.0"
+proptest = "1"
+proptest-derive = "0.4"
 
 [profile.release]
 opt-level = "z"

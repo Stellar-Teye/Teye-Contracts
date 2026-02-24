@@ -1,0 +1,18 @@
+[package]
+name = "compliance"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+doctest = false
+
+[dependencies]
+common = { path = "../common" }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }

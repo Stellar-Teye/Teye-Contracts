@@ -1,65 +1,98 @@
-name: Release
+name: Release Management
 
 on:
   push:
-    tags:
-      - "v*.*.*"
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   RUST_VERSION: "1.92.0"
-  SOROBAN_VERSION: "23.1.4"
+  NODE_VERSION: "20"
 
 jobs:
   release:
+    name: Semantic Release
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Install Rust
+      - name: Fetch tags
+        run: git fetch --force --tags
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.RUST_VERSION }}
           targets: wasm32-unknown-unknown
-          components: rustfmt, clippy
 
-      - name: Install Soroban CLI
-        run: |
-          cargo install --locked --version ${{ env.SOROBAN_VERSION }} soroban-cli
+      - name: Build release artifacts
+        run: ./scripts/build_release_artifacts.sh
 
-      - name: Build optimized contracts
-        run: |
-          mkdir -p dist/
-          for contract in contracts/*/; do
-            if [ -d "$contract" ]; then
-              contract_name=$(basename "$contract")
-              echo "Building contract: $contract_name"
-              cd "$contract"
-              cargo build --target wasm32-unknown-unknown --release
-              wasm_file="target/wasm32-unknown-unknown/release/$contract_name.wasm"
-              if [ -f "$wasm_file" ]; then
-                cp "$wasm_file" "../../dist/$contract_name.wasm"
-                echo "Copied: $contract_name.wasm"
-              fi
-              cd - > /dev/null
-            fi
-          done
-
-      - name: Generate checksums
-        run: |
-          cd dist/
-          sha256sum *.wasm > SHA256SUMS.txt
-          cat SHA256SUMS.txt
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          files: |
-            dist/*.wasm
-            dist/SHA256SUMS.txt
-          generate_release_notes: true
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Create semantic-release config
+        run: |
+          cat > .releaserc.json <<'EOF'
+          {
+            "branches": ["master"],
+            "tagFormat": "v${version}",
+            "plugins": [
+              ["@semantic-release/commit-analyzer", { "preset": "conventionalcommits" }],
+              ["@semantic-release/release-notes-generator", { "preset": "conventionalcommits" }],
+              ["@semantic-release/changelog", { "changelogFile": "CHANGELOG.md" }],
+              ["@semantic-release/exec", {
+                "prepareCmd": "./scripts/prepare_release_version.sh ${nextRelease.version}",
+                "publishCmd": "./scripts/generate_release_notes.sh ${nextRelease.version} ${nextRelease.gitTag}"
+              }],
+              ["@semantic-release/github", {
+                "successComment": false,
+                "failComment": false,
+                "releasedLabels": false,
+                "assets": [
+                  { "path": "dist/*.wasm", "label": "Contract binaries" },
+                  { "path": "dist/SHA256SUMS.txt", "label": "Artifact checksums" },
+                  { "path": "dist/RELEASE_NOTES.md", "label": "Release notes" }
+                ]
+              }],
+              ["@semantic-release/git", {
+                "assets": ["CHANGELOG.md", "Cargo.toml"],
+                "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+              }]
+            ]
+          }
+          EOF
+
+      - name: Run semantic release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx -y \
+            -p semantic-release \
+            -p @semantic-release/changelog \
+            -p @semantic-release/commit-analyzer \
+            -p @semantic-release/exec \
+            -p @semantic-release/git \
+            -p @semantic-release/github \
+            -p @semantic-release/release-notes-generator \
+            -p conventional-changelog-conventionalcommits \
+            semantic-release
