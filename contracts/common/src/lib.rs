@@ -20,8 +20,11 @@ pub mod consent;
 pub mod keys;
 pub mod meta_tx;
 pub mod multisig;
+pub mod progressive_auth;
 pub mod rate_limit;
 pub mod reentrancy_guard;
+pub mod risk_engine;
+pub mod session;
 pub mod whitelist;
 
 pub use admin_tiers::*;
@@ -30,8 +33,11 @@ pub use consent::*;
 pub use keys::*;
 pub use meta_tx::*;
 pub use multisig::*;
+pub use progressive_auth::*;
 pub use rate_limit::*;
 pub use reentrancy_guard::*;
+pub use risk_engine::*;
+pub use session::*;
 pub use whitelist::*;
 
 // ── Shared error enum ────────────────────────────────────────────────────────

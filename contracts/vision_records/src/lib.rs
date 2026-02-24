@@ -19,9 +19,11 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, String, Symbol, Vec,
 };
 
-extern crate alloc;
 use alloc::string::ToString;
-use teye_common::{multisig, whitelist, KeyManager, StdString, StdVec, admin_tiers, AdminTier};
+use teye_common::{
+    admin_tiers, multisig, progressive_auth, risk_engine, session, whitelist, AdminTier,
+    KeyManager, StdString, StdVec,
+};
 
 /// Re-export the contract-specific error type at the crate root.
 pub use errors::ContractError;
@@ -446,14 +448,13 @@ impl VisionRecordsContract {
             return Err(ContractError::NotInitialized);
         }
         caller.require_auth();
-        
+
         let admin = Self::get_admin(env.clone())?;
         if caller != admin {
             return Err(ContractError::Unauthorized);
         }
 
-        multisig::configure(&env, signers, threshold)
-            .map_err(|_| ContractError::InvalidInput)
+        multisig::configure(&env, signers, threshold).map_err(|_| ContractError::InvalidInput)
     }
 
     pub fn propose_admin_action(
@@ -481,8 +482,7 @@ impl VisionRecordsContract {
         }
         approver.require_auth();
 
-        multisig::approve(&env, &approver, proposal_id)
-            .map_err(|_| ContractError::Unauthorized)
+        multisig::approve(&env, &approver, proposal_id).map_err(|_| ContractError::Unauthorized)
     }
 
     pub fn get_multisig_config(env: Env) -> Option<multisig::MultisigConfig> {
@@ -521,6 +521,41 @@ impl VisionRecordsContract {
             );
         }
 
+        let auth_session = session::start_or_refresh_session(
+            &env,
+            &caller,
+            progressive_auth::AuthLevel::Level3,
+            3_600,
+            900,
+        );
+        let risk = risk_engine::evaluate_risk(
+            &env,
+            &risk_engine::OperationRiskInput {
+                actor: caller.clone(),
+                operation: symbol_short!("SET_RATE"),
+                action: risk_engine::ActionType::AdminChange,
+                sensitivity: risk_engine::DataSensitivity::Sensitive,
+                context: risk_engine::RiskContext {
+                    off_hours: false,
+                    unusual_location: false,
+                    unusual_frequency: false,
+                    recent_auth_failures: 0,
+                    emergency_signal: false,
+                },
+            },
+            None,
+        );
+        progressive_auth::enforce_for_risk(
+            &env,
+            &caller,
+            risk.final_score,
+            auth_session.issued_at,
+            Some(proposal_id),
+            false,
+            &progressive_auth::default_policy(),
+        )
+        .map_err(|_| ContractError::Unauthorized)?;
+
         env.storage().instance().set(
             &RATE_CFG,
             &(max_requests_per_window, window_duration_seconds),
@@ -549,6 +584,76 @@ impl VisionRecordsContract {
                 "set_encryption_key",
                 "admin_or_system_admin",
             );
+        }
+
+        let auth_session = session::start_or_refresh_session(
+            &env,
+            &caller,
+            progressive_auth::AuthLevel::Level4,
+            3_600,
+            900,
+        );
+        let policy = progressive_auth::default_policy();
+        let baseline = risk_engine::evaluate_risk(
+            &env,
+            &risk_engine::OperationRiskInput {
+                actor: caller.clone(),
+                operation: symbol_short!("SET_ENC"),
+                action: risk_engine::ActionType::AdminChange,
+                sensitivity: risk_engine::DataSensitivity::Sensitive,
+                context: risk_engine::RiskContext {
+                    off_hours: false,
+                    unusual_location: false,
+                    unusual_frequency: false,
+                    recent_auth_failures: 0,
+                    emergency_signal: false,
+                },
+            },
+            None,
+        );
+        let baseline_level = progressive_auth::enforce_for_risk(
+            &env,
+            &caller,
+            baseline.final_score,
+            auth_session.issued_at,
+            Some(proposal_id),
+            false,
+            &policy,
+        )
+        .map_err(|_| ContractError::Unauthorized)?;
+
+        // Mid-operation step-up: large key material forces higher sensitivity.
+        if key.len() > 128 {
+            let elevated = risk_engine::evaluate_risk(
+                &env,
+                &risk_engine::OperationRiskInput {
+                    actor: caller.clone(),
+                    operation: symbol_short!("SET_ENC"),
+                    action: risk_engine::ActionType::AdminChange,
+                    sensitivity: risk_engine::DataSensitivity::Restricted,
+                    context: risk_engine::RiskContext {
+                        off_hours: false,
+                        unusual_location: false,
+                        unusual_frequency: true,
+                        recent_auth_failures: 0,
+                        emergency_signal: false,
+                    },
+                },
+                None,
+            );
+            let elevated_level = progressive_auth::level_for_score(elevated.final_score, &policy);
+            if progressive_auth::needs_step_up(baseline_level, elevated_level.clone()) {
+                progressive_auth::enforce_level(
+                    &env,
+                    &caller,
+                    elevated_level,
+                    auth_session.issued_at,
+                    Some(proposal_id),
+                    false,
+                    &policy,
+                )
+                .map_err(|_| ContractError::Unauthorized)?;
+            }
         }
 
         // Persist the key hex string under (ENC_KEY, version)

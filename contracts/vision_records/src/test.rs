@@ -193,7 +193,7 @@ fn test_rate_limit_add_record_and_grant_access() {
     client.initialize(&admin);
 
     // Configure a small window for testing
-    client.set_rate_limit_config(&admin, &2, &60);
+    client.set_rate_limit_config(&admin, &2, &60, &0);
 
     let patient = Address::generate(&env);
     let provider = Address::generate(&env);
