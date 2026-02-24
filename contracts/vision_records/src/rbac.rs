@@ -91,6 +91,16 @@ pub struct Delegation {
     pub expires_at: u64, // 0 means never expires
 }
 
+/// Represents a scoped delegation: only specific permissions (not a full role) are delegated.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct ScopedDelegation {
+    pub delegator: Address,
+    pub delegatee: Address,
+    pub permissions: Vec<Permission>,
+    pub expires_at: u64, // 0 means never expires
+}
+
 /// Internal store schema helpers
 pub fn user_assignment_key(user: &Address) -> (soroban_sdk::Symbol, Address) {
     (symbol_short!("ROLE_ASN"), user.clone())
@@ -105,6 +115,21 @@ pub fn delegation_key(
         delegator.clone(),
         delegatee.clone(),
     )
+}
+
+pub fn scoped_delegation_key(
+    delegator: &Address,
+    delegatee: &Address,
+) -> (Symbol, Address, Address) {
+    (
+        symbol_short!("DLG_SCOPE"),
+        delegator.clone(),
+        delegatee.clone(),
+    )
+}
+
+pub fn delegatee_index_key(delegatee: &Address) -> (Symbol, Address) {
+    (symbol_short!("DELEG_IDX"), delegatee.clone())
 }
 
 pub fn acl_group_key(name: &String) -> (Symbol, String) {
@@ -251,6 +276,62 @@ pub fn get_active_delegation(
     None
 }
 
+/// Create a scoped delegation: grant only specific permissions (not a full role) to the delegatee.
+/// The delegatee will have only these permissions in the context of this delegator→delegatee link.
+/// Respects `expires_at` (0 = never expires).
+pub fn delegate_permissions(
+    env: &Env,
+    delegator: Address,
+    delegatee: Address,
+    permissions: Vec<Permission>,
+    expires_at: u64,
+) {
+    if permissions.is_empty() {
+        return;
+    }
+
+    let del = ScopedDelegation {
+        delegator: delegator.clone(),
+        delegatee: delegatee.clone(),
+        permissions: permissions.clone(),
+        expires_at,
+    };
+
+    let key = scoped_delegation_key(&delegator, &delegatee);
+    env.storage().persistent().set(&key, &del);
+    extend_ttl_delegation_key(env, &key);
+
+    let idx_key = delegatee_index_key(&delegatee);
+    let mut delegators: Vec<Address> = env
+        .storage()
+        .persistent()
+        .get(&idx_key)
+        .unwrap_or(Vec::new(env));
+
+    if !delegators.contains(&delegator) {
+        delegators.push_back(delegator);
+    }
+    env.storage().persistent().set(&idx_key, &delegators);
+    extend_ttl_address_key(env, &idx_key);
+}
+
+/// Retrieve the active scoped delegation for a particular delegator→delegatee pair.
+pub fn get_active_scoped_delegation(
+    env: &Env,
+    delegator: &Address,
+    delegatee: &Address,
+) -> Option<ScopedDelegation> {
+    if let Some(del) = env.storage().persistent().get::<_, ScopedDelegation>(&scoped_delegation_key(
+        delegator,
+        delegatee,
+    )) {
+        if del.expires_at == 0 || del.expires_at > env.ledger().timestamp() {
+            return Some(del);
+        }
+    }
+    None
+}
+
 // ======================== ACL Group Management ========================
 
 pub fn create_group(env: &Env, name: String, permissions: Vec<Permission>) {
@@ -363,6 +444,10 @@ pub fn has_permission(env: &Env, user: &Address, permission: &Permission) -> boo
 /// Checks if `delegatee` holds `permission` through a specific delegation
 /// from `delegator`.
 ///
+/// Returns true if either:
+/// - There is an active full role delegation and the role's base permissions include `permission`, or
+/// - There is an active scoped delegation whose permission list includes `permission`.
+///
 /// Unlike `has_permission` which checks ALL delegation paths, this function
 /// verifies a specific delegator→delegatee relationship. Use this when the
 /// caller must be acting on behalf of a particular entity (e.g., a provider
@@ -374,8 +459,15 @@ pub fn has_delegated_permission(
     delegatee: &Address,
     permission: &Permission,
 ) -> bool {
+    // Full role delegation: delegatee gets all permissions of the role
     if let Some(delegation) = get_active_delegation(env, delegator, delegatee) {
         if get_base_permissions(env, &delegation.role).contains(permission) {
+            return true;
+        }
+    }
+    // Scoped delegation: delegatee gets only the listed permissions
+    if let Some(scoped) = get_active_scoped_delegation(env, delegator, delegatee) {
+        if scoped.permissions.contains(permission) {
             return true;
         }
     }

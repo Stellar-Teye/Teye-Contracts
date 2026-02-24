@@ -1317,14 +1317,27 @@ impl VisionRecordsContract {
         Ok(())
     }
 
+    /// Delegates only specific permissions (not a full role) to another user with an expiration timestamp.
+    /// The delegatee gets only the listed permissions in the context of this delegator→delegatee link.
+    /// The delegator must authenticate the transaction. Empty permissions are ignored (no-op).
+    pub fn delegate_permissions(
+        env: Env,
+        delegator: Address,
+        delegatee: Address,
+        permissions: Vec<Permission>,
+        expires_at: u64,
+    ) -> Result<(), ContractError> {
+        delegator.require_auth();
+        rbac::delegate_permissions(&env, delegator, delegatee, permissions, expires_at);
+        Ok(())
+    }
+
     /// Checks if a user has a specific permission.
     /// Returns true if the user has the permission, false otherwise.
     pub fn check_permission(env: Env, user: Address, permission: Permission) -> bool {
         rbac::has_permission(&env, &user, &permission)
     }
-
-#[cfg(test)]
-mod test;
+}
 
 #[cfg(test)]
 mod test;
