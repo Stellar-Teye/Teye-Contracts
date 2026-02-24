@@ -898,6 +898,7 @@ name = "identity"
 version = "1.2.2"
 dependencies = [
  "soroban-sdk",
+ "zk_verifier",
 ]
 
 [[package]]
@@ -2279,6 +2280,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "zk_prover"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+ "zk_verifier",
 ]
 
 [[package]]

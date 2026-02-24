@@ -42,7 +42,7 @@ pub enum SensitivityLevel {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PolicyConditions {
-    pub required_role: Option<Role>,
+    pub required_role: Role,
     pub time_restriction: TimeRestriction,
     pub required_credential: CredentialType,
     pub min_sensitivity_level: SensitivityLevel,
@@ -84,7 +84,9 @@ pub enum Permission {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[repr(u32)]
 pub enum Role {
+    None = 0,
     Patient = 1,
     Staff = 2,
     Optometrist = 3,
@@ -426,10 +428,11 @@ pub fn get_active_scoped_delegation(
     delegator: &Address,
     delegatee: &Address,
 ) -> Option<ScopedDelegation> {
-    if let Some(del) = env.storage().persistent().get::<_, ScopedDelegation>(&scoped_delegation_key(
-        delegator,
-        delegatee,
-    )) {
+    if let Some(del) = env
+        .storage()
+        .persistent()
+        .get::<_, ScopedDelegation>(&scoped_delegation_key(delegator, delegatee))
+    {
         if del.expires_at == 0 || del.expires_at > env.ledger().timestamp() {
             return Some(del);
         }
@@ -693,11 +696,7 @@ pub struct PolicyContext {
 }
 
 /// Evaluate an access policy against the given context
-pub fn evaluate_policy(
-    env: &Env,
-    policy: &AccessPolicy,
-    context: &PolicyContext,
-) -> bool {
+pub fn evaluate_policy(env: &Env, policy: &AccessPolicy, context: &PolicyContext) -> bool {
     if !policy.enabled {
         return false;
     }
@@ -705,9 +704,9 @@ pub fn evaluate_policy(
     let conditions = &policy.conditions;
 
     // Check role requirement
-    if let Some(required_role) = &conditions.required_role {
+    if conditions.required_role != Role::None {
         if let Some(assignment) = get_active_assignment(env, &context.user) {
-            if assignment.role != *required_role {
+            if assignment.role != conditions.required_role {
                 return false;
             }
         } else {
@@ -741,8 +740,16 @@ pub fn evaluate_policy(
     if conditions.consent_required {
         if let (Some(patient), Some(_record_id)) = (&context.patient, &context.resource_id) {
             // Check if there's active consent for this user to access this patient's records
-            let consent_key = (symbol_short!("CONSENT"), patient.clone(), context.user.clone());
-            if let Some(consent) = env.storage().persistent().get::<_, ConsentGrant>(&consent_key) {
+            let consent_key = (
+                symbol_short!("CONSENT"),
+                patient.clone(),
+                context.user.clone(),
+            );
+            if let Some(consent) = env
+                .storage()
+                .persistent()
+                .get::<_, ConsentGrant>(&consent_key)
+            {
                 if consent.revoked || consent.expires_at <= context.current_time {
                     return false;
                 }

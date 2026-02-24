@@ -1,4 +1,6 @@
-use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env};
+#![allow(deprecated)] // events().publish migration tracked separately
+
+use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env, String};
 
 /// Fired when an admin transfer is proposed.
 #[contracttype]
@@ -34,6 +36,16 @@ pub struct AccessRejectedEvent {
     pub user: Address,
     pub resource_id: BytesN<32>,
     pub error: u32,
+    pub timestamp: u64,
+}
+
+/// Event payload for access-control and proof-validation violations.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccessViolationEvent {
+    pub caller: Address,
+    pub action: String,
+    pub required_permission: String,
     pub timestamp: u64,
 }
 
@@ -82,6 +94,23 @@ pub fn publish_access_rejected(
             user,
             resource_id,
             error: error as u32,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
+}
+
+pub fn publish_access_violation(
+    env: &Env,
+    caller: Address,
+    action: String,
+    required_permission: String,
+) {
+    env.events().publish(
+        (symbol_short!("ACC_VIOL"), caller.clone(), action.clone()),
+        AccessViolationEvent {
+            caller,
+            action,
+            required_permission,
             timestamp: env.ledger().timestamp(),
         },
     );

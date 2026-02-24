@@ -2,24 +2,32 @@ name: Mutation Testing
 
 on:
   push:
-    branches:
-      - main
+    branches: [master]
   pull_request:
-    branches:
-      - '*'
+    branches: [master]
+
+concurrency:
+  group: mutation-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  mutation-test:
-    name: Run Mutation Tests
+  mutants:
+    name: Mutation Tests
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        contract: [vision_records, staking, identity]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config libudev-dev libhidapi-dev
+
+      - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
           targets: wasm32-unknown-unknown
@@ -29,6 +37,24 @@ jobs:
         with:
           tool: cargo-mutants
 
-      - name: Run mutation testing
-        run: |
-          cargo mutants -d contracts/vision_records -vV --in-place
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-mutants-${{ matrix.contract }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-mutants-${{ matrix.contract }}-
+
+      - name: Run mutation testing — ${{ matrix.contract }}
+        run: cargo mutants -d contracts/${{ matrix.contract }} -vV --in-place --timeout 120
+
+      - name: Upload mutation report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutants-${{ matrix.contract }}
+          path: mutants.out/
+          retention-days: 14

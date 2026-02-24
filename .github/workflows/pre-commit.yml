@@ -1,10 +1,14 @@
-name: Pre-commit Checks
+name: Pre-commit
 
 on:
   pull_request:
-    branches: [ master, develop ]
+    branches: [master, develop]
   push:
-    branches: [ master, develop ]
+    branches: [master, develop]
+
+concurrency:
+  group: pre-commit-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   pre-commit:
@@ -13,10 +17,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: "3.x"
 
-      - name: Run pre-commit
-        uses: pre-commit/action@v3.0.1
+      - uses: pre-commit/action@v3.0.1

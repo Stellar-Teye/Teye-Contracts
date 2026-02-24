@@ -3,7 +3,7 @@ use crate::{
     rbac::{self, Permission},
     ContractError,
 };
-use common::admin_tiers::{self, AdminTier};
+use teye_common::admin_tiers::{self, AdminTier};
 use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol};
 
 // ── Types ─────────────────────────────────────────────────────

@@ -1,140 +1,174 @@
-# Deployment to Stellar Networks
+# Deployment Guide
 
-This document describes how Teye-Contracts are deployed to Stellar networks, with a focus on automated **testnet** deployments.
+This guide covers repeatable deployment of Teye contracts to local and Stellar networks.
+It is aligned with the scripts in `scripts/` and the artifact flow in this repository.
 
-## Overview
+## Scope
 
-Contracts can be deployed to:
+- Build contract WASM artifacts
+- Deploy a selected contract to a target network
+- Initialize/admin handoff flow
+- Verify deployment health
+- Roll back consumer references to a previous contract ID
 
-- **Local**: for development and integration testing
-- **Testnet**: for public testing and staging
-- **Futurenet/Mainnet**: for advanced testing and production (planned)
+## Prerequisites
 
-Deployment is powered by:
+1. Rust toolchain with `wasm32-unknown-unknown` target
+2. Soroban CLI installed and authenticated (`soroban keys` and network configs)
+3. Network alias configured in Soroban CLI (`local`, `testnet`, `futurenet`, or `mainnet`)
+4. Deployer key available as `default` source account
+5. Access to this repository and write permission for `deployments/`
 
-- Shell scripts in the `scripts/` directory
-- GitHub Actions workflows in `.github/workflows/`
+## Deployment Artifacts
 
-## Deployment Scripts
+- Build output: `target/wasm32-unknown-unknown/release/<contract>.wasm`
+- Deployment descriptor: `deployments/<network>_<contract>.json`
+- Previous descriptor backup (testnet flow): `deployments/testnet_<contract>_previous.json`
 
-### `scripts/deploy.sh`
+## Standard Deployment Procedure
 
-Generic deployment helper:
+### 1. Pre-deployment checks
 
-- **Usage**:
+Run checks before deploying:
 
-  ```bash
-  ./scripts/deploy.sh <network> [contract]
-  ```
+```bash
+cargo test
+cargo build --target wasm32-unknown-unknown --release
+```
 
-  - `network`: one of `local`, `testnet`, `futurenet`, `mainnet`
-  - `contract`: folder name under `contracts/` (defaults to `vision_records`)
+Optional: generate all release artifacts and checksums:
 
-- **Behavior**:
-  - Builds the contract as a `wasm32-unknown-unknown` release binary
-  - Deploys the contract using `soroban contract deploy`
-  - Prints the new contract ID
-  - Writes a deployment descriptor to `deployments/<network>_<contract>.json` containing:
-    - Network and contract name
-    - Deployed contract ID
-    - Deployment timestamp
-    - WASM SHA-256 hash
+```bash
+./scripts/build_release_artifacts.sh
+```
 
-This script is safe to run locally and in CI.
+### 2. Deploy a contract
 
-### `scripts/deploy_testnet.sh`
+Use the base deployment script:
 
-Orchestrates **testnet** deployments with basic verification and rollback handling.
+```bash
+./scripts/deploy.sh <network> [contract]
+```
 
-- **Usage**:
+Examples:
 
-  ```bash
-  ./scripts/deploy_testnet.sh [contract]
-  ```
+```bash
+./scripts/deploy.sh local vision_records
+./scripts/deploy.sh testnet staking
+```
 
-  - `contract`: folder name under `contracts/` (defaults to `vision_records`)
+On success, the script prints:
 
-- **Behavior**:
-  1. Backs up the existing testnet deployment descriptor (if any) to:
+- `DEPLOYMENT_CONTRACT_ID=<id>`
+- a deployment descriptor JSON under `deployments/`
 
-     ```text
-     deployments/testnet_<contract>_previous.json
-     ```
+### 3. Initialize contract state
 
-  2. Calls `scripts/deploy.sh testnet <contract>` and captures the `DEPLOYMENT_CONTRACT_ID` line.
-  3. Runs a **lightweight verification** step:
-     - For `vision_records`: invokes the `version` method via `soroban contract invoke`.
-     - For unknown contracts: skips verification but still completes with success.
-  4. If verification fails:
-     - Prints an error
-     - Restores the previous deployment descriptor (if present) so monitoring and tools continue to point at the last known-good deployment.
-  5. On success, prints `VERIFIED_CONTRACT_ID=<id>` for CI consumption.
+Most contracts require explicit initialization after deployment. Example for `vision_records`:
 
-This flow ensures that broken deployments do not overwrite the “current” deployment descriptor.
+```bash
+soroban contract invoke \
+  --id <CONTRACT_ID> \
+  --source default \
+  --network <network> \
+  -- \
+  initialize \
+  --admin <ADMIN_ADDRESS>
+```
 
-## GitHub Actions: Testnet Deployment
+### 4. Admin handoff (if needed)
 
-Automated testnet deployment is handled by:
+Contracts in this repository generally use a two-step admin transfer (`propose_admin`, `accept_admin`).
 
-- `.github/workflows/deploy-testnet.yml`
+Step 1 (current admin):
 
-### Triggers
+```bash
+soroban contract invoke \
+  --id <CONTRACT_ID> \
+  --source <CURRENT_ADMIN_SOURCE> \
+  --network <network> \
+  -- \
+  propose_admin \
+  --current_admin <CURRENT_ADMIN_ADDRESS> \
+  --new_admin <NEW_ADMIN_ADDRESS>
+```
 
-- On push to `master` affecting:
-  - `contracts/**`
-  - `scripts/**`
-  - `.github/workflows/deploy-testnet.yml`
-- Manual trigger via **Run workflow** (workflow_dispatch), with an optional `contract` input.
+Step 2 (new admin):
 
-### Workflow Outline
+```bash
+soroban contract invoke \
+  --id <CONTRACT_ID> \
+  --source <NEW_ADMIN_SOURCE> \
+  --network <network> \
+  -- \
+  accept_admin \
+  --new_admin <NEW_ADMIN_ADDRESS>
+```
 
-1. **Environment setup**
-   - Install Rust `RUST_VERSION` and Soroban CLI `SOROBAN_VERSION`
-   - Ensure Soroban `testnet` network is configured (idempotent)
+### 5. Post-deployment verification
 
-2. **Deployment**
-   - Runs:
+Minimum required checks:
 
-     ```bash
-     ./scripts/deploy_testnet.sh <contract>
-     ```
+1. Contract responds to a lightweight read method (for `vision_records`, use `version`)
+2. Admin address is correct (`get_admin` where available)
+3. Deployment descriptor contains expected `contract_id`, timestamp, and `wasm_hash`
 
-   - Parses `VERIFIED_CONTRACT_ID` from the script output and exposes:
-     - `steps.deploy.outputs.contract_name`
-     - `steps.deploy.outputs.contract_id`
+Example:
 
-3. **Deployment report**
-   - Writes a human-readable summary to the GitHub Actions **Step Summary**, including:
-     - Contract name
-     - Network (`testnet`)
-     - Deployed contract ID
-     - Trigger type (push or manual)
+```bash
+soroban contract invoke \
+  --id <CONTRACT_ID> \
+  --source default \
+  --network <network> \
+  --fn version
+```
 
-4. **Optional notifications**
-   - If `SLACK_WEBHOOK_URL` is configured as a repository secret, posts a message containing:
-     - Contract name and network
-     - Contract ID
-     - Link to the GitHub Actions run
+## Testnet Orchestrated Deployment
 
-## Rollback Procedures
+Use the testnet wrapper for safer descriptor handling:
 
-Because Soroban contracts are immutable after deployment, rollback is handled by switching which contract ID is considered “current” in tooling and clients:
+```bash
+./scripts/deploy_testnet.sh [contract]
+```
 
-1. Inspect the backup deployment descriptor:
+Behavior:
 
-   ```bash
-   cat deployments/testnet_<contract>_previous.json
-   ```
+1. Backs up current descriptor to `_previous.json`
+2. Runs `scripts/deploy.sh testnet <contract>`
+3. Runs lightweight verification (`version` for `vision_records`)
+4. Restores previous descriptor if verification fails
+5. Emits `VERIFIED_CONTRACT_ID=<id>` on success
 
-2. Update any off-chain services, frontends, or environment variables to point back to the previous `contract_id`.
+## Rollback Procedure
 
-3. Optionally, tag the problematic deployment in Git or document it in an ADR for future reference.
+On Soroban, deployed contracts are immutable. Rollback means repointing off-chain consumers.
 
-The testnet workflow never deletes old contracts on-chain; it only updates which contract ID is surfaced as the canonical deployment.
+### Steps
 
-## Best Practices
+1. Identify last known-good contract ID from:
+   - `deployments/<network>_<contract>_previous.json`
+   - release notes or run logs
+2. Update all consumers to use that contract ID:
+   - backend services
+   - indexers
+   - frontend/app config
+3. Re-run smoke checks against the previous contract ID
+4. Record incident and root cause in ops/release notes
 
-- Always ensure CI (`ci.yml` and `security.yml`) is green before triggering testnet deployment.
-- Prefer deploying from `master` only after a successful release build.
-- Use manual `workflow_dispatch` runs with a specific `contract` when testing new or experimental contracts.
-- Keep `deployments/` committed so that deployment history is visible in Git (unless project policy dictates otherwise).
+## CI/CD Recommendations
+
+1. Build/test gates before deployment
+2. One environment promotion path (`local -> testnet -> production`)
+3. Persist deployment descriptors in git history
+4. Capture contract ID + WASM checksum in release notes
+5. Use manual approval for production deployment jobs
+
+## Operational Handoff Checklist
+
+Before marking a deployment complete:
+
+1. Contract ID published to all consuming systems
+2. Monitoring updated to track the new contract ID
+3. Alerts green for at least one observation window
+4. Backup snapshot updated (descriptors, artifacts, checksums)
+5. Upgrade path and rollback metadata documented

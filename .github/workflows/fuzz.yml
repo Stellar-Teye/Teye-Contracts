@@ -2,40 +2,62 @@ name: Fuzz Testing
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [master]
   pull_request:
-    branches: [ "master" ]
+    branches: [master]
   schedule:
-    # Run a deeper fuzzing campaign nightly
-    - cron: '0 2 * * *'
+    - cron: "0 2 * * *"   # Nightly deep fuzz
+  workflow_dispatch:
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   fuzz:
+    name: Fuzz Targets
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [vision_records_fuzz, staking_fuzz]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust Nightly
-        uses: dtolnay/rust-toolchain@nightly
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config libudev-dev libhidapi-dev
+
+      - uses: dtolnay/rust-toolchain@nightly
 
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz
 
-      - name: Fuzz Vision Records
-        run: |
-          cd fuzz
-          # Run the fuzzer for a short time (e.g. 60 seconds) in PRs, longer on nightly
-          if [ "${{ github.event_name }}" == "schedule" ]; then
-            cargo +nightly run --bin vision_records_fuzz -- -max_total_time=1800
-          else
-            cargo +nightly run --bin vision_records_fuzz -- -max_total_time=60
-          fi
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            fuzz/target/
+          key: ${{ runner.os }}-fuzz-${{ matrix.target }}-${{ hashFiles('fuzz/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-fuzz-${{ matrix.target }}-
 
-      - name: Fuzz Staking
+      - name: Run fuzzer — ${{ matrix.target }}
         run: |
           cd fuzz
-          if [ "${{ github.event_name }}" == "schedule" ]; then
-            cargo +nightly run --bin staking_fuzz -- -max_total_time=1800
+          # 30 min for nightly, 60 sec for PRs
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            DURATION=1800
           else
-            cargo +nightly run --bin staking_fuzz -- -max_total_time=60
+            DURATION=60
           fi
+          cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=${DURATION}
+
+      - name: Upload crash artifacts
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: fuzz-crashes-${{ matrix.target }}
+          path: fuzz/artifacts/
+          retention-days: 30

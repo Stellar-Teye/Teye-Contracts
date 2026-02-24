@@ -355,7 +355,7 @@ fn test_set_reward_rate_by_admin() {
 
     // Admin halves the rate at t=50.
     env.ledger().set_timestamp(50);
-    client.set_reward_rate(&admin, &5);
+    client.set_reward_rate(&admin, &5, &0);
     assert_eq!(client.get_reward_rate(), 5);
 
     // From t=0 to t=50: 10 × 50 = 500 earned at old rate.
@@ -370,7 +370,7 @@ fn test_set_reward_rate_by_non_admin_fails() {
     let (env, client, _admin, _stake_token, _) = setup(10, 0);
 
     let intruder = Address::generate(&env);
-    let result = client.try_set_reward_rate(&intruder, &999);
+    let result = client.try_set_reward_rate(&intruder, &999, &0);
     match result {
         Err(Ok(e)) => assert_eq!(e, ContractError::Unauthorized),
         _ => unreachable!("Expected Unauthorized error"),
@@ -381,7 +381,7 @@ fn test_set_reward_rate_by_non_admin_fails() {
 fn test_set_lock_period_by_admin() {
     let (_env, client, admin, _, _) = setup(10, 86_400);
 
-    client.set_lock_period(&admin, &172_800); // 2 days
+    client.set_lock_period(&admin, &172_800, &0); // 2 days
     assert_eq!(client.get_lock_period(), 172_800);
 }
 
@@ -397,7 +397,7 @@ fn test_rewards_after_rate_set_to_zero() {
 
     // Earn 10 × 50 = 500, then stop emissions.
     env.ledger().set_timestamp(50);
-    client.set_reward_rate(&admin, &0);
+    client.set_reward_rate(&admin, &0, &0);
 
     // Advance time — no further rewards should accrue.
     env.ledger().set_timestamp(1_000);
@@ -449,4 +449,98 @@ fn test_initialize_negative_reward_rate_fails() {
         Err(Ok(e)) => assert_eq!(e, ContractError::InvalidInput),
         _ => unreachable!("Expected InvalidInput error"),
     }
+}
+
+// ── Delayed rate changes ──────────────────────────────────────────────────────
+
+#[test]
+fn test_set_rate_change_delay() {
+    let (_env, client, admin, _, _) = setup(10, 0);
+
+    client.set_rate_change_delay(&admin, &3_600);
+    assert_eq!(client.get_rate_change_delay(), 3_600);
+}
+
+#[test]
+fn test_delayed_reward_rate_proposal_and_apply() {
+    let (env, client, admin, stake_token, _) = setup(10, 0);
+
+    client.set_rate_change_delay(&admin, &3_600);
+
+    let staker = Address::generate(&env);
+    mint_stake(&env, &stake_token, &staker, 1_000);
+
+    env.ledger().set_timestamp(0);
+    client.stake(&staker, &1_000);
+
+    // Propose a rate change at t=100; rate should remain unchanged.
+    env.ledger().set_timestamp(100);
+    client.set_reward_rate(&admin, &20, &0);
+    assert_eq!(client.get_reward_rate(), 10);
+
+    // Verify proposal is stored.
+    let proposal = client.get_pending_rate_change();
+    assert_eq!(proposal.new_rate, 20);
+    assert_eq!(proposal.effective_at, 3_700);
+
+    // Apply after delay has elapsed.
+    env.ledger().set_timestamp(3_701);
+    client.apply_reward_rate(&admin);
+    assert_eq!(client.get_reward_rate(), 20);
+}
+
+#[test]
+fn test_apply_reward_rate_before_delay_fails() {
+    let (env, client, admin, _, _) = setup(10, 0);
+
+    client.set_rate_change_delay(&admin, &3_600);
+
+    env.ledger().set_timestamp(100);
+    client.set_reward_rate(&admin, &20, &0);
+
+    env.ledger().set_timestamp(3_699);
+    let result = client.try_apply_reward_rate(&admin);
+    match result {
+        Err(Ok(e)) => assert_eq!(e, ContractError::RateChangeNotReady),
+        _ => unreachable!("Expected RateChangeNotReady error"),
+    }
+}
+
+#[test]
+fn test_apply_reward_rate_no_pending_fails() {
+    let (_env, client, admin, _, _) = setup(10, 0);
+
+    let result = client.try_apply_reward_rate(&admin);
+    match result {
+        Err(Ok(e)) => assert_eq!(e, ContractError::NoPendingRateChange),
+        _ => unreachable!("Expected NoPendingRateChange error"),
+    }
+}
+
+#[test]
+fn test_delayed_rate_change_rewards_are_correct() {
+    let (env, client, admin, stake_token, _) = setup(10, 0);
+
+    client.set_rate_change_delay(&admin, &3_600);
+
+    let staker = Address::generate(&env);
+    mint_stake(&env, &stake_token, &staker, 1_000);
+
+    env.ledger().set_timestamp(0);
+    client.stake(&staker, &1_000);
+
+    // Propose rate increase at t=100.
+    env.ledger().set_timestamp(100);
+    client.set_reward_rate(&admin, &20, &0);
+
+    // Apply at t=3701. Old rate (10) active from t=0 to t=3701.
+    env.ledger().set_timestamp(3_701);
+    client.apply_reward_rate(&admin);
+
+    // Advance to t=3801. New rate (20) active for 100s.
+    // Old: 10 * 3701 = 37_010
+    // New: 20 * 100  = 2_000
+    // Total: 39_010
+    env.ledger().set_timestamp(3_801);
+    assert_eq!(client.get_pending_rewards(&staker), 39_010);
 }
