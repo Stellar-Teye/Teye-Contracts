@@ -2,8 +2,8 @@
 //!
 //! This crate provides:
 //! - [`CommonError`] — standardised error codes for all contracts.
-//! - Consent, key-management, and multisig helpers (requires `std` feature).
-//! - On-chain whitelist, meta-transaction, and rate-limiting utilities.
+//! - Consent and key-management helpers (requires `std` feature).
+//! - On-chain multisig, whitelist, meta-transaction, and rate-limiting utilities.
 //!
 //! Contract-specific errors can extend the range starting at code **100** and
 //! above, ensuring no collisions with the common set.
@@ -17,10 +17,8 @@ use soroban_sdk::contracterror;
 pub mod admin_tiers;
 #[cfg(feature = "std")]
 pub mod consent;
-pub mod admin_tiers;
 pub mod keys;
 pub mod meta_tx;
-#[cfg(feature = "std")]
 pub mod multisig;
 pub mod rate_limit;
 pub mod whitelist;
@@ -31,7 +29,6 @@ pub use consent::*;
 #[cfg(feature = "std")]
 pub use keys::*;
 pub use meta_tx::*;
-#[cfg(feature = "std")]
 pub use multisig::*;
 pub use rate_limit::*;
 pub use whitelist::*;

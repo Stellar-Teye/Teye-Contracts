@@ -36,6 +36,7 @@ const ADMIN: Symbol = symbol_short!("ADMIN");
 const PENDING_ADMIN: Symbol = symbol_short!("PEND_ADM");
 const RATE_CFG: Symbol = symbol_short!("RATECFG");
 const RATE_TRACK: Symbol = symbol_short!("RLTRK");
+const VK: Symbol = symbol_short!("VK");
 
 /// Maximum number of public inputs accepted per proof verification.
 const MAX_PUBLIC_INPUTS: u32 = 16;
@@ -408,12 +409,23 @@ impl ZkVerifierContract {
 
     /// Retrieves an audit record for a specific user and resource.
     ///
-    /// Returns the `AuditRecord` if it exists, otherwise `None`.
+    /// Returns the most recent `AuditRecord` if it exists, otherwise `None`.
     pub fn get_audit_record(
         env: Env,
         user: Address,
         resource_id: BytesN<32>,
     ) -> Option<AuditRecord> {
         AuditTrail::get_record(&env, user, resource_id)
+    }
+
+    /// Verifies the integrity of the audit chain for a given user and resource.
+    ///
+    /// Returns `true` if all hash links are valid, or if the chain is empty.
+    pub fn verify_audit_chain(
+        env: Env,
+        user: Address,
+        resource_id: BytesN<32>,
+    ) -> bool {
+        AuditTrail::verify_chain(&env, user, resource_id)
     }
 }
