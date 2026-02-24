@@ -80,4 +80,3 @@ The platform includes multiple Soroban contracts (vision records, staking, cross
   - `contracts/compliance/src/retention.rs`
   - `docs/data-portability.md`
   - `docs/monitoring.md`
-

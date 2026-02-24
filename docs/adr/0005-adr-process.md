@@ -64,4 +64,3 @@ we adopt a lightweight, repository-local ADR process.
   - Consider an index section in the main `README.md` or `docs/architecture.md` that links to key ADRs.
   - Optionally adopt tooling or CI checks to:
     - Enforce ADR references for certain labels (e.g., `architecture`, `security`).
-

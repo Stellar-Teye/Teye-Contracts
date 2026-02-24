@@ -38,4 +38,3 @@ Any implementation details, references, or follow-up tasks:
 - Links to PRs or issues
 - Migration / rollout strategy
 - Monitoring and validation plan
-

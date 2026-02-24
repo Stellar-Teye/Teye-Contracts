@@ -49,6 +49,15 @@ pub struct TrendPoint {
     pub value: MetricValue,
 }
 
+#[soroban_sdk::contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum ContractError {
+    AlreadyInitialized = 1,
+    NotInitialized = 2,
+    Unauthorized = 3,
+}
+
 // ── Contract ───────────────────────────────────────────────────────────────────
 
 #[contract]
@@ -63,34 +72,39 @@ impl AnalyticsContract {
     /// The aggregator address represents an off-chain process that computes
     /// privacy-preserving aggregates from raw vision records and pushes them
     /// on-chain.
-    pub fn initialize(env: Env, admin: Address, aggregator: Address) {
+    pub fn initialize(env: Env, admin: Address, aggregator: Address) -> Result<(), ContractError> {
         if env.storage().instance().has(&ADMIN) {
-            panic!("already initialized");
+            return Err(ContractError::AlreadyInitialized);
         }
         env.storage().instance().set(&ADMIN, &admin);
         env.storage().instance().set(&AGGREGATOR, &aggregator);
+        Ok(())
     }
 
-    pub fn get_admin(env: Env) -> Address {
-        env.storage().instance().get(&ADMIN).expect("admin not set")
+    pub fn get_admin(env: Env) -> Result<Address, ContractError> {
+        env.storage()
+            .instance()
+            .get(&ADMIN)
+            .ok_or(ContractError::NotInitialized)
     }
 
-    pub fn get_aggregator(env: Env) -> Address {
+    pub fn get_aggregator(env: Env) -> Result<Address, ContractError> {
         env.storage()
             .instance()
             .get(&AGGREGATOR)
-            .expect("aggregator not set")
+            .ok_or(ContractError::NotInitialized)
     }
 
-    fn require_aggregator(env: &Env, caller: &Address) {
+    fn require_aggregator(env: &Env, caller: &Address) -> Result<(), ContractError> {
         let expected: Address = env
             .storage()
             .instance()
             .get(&AGGREGATOR)
-            .expect("aggregator not set");
+            .ok_or(ContractError::NotInitialized)?;
         if caller != &expected {
-            panic!("unauthorized aggregator");
+            return Err(ContractError::Unauthorized);
         }
+        Ok(())
     }
 
     // ── Metric ingestion ──────────────────────────────────────────────────────
@@ -112,12 +126,12 @@ impl AnalyticsContract {
         dims: MetricDimensions,
         count_delta: i128,
         sum_delta: i128,
-    ) {
+    ) -> Result<(), ContractError> {
         caller.require_auth();
-        Self::require_aggregator(&env, &caller);
+        Self::require_aggregator(&env, &caller)?;
 
         if count_delta == 0 && sum_delta == 0 {
-            return;
+            return Ok(());
         }
 
         let key = (METRIC, kind, dims.clone());
@@ -131,6 +145,7 @@ impl AnalyticsContract {
         current.sum = current.sum.saturating_add(sum_delta);
 
         env.storage().persistent().set(&key, &current);
+        Ok(())
     }
 
     /// Returns the current value for a given metric + dimensions.

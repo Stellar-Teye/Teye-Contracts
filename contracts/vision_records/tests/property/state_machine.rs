@@ -1,3 +1,8 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::arithmetic_side_effects
+)]
 //! Property-based state machine tests for the VisionRecords contract.
 //!
 //! These tests model the contract as a state machine and verify that
@@ -96,8 +101,7 @@ proptest! {
         );
 
         // Provider adds a record for the patient
-        let hash = String::from_str(&env, "lifecycle_hash_value_ffffffffffff");
-        let record_id = client.add_record(
+        let hash = String::from_str(&env, "lifecycle_hash_value_ffffffffffff");        let record_id = client.add_record(
             &admin,
             &patient,
             &provider,
@@ -109,7 +113,7 @@ proptest! {
         prop_assert_eq!(record_id, 1u64);
 
         // Stored record must match inputs
-        let record = client.get_record(&record_id);
+        let record = client.get_record(&provider, &record_id);
         prop_assert_eq!(record.patient, patient.clone());
         prop_assert_eq!(record.provider, provider.clone());
         prop_assert_eq!(record.data_hash, hash);
@@ -120,7 +124,7 @@ proptest! {
         prop_assert_eq!(client.check_access(&patient, &doctor), AccessLevel::Read);
 
         // Patient revokes access
-        client.revoke_access(&patient, &doctor);
+        client.revoke_access(&patient, &patient, &doctor);
         prop_assert_eq!(client.check_access(&patient, &doctor), AccessLevel::None);
     }
 

@@ -18,7 +18,7 @@ pub fn publish_identity_mapped(
         .publish((symbol_short!("ID_MAP"), chain, foreign_addr), local_addr);
 }
 
-pub fn publish_message_processed(env: &Env, message_id: Bytes, chain: String, success: bool) {
+pub fn publish_message_processed(env: &Env, chain: String, message_id: Bytes, success: bool) {
     env.events()
         .publish((symbol_short!("PROC_MSG"), chain, message_id), success);
 }

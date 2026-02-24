@@ -76,4 +76,3 @@ Stellar Teye is a multi-contract system that must be:
 - Monitoring setup:
   - `docs/monitoring.md`
   - `scripts/monitor/*` (Prometheus, Grafana, Alertmanager, health checks)
-

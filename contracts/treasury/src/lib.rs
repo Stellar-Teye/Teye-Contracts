@@ -59,22 +59,40 @@ pub struct AllocationSummary {
     pub total_spent: i128,
 }
 
+#[soroban_sdk::contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum ContractError {
+    AlreadyInitialized = 1,
+    NotInitialized = 2,
+    NoSigners = 3,
+    InvalidThreshold = 4,
+    PositiveAmountRequired = 5,
+    UnauthorisedProposer = 6,
+    FutureExpiryRequired = 7,
+    UnauthorisedSigner = 8,
+    ProposalNotFound = 9,
+    ProposalNotPending = 10,
+    ProposalExpired = 11,
+    InsufficientApprovals = 12,
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-fn is_signer(env: &Env, who: &Address) -> bool {
+fn is_signer(env: &Env, who: &Address) -> Result<bool, ContractError> {
     let cfg: TreasuryConfig = env
         .storage()
         .instance()
         .get(&CONFIG)
-        .expect("config not set");
-    cfg.signers.iter().any(|s| s == *who)
+        .ok_or(ContractError::NotInitialized)?;
+    Ok(cfg.signers.iter().any(|s| s == *who))
 }
 
-fn load_config(env: &Env) -> TreasuryConfig {
+fn load_config(env: &Env) -> Result<TreasuryConfig, ContractError> {
     env.storage()
         .instance()
         .get(&CONFIG)
-        .expect("config not set")
+        .ok_or(ContractError::NotInitialized)
 }
 
 fn next_proposal_id(env: &Env) -> u64 {
@@ -118,15 +136,15 @@ impl TreasuryContract {
         token: Address,
         signers: Vec<Address>,
         threshold: u32,
-    ) {
+    ) -> Result<(), ContractError> {
         if env.storage().instance().has(&CONFIG) {
-            panic!("already initialized");
+            return Err(ContractError::AlreadyInitialized);
         }
         if signers.is_empty() {
-            panic!("no signers");
+            return Err(ContractError::NoSigners);
         }
         if threshold == 0 || threshold > signers.len() {
-            panic!("invalid threshold");
+            return Err(ContractError::InvalidThreshold);
         }
 
         let cfg = TreasuryConfig {
@@ -137,9 +155,10 @@ impl TreasuryContract {
         };
 
         env.storage().instance().set(&CONFIG, &cfg);
+        Ok(())
     }
 
-    pub fn get_config(env: Env) -> TreasuryConfig {
+    pub fn get_config(env: Env) -> Result<TreasuryConfig, ContractError> {
         load_config(&env)
     }
 
@@ -154,20 +173,20 @@ impl TreasuryContract {
         category: Symbol,
         description: String,
         expires_at: u64,
-    ) -> Proposal {
+    ) -> Result<Proposal, ContractError> {
         proposer.require_auth();
 
         if amount <= 0 {
-            panic!("amount must be positive");
+            return Err(ContractError::PositiveAmountRequired);
         }
 
-        if !is_signer(&env, &proposer) {
-            panic!("unauthorised proposer");
+        if !is_signer(&env, &proposer)? {
+            return Err(ContractError::UnauthorisedProposer);
         }
 
         let now = env.ledger().timestamp();
         if expires_at <= now {
-            panic!("expiry must be in the future");
+            return Err(ContractError::FutureExpiryRequired);
         }
 
         let id = next_proposal_id(&env);
@@ -193,7 +212,7 @@ impl TreasuryContract {
         };
 
         env.storage().persistent().set(&proposal_key(id), &proposal);
-        proposal
+        Ok(proposal)
     }
 
     pub fn get_proposal(env: Env, id: u64) -> Option<Proposal> {
@@ -201,69 +220,70 @@ impl TreasuryContract {
     }
 
     /// Approve a proposal. Duplicate approvals are ignored.
-    pub fn approve_proposal(env: Env, signer: Address, id: u64) {
+    pub fn approve_proposal(env: Env, signer: Address, id: u64) -> Result<(), ContractError> {
         signer.require_auth();
 
-        if !is_signer(&env, &signer) {
-            panic!("unauthorised signer");
+        if !is_signer(&env, &signer)? {
+            return Err(ContractError::UnauthorisedSigner);
         }
 
         let mut proposal: Proposal = env
             .storage()
             .persistent()
             .get(&proposal_key(id))
-            .expect("proposal not found");
+            .ok_or(ContractError::ProposalNotFound)?;
 
         if !matches!(proposal.status, ProposalStatus::Pending) {
-            panic!("proposal not pending");
+            return Err(ContractError::ProposalNotPending);
         }
 
         let now = env.ledger().timestamp();
         if now >= proposal.expires_at {
             proposal.status = ProposalStatus::Expired;
             env.storage().persistent().set(&proposal_key(id), &proposal);
-            panic!("proposal expired");
+            return Err(ContractError::ProposalExpired);
         }
 
         if has_approval(&env, &proposal, &signer) {
             // No-op if already approved.
-            return;
+            return Ok(());
         }
 
         proposal.approvals.push_back(signer);
         env.storage().persistent().set(&proposal_key(id), &proposal);
+        Ok(())
     }
 
     /// Execute an approved proposal, transferring funds from the treasury to
     /// the destination address and recording allocation statistics.
-    pub fn execute_proposal(env: Env, signer: Address, id: u64) {
+    pub fn execute_proposal(env: Env, signer: Address, id: u64) -> Result<(), ContractError> {
         signer.require_auth();
 
-        if !is_signer(&env, &signer) {
-            panic!("unauthorised signer");
+        if !is_signer(&env, &signer)? {
+            return Err(ContractError::UnauthorisedSigner);
         }
 
         let mut proposal: Proposal = env
             .storage()
             .persistent()
             .get(&proposal_key(id))
-            .expect("proposal not found");
+            .ok_or(ContractError::ProposalNotFound)?;
 
         if !matches!(proposal.status, ProposalStatus::Pending) {
-            panic!("proposal not pending");
+            return Err(ContractError::ProposalNotPending);
         }
 
         let now = env.ledger().timestamp();
         if now >= proposal.expires_at {
             proposal.status = ProposalStatus::Expired;
             env.storage().persistent().set(&proposal_key(id), &proposal);
-            panic!("proposal expired");
+            return Err(ContractError::ProposalExpired);
         }
 
-        let cfg = load_config(&env);
+        let cfg = load_config(&env)?;
         let approvals = count_approvals(&proposal);
         if approvals < cfg.threshold {
-            panic!("insufficient approvals");
+            return Err(ContractError::InsufficientApprovals);
         }
 
         // Perform the token transfer.
@@ -283,6 +303,7 @@ impl TreasuryContract {
         let mut spent: i128 = env.storage().instance().get(&key).unwrap_or(0);
         spent = spent.saturating_add(proposal.amount);
         env.storage().instance().set(&key, &spent);
+        Ok(())
     }
 
     // ── Reporting helpers ─────────────────────────────────────────────────────

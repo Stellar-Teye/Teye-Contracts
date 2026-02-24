@@ -133,4 +133,3 @@ If you discover a potential vulnerability:
    - Any suggested mitigations
 
 This process helps ensure that vulnerabilities are addressed quickly and responsibly.
-

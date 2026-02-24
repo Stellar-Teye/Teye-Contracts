@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 extern crate std;
 
 use soroban_sdk::{symbol_short, testutils::Address as _, Address, Env};

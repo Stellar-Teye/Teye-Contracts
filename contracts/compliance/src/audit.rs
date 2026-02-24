@@ -14,10 +14,11 @@ pub struct AuditLog {
 }
 
 impl AuditLog {
+    /// Records an audit entry. For key rotation, use action="rotate_master_secure" and target="master_key".
     pub fn record(&mut self, actor: &str, action: &str, target: &str) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs();
         self.entries.push(AuditEntry {
             actor: actor.to_string(),

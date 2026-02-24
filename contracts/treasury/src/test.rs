@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 extern crate std;
 
 use soroban_sdk::{
@@ -104,7 +105,6 @@ fn test_create_approve_and_execute_proposal() {
 }
 
 #[test]
-#[should_panic(expected = "proposal expired")]
 fn test_cannot_execute_expired_proposal() {
     let (env, client, signer1, signer2) = setup();
 
@@ -130,6 +130,7 @@ fn test_cannot_execute_expired_proposal() {
     client.approve_proposal(&signer2, &id);
     env.ledger().set_timestamp(200);
 
-    // This should panic due to expiration.
-    client.execute_proposal(&signer1, &id);
+    // This should now return Err(ProposalExpired).
+    let res = client.try_execute_proposal(&signer1, &id);
+    assert_eq!(res, Err(Ok(crate::ContractError::ProposalExpired)));
 }

@@ -20,7 +20,7 @@ Stores clinical measurements and findings.
 - `code_system`: Coding system (e.g., "LOINC", "SNOMED")
 - `code_value`: Concept code
 - `subject_id`: Reference to Patient ID
-- `value`: The observed value 
+- `value`: The observed value
 - `effective_datetime`: When the observation occurred
 
 ## API

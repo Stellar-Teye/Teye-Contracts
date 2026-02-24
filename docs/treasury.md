@@ -195,4 +195,3 @@ These tests verify:
 - Correct token transfers for executed proposals
 - Allocation tracking for categories
 - Failure behaviour for expired proposals
-
