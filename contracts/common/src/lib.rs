@@ -4,6 +4,10 @@
 //! - [`CommonError`] — standardised error codes for all contracts.
 //! - Consent and key-management helpers (requires `std` feature).
 //! - On-chain multisig, whitelist, meta-transaction, and rate-limiting utilities.
+//! - [`migration`] — contract upgrade migration framework with data versioning
+//!   and rollback support.
+//! - [`versioned_storage`] — lazy-migration storage layer built on top of
+//!   the migration framework.
 //!
 //! Contract-specific errors can extend the range starting at code **100** and
 //! above, ensuring no collisions with the common set.
@@ -19,9 +23,11 @@ pub mod admin_tiers;
 pub mod consent;
 pub mod keys;
 pub mod meta_tx;
+pub mod migration;
 pub mod multisig;
 pub mod rate_limit;
 pub mod reentrancy_guard;
+pub mod versioned_storage;
 pub mod whitelist;
 
 pub use admin_tiers::*;
@@ -29,9 +35,11 @@ pub use admin_tiers::*;
 pub use consent::*;
 pub use keys::*;
 pub use meta_tx::*;
+pub use migration::*;
 pub use multisig::*;
 pub use rate_limit::*;
 pub use reentrancy_guard::*;
+pub use versioned_storage::*;
 pub use whitelist::*;
 
 // ── Shared error enum ────────────────────────────────────────────────────────
@@ -46,6 +54,7 @@ pub use whitelist::*;
 /// | 20 – 29 | Resource not found            |
 /// | 30 – 39 | Validation / input            |
 /// | 40 – 49 | Contract state                |
+/// | 50 – 59 | Migration & versioning        |
 /// | 100+    | Reserved for contract-specific |
 #[contracterror]
 #[derive(Clone, Debug, Eq, PartialEq, Copy)]
