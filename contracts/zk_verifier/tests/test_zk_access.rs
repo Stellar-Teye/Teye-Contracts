@@ -2,7 +2,9 @@
 #![cfg(test)]
 
 use soroban_sdk::{testutils::Address as _, testutils::Ledger, Address, BytesN, Env, Vec};
-use zk_verifier::{ContractError, VerificationKey, ZkAccessHelper, ZkVerifierContract, ZkVerifierContractClient};
+use zk_verifier::{
+    ContractError, VerificationKey, ZkAccessHelper, ZkVerifierContract, ZkVerifierContractClient,
+};
 
 #[test]
 fn test_set_verification_key_as_admin() {
@@ -26,7 +28,10 @@ fn test_set_verification_key_as_admin() {
 
     // Admin should be able to set VK
     let result = client.try_set_verification_key(&admin, &vk);
-    assert!(result.is_ok(), "Admin should be able to set verification key");
+    assert!(
+        result.is_ok(),
+        "Admin should be able to set verification key"
+    );
 }
 
 #[test]
@@ -52,7 +57,10 @@ fn test_non_admin_cannot_set_verification_key() {
 
     // Non-admin should NOT be able to set VK
     let result = client.try_set_verification_key(&non_admin, &vk);
-    assert!(result.is_err(), "Non-admin should not be able to set verification key");
+    assert!(
+        result.is_err(),
+        "Non-admin should not be able to set verification key"
+    );
     assert!(matches!(
         result.unwrap_err(),
         Ok(ContractError::Unauthorized)
@@ -84,7 +92,10 @@ fn test_get_verification_key_after_set() {
 
     // Retrieve and verify it matches
     let retrieved_vk = client.get_verification_key();
-    assert!(retrieved_vk.is_some(), "VK should be retrievable after being set");
+    assert!(
+        retrieved_vk.is_some(),
+        "VK should be retrievable after being set"
+    );
 
     let retrieved = retrieved_vk.unwrap();
     assert_eq!(retrieved.alpha, vk.alpha);
