@@ -328,6 +328,7 @@ make deploy-mainnet
 ### Repository Resources
 
 - [Contributing Guide](CONTRIBUTING.md)
+- [Contributor Onboarding](docs/onboarding/README.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Changelog](CHANGELOG.md)
 
@@ -342,6 +343,8 @@ make deploy-mainnet
 ## Contribution Guidelines
 
 We welcome contributions! Please follow these guidelines:
+
+Start with the [Contributor Onboarding](docs/onboarding/README.md) guide for a full setup and first-PR walkthrough.
 
 ### Getting Started
 
