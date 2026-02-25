@@ -20,6 +20,7 @@ use soroban_sdk::contracterror;
 
 // ── Modules ──────────────────────────────────────────────────────────────────
 
+pub mod admin_tiers;
 #[allow(clippy::enum_variant_names)]
 pub mod admin_tiers;
 pub mod concurrency;
@@ -72,30 +73,11 @@ pub use whitelist::*;
 #[derive(Clone, Debug, Eq, PartialEq, Copy)]
 #[repr(u32)]
 pub enum CommonError {
-    // ── Lifecycle (1–9) ──────────────────────────────────────
-    /// The contract has not been initialised yet.
-    /// Returned when a function requires prior initialisation.
     NotInitialized = 1,
-
-    /// The contract has already been initialised.
-    /// Returned when `initialize` is called more than once.
     AlreadyInitialized = 2,
-
-    // ── Auth (10–19) ─────────────────────────────────────────
-    /// The caller lacks the required role or permission to perform
-    /// the requested operation (e.g. not an admin, not the record owner).
     AccessDenied = 10,
-
-    // ── Not-found (20–29) ────────────────────────────────────
-    /// The requested user does not exist in contract storage.
     UserNotFound = 20,
-
-    /// The requested record does not exist in contract storage.
     RecordNotFound = 21,
-
-    // ── Validation (30–39) ───────────────────────────────────
-    /// One or more input parameters are invalid (e.g. empty list,
-    /// zero duration, malformed hash).
     InvalidInput = 30,
     /// Nonce does not match the expected value (replay or out-of-order).
     InvalidNonce = 31,
@@ -104,8 +86,23 @@ pub enum CommonError {
     // ── Contract state (40–49) ───────────────────────────────
     /// The contract is currently paused and cannot process requests.
     Paused = 40,
+    InvalidChannelState = 50,
+    InvalidSignature = 51,
+    InvalidTransition = 52,
+    ChallengePeriodActive = 53,
+    AlreadySettled = 54,
 }
 
+/// Shared channel status for lifespan tracking
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq, Copy)]
+#[repr(u32)]
+pub enum ChannelStatus {
+    Open = 0,
+    Closing = 1,
+    Closed = 2,
+    Settled = 3,
+    Disputed = 4,
 #[cfg(test)]
 mod tests {
     use super::CommonError;

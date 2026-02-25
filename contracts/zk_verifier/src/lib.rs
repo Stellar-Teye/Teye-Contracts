@@ -24,6 +24,7 @@ pub mod vk;
 pub use crate::audit::{AuditRecord, AuditTrail};
 pub use crate::events::AccessRejectedEvent;
 pub use crate::helpers::ZkAccessHelper;
+pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof, ProofValidationError, VerificationKey};
 pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof, ProofValidationError};
 pub use crate::vk::VerificationKey;
 
@@ -38,6 +39,7 @@ const ADMIN: Symbol = symbol_short!("ADMIN");
 const PENDING_ADMIN: Symbol = symbol_short!("PEND_ADM");
 const RATE_CFG: Symbol = symbol_short!("RATECFG");
 const RATE_TRACK: Symbol = symbol_short!("RLTRK");
+
 
 /// Maximum number of public inputs accepted per proof verification.
 const MAX_PUBLIC_INPUTS: u32 = 16;
@@ -290,6 +292,7 @@ impl ZkVerifierContract {
     pub fn get_pending_admin(env: Env) -> Option<Address> {
         env.storage().instance().get(&PENDING_ADMIN)
     }
+
 
     /// Configure per-address rate limiting for this contract.
     pub fn set_rate_limit_config(

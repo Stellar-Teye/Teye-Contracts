@@ -27,6 +27,8 @@ use soroban_sdk::{
 };
 use alloc::string::ToString;
 
+use teye_common as common;
+use common::{whitelist, KeyManager, AdminTier, admin_tiers};
 use teye_common::{admin_tiers, multisig, whitelist, AdminTier, KeyManager};
 
 /// Re-export the contract-specific error type at the crate root.
@@ -932,13 +934,14 @@ impl VisionRecordsContract {
 
         // Determine current encryption key version (if any) and load master bytes
         let current_version: Option<String> = env.storage().instance().get(&ENC_CUR);
-        let mut master_bytes: StdVec<u8> = StdVec::new();
+        let mut master_bytes = soroban_sdk::Bytes::new(&env);
         if let Some(ver) = current_version.clone() {
             if let Some(sv) = env
                 .storage()
                 .persistent()
                 .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
             {
+                if let Some(bytes) = common::hex_to_bytes(&env, sv) {
                 let hex = sv.to_string();
                 if let Some(bytes) = teye_common::hex_to_bytes(&hex) {
                     master_bytes = bytes;
@@ -948,9 +951,8 @@ impl VisionRecordsContract {
 
         // Build KeyManager and encrypt the provided data_hash
         let km = KeyManager::new(master_bytes);
-        let plaintext: StdString = data_hash.to_string();
-        let ciphertext = km.encrypt(None, &plaintext);
-        let stored_hash = String::from_str(&env, &ciphertext);
+        let ciphertext = km.encrypt(&env, data_hash.clone());
+        let stored_hash = ciphertext;
 
         let record = VisionRecord {
             id: record_id,
@@ -1021,6 +1023,9 @@ impl VisionRecordsContract {
         let mut current_id: u64 = env.storage().instance().get(&counter_key).unwrap_or(0);
         let mut record_ids = Vec::new(&env);
 
+        // Load current encryption key/version once for the batch
+        let current_version: Option<String> = env.storage().instance().get(&ENC_CUR);
+        let mut master_bytes_batch = soroban_sdk::Bytes::new(&env);
         let key_manager_cfg = Self::get_key_manager_config(&env);
         let key_manager_client = key_manager_cfg
             .as_ref()
@@ -1032,6 +1037,7 @@ impl VisionRecordsContract {
                 .persistent()
                 .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
             {
+                if let Some(bytes) = common::hex_to_bytes(&env, sv) {
                 let hex = sv.to_string();
                 if let Some(bytes) = teye_common::hex_to_bytes(&hex) {
                     master_bytes_batch = bytes;
@@ -1042,6 +1048,10 @@ impl VisionRecordsContract {
         for input in records.iter() {
             current_id += 1;
 
+            // Encrypt input.data_hash with batch master
+            let km = KeyManager::new(master_bytes_batch.clone());
+            let ciphertext = km.encrypt(&env, input.data_hash.clone());
+            let stored_hash = ciphertext;
             let mut master_bytes = master_bytes_batch.clone();
             let mut key_version = current_version.clone();
             if let Some((_, key_id)) = key_manager_cfg.as_ref() {
@@ -1169,6 +1179,12 @@ impl VisionRecordsContract {
 
                 // Decrypt data_hash for authorized caller before returning
                 let mut out_record = record.clone();
+                // Prefer record's key_version, fall back to current instance version
+                let key_ver = out_record
+                    .key_version
+                    .clone()
+                    .or_else(|| env.storage().instance().get(&ENC_CUR));
+                let mut master_bytes = soroban_sdk::Bytes::new(&env);
                 // Prefer KeyManager-derived key when configured; fallback to ENC_KEY
                 let mut master_bytes: StdVec<u8> = StdVec::new();
                 if let Some(ver) = key_ver {
@@ -1177,6 +1193,7 @@ impl VisionRecordsContract {
                         .persistent()
                         .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
                     {
+                        if let Some(bytes) = common::hex_to_bytes(&env, sv) {
                         let hex = sv.to_string();
                         if let Some(bytes) = teye_common::hex_to_bytes(&hex) {
                             master_bytes = bytes;
@@ -1206,9 +1223,8 @@ impl VisionRecordsContract {
 
                 if !master_bytes.is_empty() || out_record.key_version.is_none() {
                     let km = KeyManager::new(master_bytes);
-                    let ciphertext_std: StdString = out_record.data_hash.to_string();
-                    if let Some(plain) = km.decrypt(None, &ciphertext_std) {
-                        out_record.data_hash = String::from_str(&env, &plain);
+                    if let Some(plain) = km.decrypt(&env, out_record.data_hash.clone()) {
+                        out_record.data_hash = plain;
                     }
                 }
 
