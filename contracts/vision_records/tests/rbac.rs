@@ -321,3 +321,41 @@ fn test_scoped_delegation_expiry() {
         .grant_access(&delegatee, &patient, &doctor, &AccessLevel::Read, &3600);
     assert_eq!(ctx.client.check_access(&patient, &doctor), AccessLevel::Read);
 }
+
+#[test]
+fn test_revoke_access_cascades_delegations_and_emits_event() {
+    use soroban_sdk::testutils::Events;
+
+    let ctx = setup_test_env();
+
+    let patient = create_test_user(&ctx, Role::Patient, "Patient");
+    let grantee = create_test_user(&ctx, Role::Patient, "Grantee");
+    let delegatee = create_test_user(&ctx, Role::Patient, "Delegatee");
+    let doctor = create_test_user(&ctx, Role::Optometrist, "Doctor");
+    let doctor2 = create_test_user(&ctx, Role::Optometrist, "Doctor2");
+
+    ctx.client
+        .grant_access(&patient, &patient, &grantee, &AccessLevel::Read, &3600);
+
+    let future_time = ctx.env.ledger().timestamp() + 86400;
+    ctx.client
+        .delegate_role(&grantee, &delegatee, &Role::Optometrist, &future_time);
+
+    // Delegation is active: delegatee can manage grantee's access.
+    ctx.client
+        .grant_access(&delegatee, &grantee, &doctor, &AccessLevel::Read, &3600);
+    assert_eq!(ctx.client.check_access(&grantee, &doctor), AccessLevel::Read);
+
+    let events_before = ctx.env.events().all().len();
+    ctx.client.revoke_access(&patient, &patient, &grantee);
+    let events_after = ctx.env.events().all().len();
+
+    // Revoke emits: cascade event + audit event + access_revoked event.
+    assert_eq!(events_after - events_before, 3);
+
+    // Cascaded cleanup removed grantee->delegatee delegation.
+    let res = ctx
+        .client
+        .try_grant_access(&delegatee, &grantee, &doctor2, &AccessLevel::Read, &3600);
+    assert!(res.is_err());
+}

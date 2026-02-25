@@ -98,6 +98,17 @@ pub struct AccessRevokedEvent {
     pub timestamp: u64,
 }
 
+/// Event published when revoking a grantee's access cascades to delegations they issued.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CascadingRevocationEvent {
+    pub patient: Address,
+    pub revoked_grantee: Address,
+    pub delegatee: Address,
+    pub is_scoped: bool,
+    pub timestamp: u64,
+}
+
 /// Event published when an expired access grant is purged.
 #[soroban_sdk::contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -282,6 +293,29 @@ pub fn publish_access_revoked(env: &Env, patient: Address, grantee: Address) {
     let data = AccessRevokedEvent {
         patient,
         grantee,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+pub fn publish_cascading_revocation(
+    env: &Env,
+    patient: Address,
+    revoked_grantee: Address,
+    delegatee: Address,
+    is_scoped: bool,
+) {
+    let topics = (
+        symbol_short!("CASC_REV"),
+        patient.clone(),
+        revoked_grantee.clone(),
+        delegatee.clone(),
+    );
+    let data = CascadingRevocationEvent {
+        patient,
+        revoked_grantee,
+        delegatee,
+        is_scoped,
         timestamp: env.ledger().timestamp(),
     };
     env.events().publish(topics, data);

@@ -50,6 +50,7 @@ pub enum ContractError {
     NoPendingRateChange = 11,
     MultisigRequired = 12,
     MultisigError = 13,
+    Paused = 14,
 }
 
 // ── Public-facing types (re-exported for test consumers) ─────────────────────
@@ -150,6 +151,7 @@ impl StakingContract {
     /// retroactively earn rewards on the newly deposited tokens.
     pub fn stake(env: Env, staker: Address, amount: i128) -> Result<(), ContractError> {
         let _guard = common::ReentrancyGuard::new(&env);
+        Self::require_not_paused(&env)?;
         Self::require_initialized(&env)?;
         staker.require_auth();
 
@@ -199,6 +201,7 @@ impl StakingContract {
     /// on the queued amount) but tokens are only returned after the lock
     /// period via `withdraw`.
     pub fn request_unstake(env: Env, staker: Address, amount: i128) -> Result<u64, ContractError> {
+        Self::require_not_paused(&env)?;
         Self::require_initialized(&env)?;
         staker.require_auth();
 
@@ -296,6 +299,7 @@ impl StakingContract {
     /// The contract must hold sufficient reward tokens (funded by the admin).
     pub fn claim_rewards(env: Env, staker: Address) -> Result<i128, ContractError> {
         let _guard = common::ReentrancyGuard::new(&env);
+        Self::require_not_paused(&env)?;
         Self::require_initialized(&env)?;
         staker.require_auth();
 
@@ -726,7 +730,41 @@ impl StakingContract {
         admin_tiers::get_admin_tier(&env, &admin)
     }
 
+    // ── Pause management ──────────────────────────────────────────────────
+
+    /// Pause all state-mutating operations.
+    ///
+    /// Requires at least `ContractAdmin` tier, or legacy admin.
+    pub fn pause(env: Env, caller: Address) -> Result<(), ContractError> {
+        Self::require_initialized(&env)?;
+        caller.require_auth();
+        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin, "pause")?;
+        common::pausable::pause(&env, &caller);
+        Ok(())
+    }
+
+    /// Resume all state-mutating operations.
+    ///
+    /// Requires at least `ContractAdmin` tier, or legacy admin.
+    pub fn unpause(env: Env, caller: Address) -> Result<(), ContractError> {
+        Self::require_initialized(&env)?;
+        caller.require_auth();
+        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin, "unpause")?;
+        common::pausable::unpause(&env, &caller);
+        Ok(())
+    }
+
+    /// Returns whether the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        common::pausable::is_paused(&env)
+    }
+
     // ── Internal helpers ─────────────────────────────────────────────────────
+
+    /// Guard: revert if the contract is paused.
+    fn require_not_paused(env: &Env) -> Result<(), ContractError> {
+        common::pausable::require_not_paused(env).map_err(|_| ContractError::Paused)
+    }
 
     /// Guard: revert if the contract is not yet initialized.
     fn require_initialized(env: &Env) -> Result<(), ContractError> {

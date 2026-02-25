@@ -126,6 +126,23 @@ pub struct AccessViolationEvent {
     pub timestamp: u64,
 }
 
+/// Fired when a reward-rate change is proposed with a delay.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RewardRateProposedEvent {
+    pub new_rate: i128,
+    pub effective_at: u64,
+    pub timestamp: u64,
+}
+
+/// Fired when the rate-change delay is updated.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RateChangeDelaySetEvent {
+    pub delay: u64,
+    pub timestamp: u64,
+}
+
 // ── Publishers ──────────────────────────────────────────────────────────────
 
 pub fn publish_initialized(
@@ -216,31 +233,21 @@ pub fn publish_reward_rate_set(env: &Env, new_rate: i128) {
 pub fn publish_reward_rate_proposed(env: &Env, new_rate: i128, effective_at: u64) {
     env.events().publish(
         (symbol_short!("RWD_PROP"),),
-        RewardRateProposedEvent {
-            new_rate,
-            effective_at,
-            timestamp: env.ledger().timestamp(),
-        },
+        (new_rate, effective_at, env.ledger().timestamp()),
     );
 }
 
 pub fn publish_reward_rate_applied(env: &Env, new_rate: i128) {
     env.events().publish(
-        (symbol_short!("RWD_APPL"),),
-        RewardRateSetEvent {
-            new_rate,
-            timestamp: env.ledger().timestamp(),
-        },
+        (symbol_short!("RWD_APLD"),),
+        (new_rate, env.ledger().timestamp()),
     );
 }
 
 pub fn publish_rate_change_delay_set(env: &Env, delay: u64) {
     env.events().publish(
         (symbol_short!("DLY_SET"),),
-        RateChangeDelaySetEvent {
-            delay,
-            timestamp: env.ledger().timestamp(),
-        },
+        (delay, env.ledger().timestamp()),
     );
 }
 
@@ -304,65 +311,32 @@ pub fn publish_access_violation(
     );
 }
 
-// ── Structured event streaming helpers ───────────────────────────────────────
-//
-// These functions emit events in a format compatible with the `events` contract
-// streaming system. Each publishes under a hierarchical topic so that external
-// subscribers can filter using wildcard patterns (e.g. `staking.*`).
-
-/// Emit a structured streaming event when tokens are staked.
-pub fn emit_stake_deposited(env: &Env, staker: Address, amount: i128, new_total: i128) {
+pub fn publish_reward_rate_proposed(env: &Env, new_rate: i128, effective_at: u64) {
     env.events().publish(
-        (symbol_short!("STREAM"), symbol_short!("STK_DEP")),
-        StakedEvent {
-            staker,
-            amount,
-            new_total_staked: new_total,
+        (symbol_short!("RWD_PROP"),),
+        RewardRateProposedEvent {
+            new_rate,
+            effective_at,
             timestamp: env.ledger().timestamp(),
         },
     );
 }
 
-/// Emit a structured streaming event when an unstake is requested.
-pub fn emit_unstake_requested(
-    env: &Env,
-    request_id: u64,
-    staker: Address,
-    amount: i128,
-    unlock_at: u64,
-) {
+pub fn publish_reward_rate_applied(env: &Env, new_rate: i128) {
     env.events().publish(
-        (symbol_short!("STREAM"), symbol_short!("STK_UNS")),
-        UnstakeRequestedEvent {
-            request_id,
-            staker,
-            amount,
-            unlock_at,
+        (symbol_short!("RWD_APPL"),),
+        RewardRateSetEvent {
+            new_rate,
             timestamp: env.ledger().timestamp(),
         },
     );
 }
 
-/// Emit a structured streaming event when staked tokens are withdrawn.
-pub fn emit_withdrawal_completed(env: &Env, request_id: u64, staker: Address, amount: i128) {
+pub fn publish_rate_change_delay_set(env: &Env, delay: u64) {
     env.events().publish(
-        (symbol_short!("STREAM"), symbol_short!("STK_WDR")),
-        WithdrawnEvent {
-            request_id,
-            staker,
-            amount,
-            timestamp: env.ledger().timestamp(),
-        },
-    );
-}
-
-/// Emit a structured streaming event when rewards are claimed.
-pub fn emit_reward_claimed(env: &Env, staker: Address, amount: i128) {
-    env.events().publish(
-        (symbol_short!("STREAM"), symbol_short!("STK_RWD")),
-        RewardClaimedEvent {
-            staker,
-            amount,
+        (symbol_short!("DLY_SET"),),
+        RateChangeDelaySetEvent {
+            delay,
             timestamp: env.ledger().timestamp(),
         },
     );

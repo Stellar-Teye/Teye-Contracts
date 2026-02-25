@@ -12,15 +12,15 @@ fn test_access_control_defaults() {
 #[test]
 fn test_audit_record() {
     let mut log = AuditLog::default();
-    log.record("user1", "read", "record:1");
+    log.record("user1", "read", "record:1", 1000);
     assert_eq!(log.query().len(), 1);
 }
 
 #[test]
 fn test_retention() {
-    let mut rm = RetentionManager::new();
+    let mut rm = RetentionManager::new(1000);
     rm.add_policy("phi", 1);
     // new records shouldn't be purged immediately
     let now = rm.created_at;
-    assert!(!rm.should_purge(now, "phi"));
+    assert!(!rm.should_purge(now, "phi", 1000));
 }
