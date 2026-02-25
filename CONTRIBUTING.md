@@ -2,6 +2,8 @@
 
 Thank you for your interest in contributing to Stellar Teye! This document provides guidelines and information for contributors.
 
+For a full setup walkthrough and codebase tour, see the [Contributor Onboarding](docs/onboarding/README.md) guide.
+
 ## 🚀 Getting Started
 
 1. **Fork** the repository
@@ -81,9 +83,25 @@ Include:
 
 ## 🧪 Testing
 
+All contributions must include comprehensive tests. For detailed testing requirements, patterns, and quality gates, see the [Testing Strategy Guide](docs/testing-strategy.md).
+
+### Requirements
+
 - Write tests for new functionality
 - Ensure all existing tests pass
-- Aim for >80% code coverage
+- Aim for >80% code coverage per contract
+- Include unit tests, integration tests, and property tests where applicable
+- Add fuzz targets for security-critical functions
+
+### Test Categories
+
+- **Unit Tests**: Individual function testing (`contracts/*/src/test.rs`)
+- **Integration Tests**: Cross-module interaction testing (`contracts/*/tests/`)
+- **Property Tests**: Invariant verification (`contracts/*/tests/property/`)
+- **Fuzz Tests**: Random input exploration (`fuzz/`)
+- **Benchmarks**: Performance regression testing (`contracts/benches/`)
+
+### Running Tests
 
 ```bash
 # Run all tests
@@ -94,7 +112,30 @@ cargo test test_name
 
 # Run with output
 cargo test -- --nocapture
+
+# Check coverage
+./scripts/run_coverage.sh
+
+# Run benchmarks
+cargo bench
+
+# Run fuzz tests
+cargo fuzz run vision_records
 ```
+
+### Quality Gates
+
+Before submitting a PR, ensure:
+
+- [ ] All tests pass (`cargo test --all`)
+- [ ] Coverage ≥ 80% for affected contracts
+- [ ] No clippy warnings (`cargo clippy -- -D warnings`)
+- [ ] Code formatted (`cargo fmt -- --check`)
+- [ ] No security vulnerabilities (`cargo audit`)
+- [ ] Fuzz targets pass brief runs
+- [ ] Benchmarks show no regressions
+
+For complete testing guidelines, see [Testing Strategy Guide](docs/testing-strategy.md).
 
 ## 📖 Code Standards
 

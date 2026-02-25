@@ -46,8 +46,10 @@ impl AuditTrail {
         let prev_hash = if chain.is_empty() {
             BytesN::from_array(env, &[0u8; 32])
         } else {
-            let last = chain.get(chain.len() - 1).unwrap();
-            hash_record(env, &last)
+            match chain.last() {
+                Some(last) => hash_record(env, &last),
+                None => BytesN::from_array(env, &[0u8; 32]),
+            }
         };
 
         let record = AuditRecord {
@@ -69,7 +71,13 @@ impl AuditTrail {
     pub fn get_record(env: &Env, user: Address, resource_id: BytesN<32>) -> Option<AuditRecord> {
         let chain: Option<Vec<AuditRecord>> =
             env.storage().persistent().get(&(&user, &resource_id));
-        chain.and_then(|c| if c.is_empty() { None } else { Some(c.get(c.len() - 1).unwrap()) })
+        chain.and_then(|c| {
+            if c.is_empty() {
+                None
+            } else {
+                Some(c.get(c.len() - 1).unwrap())
+            }
+        })
     }
 
     /// Fetches the full audit chain for a given user and resource.
@@ -90,15 +98,24 @@ impl AuditTrail {
         }
 
         let zero = BytesN::from_array(env, &[0u8; 32]);
-        let first = chain.get(0).unwrap();
+        let first = match chain.first() {
+            Some(item) => item,
+            None => return true,
+        };
         if first.prev_hash != zero {
             return false;
         }
 
         let mut i: u32 = 1;
         while i < chain.len() {
-            let prev = chain.get(i - 1).unwrap();
-            let current = chain.get(i).unwrap();
+            let prev = match chain.get(i - 1) {
+                Some(item) => item,
+                None => return false,
+            };
+            let current = match chain.get(i) {
+                Some(item) => item,
+                None => return false,
+            };
             if current.prev_hash != hash_record(env, &prev) {
                 return false;
             }
@@ -106,5 +123,18 @@ impl AuditTrail {
         }
 
         true
+    }
+
+    pub fn log_verification(env: &Env, submitter: &Address, proof_id: u64, verified: bool) {
+        let record = VerificationRecord {
+            submitter: submitter.clone(),
+            proof_id,
+            verified,
+            timestamp: env.ledger().timestamp(),
+        };
+        env.storage()
+            .persistent()
+            .set(&("verification", proof_id), &record);
+        env.events().publish(("verification", proof_id), (submitter, verified));
     }
 }

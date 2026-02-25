@@ -4,7 +4,7 @@ use soroban_sdk::{contracttype, BytesN, Env, Vec};
 pub type VerificationKey = crate::vk::VerificationKey;
 
 // TODO: post-quantum migration - `G1Point`, `G2Point`, and `Proof` map to elliptic curves.
-// For hash-based STARKs or Lattice proofs, replace these representations with Hash paths 
+// For hash-based STARKs or Lattice proofs, replace these representations with Hash paths
 // or matrix structural analogs.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -29,6 +29,7 @@ pub struct Proof {
     pub c: G1Point,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProofValidationError {
     ZeroedComponent,
@@ -92,7 +93,13 @@ fn g2_to_bytes(point: &G2Point) -> [u8; 128] {
 pub struct Bn254Verifier;
 
 impl Bn254Verifier {
-    /// Validate individual proof components for known-bad byte patterns.
+    /// Validate individual proof components for known-bad byte patterns that
+    /// would cause undefined behaviour or nonsensical results in a real pairing
+    /// check. This runs *before* the (mock) verification arithmetic.
+    ///
+    /// Note: empty `public_inputs` are rejected here as a safety guard, and the
+    /// contract entrypoint also rejects empty inputs to provide a clear error
+    /// and event at the contract boundary.
     pub fn validate_proof_components(
         proof: &Proof,
         public_inputs: &Vec<BytesN<32>>,
@@ -146,15 +153,7 @@ impl Bn254Verifier {
     }
 
     /// Verify a Groth16 proof over BN254.
-    // TODO: post-quantum migration - The mock logic here or actual BN254 pairing checks 
-    // will be superseded by a new implementation validating collision-resistant hash paths 
-    // (for FRI) or LWE assertions (for Lattices).
-    pub fn verify_proof(
-        _env: &Env,
-        _vk: &VerificationKey,
-        proof: &Proof,
-        public_inputs: &Vec<BytesN<32>>,
-    ) -> bool {
+    pub fn verify_proof(_env: &Env, proof: &Proof, public_inputs: &Vec<BytesN<32>>) -> bool {
         if public_inputs.is_empty() {
             return false;
         }

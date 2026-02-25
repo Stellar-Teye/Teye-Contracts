@@ -1,4 +1,4 @@
-use super::keys::{KeyManager, DataKey};
+use super::keys::{DataKey, KeyManager};
 use std::collections::HashMap;
 
 #[cfg(test)]
@@ -35,7 +35,10 @@ mod tests {
         }
 
         // Check audit log contains rotation event
-        let found = audit.entries.iter().any(|e| e.action == "rotate_master_secure");
+        let found = audit
+            .entries
+            .iter()
+            .any(|e| e.action == "rotate_master_secure");
         assert!(found);
     }
 }

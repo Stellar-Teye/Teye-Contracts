@@ -28,6 +28,7 @@ The platform provides a comprehensive solution for modern vision care data manag
 - [Helpful Links](#-helpful-links)
 - [Contribution Guidelines](#-contribution-guidelines)
 - [License](#-license)
+- [Compliance Documentation](docs/compliance/) - HIPAA compliance and regulatory requirements
 - [Support](#-support)
 
 ---
@@ -323,11 +324,14 @@ make deploy-mainnet
 
 - [API Reference](docs/api.md)
 - [Architecture Overview](docs/architecture.md)
+- [Data Flow Diagrams](docs/data-flows.md)
 - [Security Model](docs/security.md)
+- [Production Runbook](docs/runbook/README.md)
 
 ### Repository Resources
 
 - [Contributing Guide](CONTRIBUTING.md)
+- [Contributor Onboarding](docs/onboarding/README.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Changelog](CHANGELOG.md)
 
@@ -342,6 +346,8 @@ make deploy-mainnet
 ## Contribution Guidelines
 
 We welcome contributions! Please follow these guidelines:
+
+Start with the [Contributor Onboarding](docs/onboarding/README.md) guide for a full setup and first-PR walkthrough.
 
 ### Getting Started
 

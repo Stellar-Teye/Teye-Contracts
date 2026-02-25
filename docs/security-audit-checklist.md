@@ -2,7 +2,7 @@
 
 This checklist covers all public functions across the Teye healthcare data contracts. Use it for pre-deployment audits and ongoing security reviews.
 
-**Scope:** `vision_records`, `zk_verifier`, `staking`, `identity`.  
+**Scope:** `vision_records`, `zk_verifier`, `staking`, `identity`.
 **Compliance** is a standard Rust library (not a Soroban contract); audit log integrity on-chain is implemented in `vision_records` (audit module).
 
 ---
@@ -108,7 +108,7 @@ This checklist covers all public functions across the Teye healthcare data contr
 | staking | `(USER_STAKE|USER_RPT_PAID|USER_EARNED, staker)`, instance keys | Low. |
 | identity | `(GUARDIANS|REC_THR|REC_REQ|OWN_ACT, owner)` | Low. |
 
-**Checklist:** ⬜ Confirm no two key types share the same Symbol + same value type in the same namespace (instance vs persistent).  
+**Checklist:** ⬜ Confirm no two key types share the same Symbol + same value type in the same namespace (instance vs persistent).
 **Status:** Key design uses distinct symbols per entity; no known collisions.
 
 ---
@@ -123,7 +123,7 @@ This checklist covers all public functions across the Teye healthcare data contr
 | staking | `stake`, `request_unstake`, `withdraw`, `claim_rewards` | ReentrancyGuard on stake, withdraw, claim_rewards; withdraw marks request withdrawn before transfer |
 | identity | `execute_recovery` | No token transfer in identity contract |
 
-**Checklist:** ⬜ All external token transfers (staking) occur after state updates (checks-effects-interactions).  
+**Checklist:** ⬜ All external token transfers (staking) occur after state updates (checks-effects-interactions).
 **Status:** Withdraw sets `withdrawn = true` before transfer; stake/claim update state then transfer.
 
 ---

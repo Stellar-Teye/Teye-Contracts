@@ -1,6 +1,6 @@
-use your_crate_name::*;
 use std::sync::Arc;
 use std::thread;
+use your_crate_name::*;
 
 #[test]
 fn test_race_condition_simulation() {

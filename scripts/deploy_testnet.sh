@@ -65,4 +65,3 @@ fi
 
 echo "✅ Deployment verified successfully."
 echo "VERIFIED_CONTRACT_ID=$CONTRACT_ID"
-

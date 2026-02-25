@@ -82,11 +82,7 @@ fn extend_proposal_ttl(env: &Env, key: &(Symbol, u64)) {
 /// # Errors
 /// Returns `MultisigError::InvalidConfig` if `threshold` is zero or exceeds
 /// the number of signers.
-pub fn configure(
-    env: &Env,
-    signers: Vec<Address>,
-    threshold: u32,
-) -> Result<(), MultisigError> {
+pub fn configure(env: &Env, signers: Vec<Address>, threshold: u32) -> Result<(), MultisigError> {
     if threshold == 0 || threshold > signers.len() {
         return Err(MultisigError::InvalidConfig);
     }
@@ -152,11 +148,7 @@ pub fn propose(
 /// - `ProposalNotFound` if the proposal ID doesn't exist.
 /// - `AlreadyApproved` if this address has already approved.
 /// - `AlreadyExecuted` if the proposal was already executed.
-pub fn approve(
-    env: &Env,
-    approver: &Address,
-    proposal_id: u64,
-) -> Result<(), MultisigError> {
+pub fn approve(env: &Env, approver: &Address, proposal_id: u64) -> Result<(), MultisigError> {
     let cfg = get_config(env).ok_or(MultisigError::InvalidConfig)?;
     if !is_signer(&cfg, approver) {
         return Err(MultisigError::NotASigner);
@@ -234,6 +226,21 @@ pub fn mark_executed(env: &Env, proposal_id: u64) -> Result<(), MultisigError> {
 pub fn get_proposal(env: &Env, proposal_id: u64) -> Option<Proposal> {
     let key = proposal_key(proposal_id);
     env.storage().persistent().get(&key)
+}
+
+/// Returns true when level-3 (multi-party) authorization is satisfied.
+///
+/// - If multisig is not configured, legacy admin flow is accepted.
+/// - If configured, the proposal must be executable.
+pub fn is_level3_authorized(env: &Env, proposal_id: Option<u64>) -> bool {
+    if is_legacy_admin_allowed(env) {
+        return true;
+    }
+
+    match proposal_id {
+        Some(id) => is_executable(env, id),
+        None => false,
+    }
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────

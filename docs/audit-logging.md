@@ -1,6 +1,10 @@
 # Access Audit Logging
 
-## Overview
+This document provides overview of audit logging in Stellar Teye platform. For comprehensive audit trail documentation, see [Compliance Audit Trail](compliance/audit-trail.md).
+
+## Quick Start
+
+See [Compliance Documentation](compliance/) for complete audit trail implementation and HIPAA compliance details.
 
 The Vision Records contract implements comprehensive audit logging for all access events. This system tracks who accessed what records, when, and whether the access was successful or denied. Audit logs are immutable and provide a complete trail of all access attempts for compliance and security purposes.
 

@@ -57,7 +57,7 @@ pub struct MyProtectedContract;
 impl MyProtectedContract {
     pub fn do_protected_action(env: Env, verifier_addr: Address, request: AccessRequest) {
         let verifier = ZkVerifierContractClient::new(&env, &verifier_addr);
-        
+
         // Verify the proof
         if verifier.verify_access(&request) {
             // Proof is valid, proceed with the action

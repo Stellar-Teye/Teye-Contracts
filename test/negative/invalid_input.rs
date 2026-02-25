@@ -1,5 +1,5 @@
-use your_crate_name::*;
 use your_crate_name::errors::ContractError;
+use your_crate_name::*;
 
 #[test]
 fn test_invalid_large_value() {

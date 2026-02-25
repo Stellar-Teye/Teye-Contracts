@@ -2,6 +2,7 @@
 resolver = "2"
 
 members = [
+    "contracts/key_manager",
     "contracts/vision_records",
     "contracts/ai_integration",
     "contracts/staking",
@@ -14,7 +15,11 @@ members = [
     "contracts/cross_chain",
     "contracts/analytics",
     "contracts/treasury",
+    "contracts/audit",
     "contracts/emr_bridge",
+    "contracts/orchestrator",
+    "contracts/state_channel",
+    "contracts/metering",
     "sdk/zk_prover",
 ]
 

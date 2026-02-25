@@ -15,13 +15,13 @@ sequenceDiagram
 
     Note over P: Off-chain Proof Generation
     P->>P: Generate Witness & Proof (Groth16)
-    
+
     Note over P, V: On-chain Verification
     P->>V: verify_access(AccessRequest)
     V->>V: Validate Request (Auth, Rate Limit, Whitelist)
     V->>B: verify_proof(Proof, PublicInputs)
     B-->>V: Proof Valid (true/false)
-    
+
     alt is valid
         V->>A: log_access(user, resource, proof_hash)
         V-->>P: Access Granted (true)

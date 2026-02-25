@@ -13,6 +13,7 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
+audit       = { path = "../audit" }
 common = { path = "../common", default-features = false }
 
 [dev-dependencies]
