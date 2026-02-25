@@ -23,8 +23,8 @@ fn setup() -> (Env, StakingContractClient<'static>, Address) {
         &admin,
         &stake_token,
         &reward_token,
-        &1000,   // reward_rate
-        &86400,  // lock_period
+        &1000,  // reward_rate
+        &86400, // lock_period
     );
 
     (env, client, admin)
@@ -93,7 +93,10 @@ fn test_multisig_happy_path() {
 
     // Cannot execute the same proposal again
     let res_double = client.try_set_reward_rate(&admin, &3000, &proposal_id);
-    assert_eq!(res_double.unwrap_err().unwrap(), ContractError::MultisigRequired);
+    assert_eq!(
+        res_double.unwrap_err().unwrap(),
+        ContractError::MultisigRequired
+    );
 }
 
 #[test]

@@ -515,8 +515,7 @@ impl StakingContract {
         caller.require_auth();
         Self::require_admin(&env, &caller)?;
 
-        multisig::configure(&env, signers, threshold)
-            .map_err(|_| ContractError::InvalidInput)
+        multisig::configure(&env, signers, threshold).map_err(|_| ContractError::InvalidInput)
     }
 
     /// Create a multisig proposal for an admin action.
@@ -546,8 +545,7 @@ impl StakingContract {
         Self::require_initialized(&env)?;
         approver.require_auth();
 
-        multisig::approve(&env, &approver, proposal_id)
-            .map_err(|_| ContractError::MultisigError)
+        multisig::approve(&env, &approver, proposal_id).map_err(|_| ContractError::MultisigError)
     }
 
     /// Return the current multisig configuration, if any.
@@ -585,8 +583,7 @@ impl StakingContract {
             if !multisig::is_executable(&env, proposal_id) {
                 return Err(ContractError::MultisigRequired);
             }
-            multisig::mark_executed(&env, proposal_id)
-                .map_err(|_| ContractError::MultisigError)?;
+            multisig::mark_executed(&env, proposal_id).map_err(|_| ContractError::MultisigError)?;
         } else {
             Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin)?;
         }
@@ -675,8 +672,7 @@ impl StakingContract {
             if !multisig::is_executable(&env, proposal_id) {
                 return Err(ContractError::MultisigRequired);
             }
-            multisig::mark_executed(&env, proposal_id)
-                .map_err(|_| ContractError::MultisigError)?;
+            multisig::mark_executed(&env, proposal_id).map_err(|_| ContractError::MultisigError)?;
         } else {
             Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin)?;
         }

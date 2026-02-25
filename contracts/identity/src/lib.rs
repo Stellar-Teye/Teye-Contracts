@@ -168,6 +168,7 @@ impl IdentityContract {
             proof_b,
             proof_c,
             public_inputs,
+            0, // Default nonce; caller should set appropriately for replay protection
         )
     }
 

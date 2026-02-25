@@ -25,19 +25,18 @@ pub use crate::helpers::ZkAccessHelper;
 pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof, ProofValidationError};
 pub use crate::vk::VerificationKey;
 
-use common::whitelist;
+use common::{nonce, whitelist};
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, BytesN, Env,
     Symbol, Vec,
 };
-use verifier::ProofValidationError;
+// use verifier::ProofValidationError;
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
 const PENDING_ADMIN: Symbol = symbol_short!("PEND_ADM");
 const RATE_CFG: Symbol = symbol_short!("RATECFG");
 const RATE_TRACK: Symbol = symbol_short!("RLTRK");
 const VK: Symbol = symbol_short!("VK");
-
 
 /// Maximum number of public inputs accepted per proof verification.
 const MAX_PUBLIC_INPUTS: u32 = 16;
@@ -54,6 +53,9 @@ pub struct AccessRequest {
     pub proof: Proof,
     /// Public inputs associated with the proof.
     pub public_inputs: Vec<BytesN<32>>,
+    /// Strictly-monotonic per-sender nonce for replay protection.
+    /// Must equal the value currently stored for `user`; incremented on success.
+    pub nonce: u64,
 }
 
 /// Contract errors for the ZK verifier.
@@ -77,6 +79,8 @@ pub enum ContractError {
     ZeroedPublicInput = 10,
     /// Cross-contract proof deserialization produced structurally invalid data.
     MalformedProofData = 11,
+    /// The provided nonce does not match the expected value (replay or out-of-order).
+    InvalidNonce = 12,
 }
 
 /// Map low-level proof validation errors into contract-level errors.
@@ -137,6 +141,12 @@ fn validate_request(request: &AccessRequest) -> Result<(), ContractError> {
         return Err(ContractError::DegenerateProof);
     }
 
+    for pi in request.public_inputs.iter() {
+        if is_all_zeros(&pi) {
+            return Err(ContractError::ZeroedPublicInput);
+        }
+    }
+
     Ok(())
 }
 
@@ -150,6 +160,25 @@ impl ZkVerifierContract {
 
         admin.require_auth();
         env.storage().instance().set(&ADMIN, &admin);
+    }
+
+    /// Store the Groth16 verification key used by `verify_access`.
+    ///
+    /// Only the admin may call this.  The key can be updated at any time
+    /// (e.g. after a trusted-setup ceremony rotation).
+    pub fn set_verification_key(
+        env: Env,
+        caller: Address,
+        vk: VerificationKey,
+    ) -> Result<(), ContractError> {
+        Self::require_admin(&env, &caller)?;
+        env.storage().instance().set(&VK, &vk);
+        Ok(())
+    }
+
+    /// Retrieve the current verification key, if one has been set.
+    pub fn get_verification_key(env: Env) -> Option<VerificationKey> {
+        env.storage().instance().get(&VK)
     }
 
     fn require_admin(env: &Env, caller: &Address) -> Result<(), ContractError> {
@@ -297,6 +326,11 @@ impl ZkVerifierContract {
         whitelist::is_whitelisted(&env, &user)
     }
 
+    pub fn get_nonce(env: Env, user: Address) -> u64 {
+        let key = (symbol_short!("NONCE"), user);
+        env.storage().persistent().get(&key).unwrap_or(0u64)
+    }
+
     fn check_and_update_rate_limit(env: &Env, user: &Address) -> Result<(), ContractError> {
         let cfg: Option<(u64, u64)> = env.storage().instance().get(&RATE_CFG);
         let (max_requests_per_window, window_duration_seconds) = match cfg {
@@ -330,6 +364,23 @@ impl ZkVerifierContract {
         Ok(())
     }
 
+    fn validate_and_increment_nonce(
+        env: &Env,
+        user: &Address,
+        provided_nonce: u64,
+    ) -> Result<(), ContractError> {
+        let key = (symbol_short!("NONCE"), user.clone());
+        let current = env.storage().persistent().get::<_, u64>(&key).unwrap_or(0);
+
+        if provided_nonce != current {
+            return Err(ContractError::InvalidNonce);
+        }
+
+        // Increment nonce and persist
+        env.storage().persistent().set(&key, &(current + 1));
+        Ok(())
+    }
+
     /// Verifies a ZK proof for resource access.
     ///
     /// This is the primary entry point for users to gain access to protected resources.
@@ -352,6 +403,16 @@ impl ZkVerifierContract {
                 err,
             );
             err
+        })?;
+
+        Self::validate_and_increment_nonce(&env, &request.user, request.nonce).map_err(|_| {
+            events::publish_access_rejected(
+                &env,
+                request.user.clone(),
+                request.resource_id.clone(),
+                ContractError::InvalidNonce,
+            );
+            ContractError::InvalidNonce
         })?;
 
         if !whitelist::check_whitelist_access(&env, &request.user) {
@@ -396,11 +457,7 @@ impl ZkVerifierContract {
     /// Verifies the integrity of the audit chain for a given user and resource.
     ///
     /// Returns `true` if all hash links are valid, or if the chain is empty.
-    pub fn verify_audit_chain(
-        env: Env,
-        user: Address,
-        resource_id: BytesN<32>,
-    ) -> bool {
+    pub fn verify_audit_chain(env: Env, user: Address, resource_id: BytesN<32>) -> bool {
         AuditTrail::verify_chain(&env, user, resource_id)
     }
 }

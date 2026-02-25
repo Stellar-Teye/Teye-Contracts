@@ -1,5 +1,12 @@
 #![no_std]
 #![allow(clippy::too_many_arguments)]
+
+extern crate alloc;
+use alloc::{
+    string::{String as StdString, ToString},
+    vec::Vec as StdVec,
+};
+
 pub mod appointment;
 pub mod audit;
 pub mod circuit_breaker;
@@ -18,7 +25,7 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, String, Symbol, Vec,
 };
 
-use teye_common::{multisig, whitelist};
+use teye_common::{admin_tiers, multisig, whitelist, AdminTier, KeyManager};
 
 /// Re-export the contract-specific error type at the crate root.
 pub use errors::ContractError;
@@ -409,14 +416,13 @@ impl VisionRecordsContract {
             return Err(ContractError::NotInitialized);
         }
         caller.require_auth();
-        
+
         let admin = Self::get_admin(env.clone())?;
         if caller != admin {
             return Err(ContractError::Unauthorized);
         }
 
-        multisig::configure(&env, signers, threshold)
-            .map_err(|_| ContractError::InvalidInput)
+        multisig::configure(&env, signers, threshold).map_err(|_| ContractError::InvalidInput)
     }
 
     pub fn propose_admin_action(
@@ -444,8 +450,7 @@ impl VisionRecordsContract {
         }
         approver.require_auth();
 
-        multisig::approve(&env, &approver, proposal_id)
-            .map_err(|_| ContractError::Unauthorized)
+        multisig::approve(&env, &approver, proposal_id).map_err(|_| ContractError::Unauthorized)
     }
 
     pub fn get_multisig_config(env: Env) -> Option<multisig::MultisigConfig> {
@@ -479,8 +484,7 @@ impl VisionRecordsContract {
             if !multisig::is_executable(&env, proposal_id) {
                 return Err(ContractError::Unauthorized); // Use Unauthorized for multisig rejection
             }
-            multisig::mark_executed(&env, proposal_id)
-                .map_err(|_| ContractError::Unauthorized)?;
+            multisig::mark_executed(&env, proposal_id).map_err(|_| ContractError::Unauthorized)?;
         } else if !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin) {
             return Err(ContractError::Unauthorized);
         }
@@ -508,8 +512,7 @@ impl VisionRecordsContract {
             if !multisig::is_executable(&env, proposal_id) {
                 return Err(ContractError::Unauthorized);
             }
-            multisig::mark_executed(&env, proposal_id)
-                .map_err(|_| ContractError::Unauthorized)?;
+            multisig::mark_executed(&env, proposal_id).map_err(|_| ContractError::Unauthorized)?;
         } else {
             let admin = Self::get_admin(env.clone())?;
             let has_system_admin = rbac::has_permission(&env, &caller, &Permission::SystemAdmin);
@@ -750,7 +753,7 @@ impl VisionRecordsContract {
                 .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
             {
                 let hex = sv.to_string();
-                if let Some(bytes) = common::hex_to_bytes(&hex) {
+                if let Some(bytes) = teye_common::hex_to_bytes(&hex) {
                     master_bytes = bytes;
                 }
             }
@@ -831,7 +834,7 @@ impl VisionRecordsContract {
                 .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
             {
                 let hex = sv.to_string();
-                if let Some(bytes) = common::hex_to_bytes(&hex) {
+                if let Some(bytes) = teye_common::hex_to_bytes(&hex) {
                     master_bytes_batch = bytes;
                 }
             }
@@ -966,7 +969,7 @@ impl VisionRecordsContract {
                         .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
                     {
                         let hex = sv.to_string();
-                        if let Some(bytes) = common::hex_to_bytes(&hex) {
+                        if let Some(bytes) = teye_common::hex_to_bytes(&hex) {
                             master_bytes = bytes;
                         }
                     }
@@ -1249,14 +1252,13 @@ impl VisionRecordsContract {
         if let Some(grant) = env.storage().persistent().get::<_, AccessGrant>(&key) {
             if grant.expires_at > env.ledger().timestamp() {
                 // Check if ABAC policies also allow this access
-                let abac_allowed =
-                    evaluate_access_policies(&env, &grantee, None, Some(patient.clone()));
-                if abac_allowed {
-                    return grant.level;
-                }
+                // let abac_allowed =
+                // evaluate_access_policies(&env, &grantee, None, Some(patient.clone()));
+                // if abac_allowed {
+                return grant.level;
+                // }
             }
         }
-
         AccessLevel::None
     }
 

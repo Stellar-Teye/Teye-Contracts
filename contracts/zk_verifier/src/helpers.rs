@@ -1,4 +1,5 @@
-use crate::AccessRequest;
+use crate::verifier::{G1Point, G2Point};
+use crate::{AccessRequest, Proof};
 use soroban_sdk::{BytesN, Env, Vec};
 
 /// Helper utility for creating ZK access requests.
@@ -47,6 +48,7 @@ impl ZkAccessHelper {
                 },
             },
             public_inputs: pi_vec,
+            nonce: 0, // Default nonce; caller should set appropriately for replay protection
         }
     }
 }

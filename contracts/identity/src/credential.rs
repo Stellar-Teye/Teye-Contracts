@@ -30,6 +30,8 @@ pub enum CredentialError {
     VerifierNotSet = 101,
     /// The ZK proof was structurally valid but verification returned false.
     ZkVerificationFailed = 102,
+    // Provided nonce did not match the expected value (replay or out-of-order).
+    InvalidNonce = 103,
 }
 
 // ── Public helpers ───────────────────────────────────────────────────────────
@@ -68,6 +70,7 @@ pub fn verify_zk_credential(
     proof_b: VkG2Point,
     proof_c: VkG1Point,
     public_inputs: Vec<BytesN<32>>,
+    nonce: u64,
 ) -> Result<bool, CredentialError> {
     // 1. Load verifier contract address.
     let verifier_addr: Address = env
@@ -97,6 +100,7 @@ pub fn verify_zk_credential(
         resource_id: resource_id.clone(),
         proof,
         public_inputs,
+        nonce,
     };
 
     // 3. Cross-contract call to the zk_verifier.
@@ -105,7 +109,8 @@ pub fn verify_zk_credential(
     //    to ZkVerificationFailed rather than aborting the transaction.
     let client = ZkVerifierContractClient::new(env, &verifier_addr);
     let is_valid = match client.try_verify_access(&request) {
-        Ok(Ok(valid)) => valid,
+        Ok(Ok(true)) => true, // Proof is valid and verification succeeded.
+        Ok(Ok(false)) => return Err(CredentialError::ZkVerificationFailed), // Proof was valid but verification failed.
         // The verifier contract returned a typed error or the call panicked.
         _ => return Err(CredentialError::ZkVerificationFailed),
     };
