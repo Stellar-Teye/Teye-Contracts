@@ -12,35 +12,26 @@ echo "Checking for storage key collisions in $CONTRACTS_DIR..."
 for contract in "$CONTRACTS_DIR"/*/; do
     if [ -d "$contract/src" ]; then
         contract_name=$(basename "$contract")
-        
+
         # We want to find actual DEFINITIONS or unique usages that represent keys.
         # This is tricky without a full parser, but we can look for:
         # 1. const DEFINITION: Symbol = symbol_short!("...")
         # 2. let key = symbol_short!("...")
         # We should ignore tests and event files if they are just REPRODUCING the symbol
         # for publication or testing purposes.
-        
+
         # For now, let's grep for all symbol_short! and filter out common false positives
         # or just be more specific about what constitutes a "definition".
-        
-        # Get all symbols and their locations, excluding tests and events if possible
-        # but the prompt says "across all contracts" and "dangerous if merged".
-        # The key risk is when two different logic pieces use the same string for different data.
-        
-        symbols=$(grep -r "symbol_short!(" "$contract/src" | \
-                  grep -v "_test.rs" | grep -v "test/" | \
-                  sed -n 's/.*symbol_short!("\([^"]*\)").*/\1/p' | \
-                  sort)
-        
+
         # If the same symbol is used multiple times, it might be fine (e.g. get/set).
         # But if it's defined as a CONST multiple times, that's a collision.
-        
+
         const_definitions=$(grep -r "const .*Symbol = symbol_short!(" "$contract/src" | \
                             sed -n 's/.*symbol_short!("\([^"]*\)").*/\1/p' | \
                             sort)
-        
+
         duplicates=$(echo "$const_definitions" | uniq -d)
-        
+
         if [ -n "$duplicates" ]; then
             echo "❌ Collision(s) found in contract: $contract_name"
             while IFS= read -r dup; do

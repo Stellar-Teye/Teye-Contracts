@@ -1,4 +1,9 @@
 #![no_std]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::arithmetic_side_effects
+)]
 
 pub mod ballot;
 pub mod merkle;
@@ -52,6 +57,18 @@ impl ZkVoting {
         env.storage().persistent().set(&DataKey::MerkleRoot, &root);
     }
 
+    /// Set the Verification key for ZK proof validation. Admin only.
+    pub fn set_verification_key(env: Env, caller: Address, vk: zk_verifier::vk::VerificationKey) {
+        caller.require_auth();
+        Self::require_admin(&env, &caller);
+        env.storage().instance().set(&DataKey::VerificationKey, &vk);
+    }
+
+    /// Return the current Verification key.
+    pub fn get_verification_key(env: Env) -> Option<zk_verifier::vk::VerificationKey> {
+        env.storage().instance().get(&DataKey::VerificationKey)
+    }
+
     /// Close the ballot. No more votes accepted after this.
     pub fn close_ballot(env: Env, caller: Address) {
         caller.require_auth();
@@ -97,7 +114,10 @@ impl ZkVoting {
             .ok_or(VoteError::MerkleRootNotSet)?;
 
         // 5. Verify the ZK proof
-        if !Bn254Verifier::verify_proof(&env, &proof, &public_inputs) {
+        let vk_opt: Option<zk_verifier::vk::VerificationKey> =
+            env.storage().instance().get(&DataKey::VerificationKey);
+        let vk = vk_opt.ok_or(VoteError::InvalidProof)?;
+        if !Bn254Verifier::verify_proof(&env, &vk, &proof, &public_inputs) {
             return Err(VoteError::InvalidProof);
         }
 

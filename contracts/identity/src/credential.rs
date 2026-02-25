@@ -7,6 +7,8 @@
 //! Verification is delegated to the `zk_verifier` contract via a cross-contract
 //! call to `verify_access`.
 
+#![allow(deprecated)]
+
 use soroban_sdk::{symbol_short, Address, BytesN, Env, Symbol, Vec};
 
 // Re-use the proof type definitions from the zk_verifier crate.
@@ -116,7 +118,9 @@ pub fn verify_zk_credential(
     };
 
     // 4. Emit event on success (privacy-preserving: only user + resource hash).
+    #[allow(deprecated)]
     if is_valid {
+        #[allow(deprecated)]
         env.events()
             .publish((symbol_short!("ZK_CRED"), user.clone()), resource_id);
     }

@@ -1,7 +1,11 @@
+#![allow(dead_code)]
 use soroban_sdk::{contracttype, BytesN, Env, Vec};
 
 pub type VerificationKey = crate::vk::VerificationKey;
 
+// TODO: post-quantum migration - `G1Point`, `G2Point`, and `Proof` map to elliptic curves.
+// For hash-based STARKs or Lattice proofs, replace these representations with Hash paths
+// or matrix structural analogs.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct G1Point {
@@ -88,7 +92,13 @@ fn g2_to_bytes(point: &G2Point) -> [u8; 128] {
 pub struct Bn254Verifier;
 
 impl Bn254Verifier {
-    /// Validate individual proof components for known-bad byte patterns.
+    /// Validate individual proof components for known-bad byte patterns that
+    /// would cause undefined behaviour or nonsensical results in a real pairing
+    /// check. This runs *before* the (mock) verification arithmetic.
+    ///
+    /// Note: empty `public_inputs` are rejected here as a safety guard, and the
+    /// contract entrypoint also rejects empty inputs to provide a clear error
+    /// and event at the contract boundary.
     pub fn validate_proof_components(
         proof: &Proof,
         public_inputs: &Vec<BytesN<32>>,

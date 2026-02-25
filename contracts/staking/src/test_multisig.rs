@@ -1,18 +1,12 @@
-#![cfg(test)]
 extern crate std;
 
 use crate::{ContractError, StakingContract, StakingContractClient};
-use common::multisig::{MultisigConfig, MultisigError};
-use soroban_sdk::{
-    symbol_short,
-    testutils::{Address as _, Ledger},
-    Address, BytesN, Env, Vec,
-};
+use soroban_sdk::{symbol_short, testutils::Address as _, Address, BytesN, Env, Vec};
 
 fn setup() -> (Env, StakingContractClient<'static>, Address) {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, StakingContract);
+    let contract_id = env.register(StakingContract, ());
     let client = StakingContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);

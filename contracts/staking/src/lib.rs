@@ -1,13 +1,18 @@
 #![no_std]
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 pub mod events;
 pub mod rewards;
 pub mod timelock;
+pub mod audit;
+
+extern crate alloc;
+use alloc::string::ToString;
 
 use common::admin_tiers::{self, AdminTier};
 use common::multisig;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, token, Address, BytesN, Env, Symbol,
+    contract, contractimpl, contracttype, symbol_short, token, Address, BytesN, Env, String, Symbol,
 };
 
 use timelock::{RateChangeProposal, UnstakeRequest};
@@ -30,6 +35,9 @@ const RATE_DELAY: Symbol = symbol_short!("RATE_DLY");
 const USER_STAKE: Symbol = symbol_short!("STK");
 const USER_RPT_PAID: Symbol = symbol_short!("RPT_PAID");
 const USER_EARNED: Symbol = symbol_short!("ERND");
+// Records the ledger timestamp of a user's first-ever stake deposit.
+// Used by the Governor DAO to compute the time-weighted loyalty multiplier.
+const USER_SINCE: Symbol = symbol_short!("SINCE");
 
 // ── Contract errors ──────────────────────────────────────────────────────────
 
@@ -50,6 +58,7 @@ pub enum ContractError {
     NoPendingRateChange = 11,
     MultisigRequired = 12,
     MultisigError = 13,
+    Paused = 14,
 }
 
 // ── Public-facing types (re-exported for test consumers) ─────────────────────
@@ -69,6 +78,25 @@ pub struct StakingContract;
 
 #[contractimpl]
 impl StakingContract {
+    fn emit_access_violation(env: &Env, caller: &Address, action: &str, required_permission: &str) {
+        events::publish_access_violation(
+            env,
+            caller.clone(),
+            String::from_str(env, action),
+            String::from_str(env, required_permission),
+        );
+    }
+
+    fn unauthorized<T>(
+        env: &Env,
+        caller: &Address,
+        action: &str,
+        required_permission: &str,
+    ) -> Result<T, ContractError> {
+        Self::emit_access_violation(env, caller, action, required_permission);
+        Err(ContractError::Unauthorized)
+    }
+
     // ── Initialisation ──────────────────────────────────────────────────────
 
     /// Bootstrap the contract.
@@ -113,11 +141,19 @@ impl StakingContract {
 
         events::publish_initialized(
             &env,
-            admin,
-            stake_token,
+            admin.clone(),
+            stake_token.clone(),
             reward_token,
             reward_rate,
             lock_period,
+        );
+
+        audit::AuditManager::log_event(
+            &env,
+            admin,
+            "staking.initialize",
+            stake_token.to_string(),
+            "ok",
         );
 
         Ok(())
@@ -129,7 +165,12 @@ impl StakingContract {
     ///
     /// The global reward accumulator is updated first so the staker does not
     /// retroactively earn rewards on the newly deposited tokens.
+    ///
+    /// On a user's very first deposit the current timestamp is recorded under
+    /// `USER_SINCE` so the Governor DAO can later compute their loyalty age.
     pub fn stake(env: Env, staker: Address, amount: i128) -> Result<(), ContractError> {
+        let _guard = common::ReentrancyGuard::new(&env);
+        Self::require_not_paused(&env)?;
         Self::require_initialized(&env)?;
         staker.require_auth();
 
@@ -148,7 +189,7 @@ impl StakingContract {
             .ok_or(ContractError::NotInitialized)?;
         token::Client::new(&env, &stake_token).transfer(
             &staker,
-            &env.current_contract_address(),
+            env.current_contract_address(),
             &amount,
         );
 
@@ -166,6 +207,24 @@ impl StakingContract {
         let new_total = prev_total.saturating_add(amount);
         env.storage().instance().set(&TOTAL_STAKED, &new_total);
 
+        events::publish_staked(&env, staker.clone(), amount, new_total);
+
+        audit::AuditManager::log_event(
+            &env,
+            staker,
+            "staking.stake",
+            soroban_sdk::String::from_str(&env, &amount.to_string()),
+            "ok",
+        );
+
+        // 4. Record the first-stake timestamp for loyalty age tracking.
+        //    Only written once; subsequent top-ups do not reset the clock.
+        let since_key = (USER_SINCE, staker.clone());
+        if !env.storage().persistent().has(&since_key) {
+            let now = env.ledger().timestamp();
+            env.storage().persistent().set(&since_key, &now);
+        }
+
         events::publish_staked(&env, staker, amount, new_total);
 
         Ok(())
@@ -179,6 +238,7 @@ impl StakingContract {
     /// on the queued amount) but tokens are only returned after the lock
     /// period via `withdraw`.
     pub fn request_unstake(env: Env, staker: Address, amount: i128) -> Result<u64, ContractError> {
+        Self::require_not_paused(&env)?;
         Self::require_initialized(&env)?;
         staker.require_auth();
 
@@ -219,7 +279,15 @@ impl StakingContract {
         };
         timelock::store_request(&env, &request);
 
-        events::publish_unstake_requested(&env, request_id, staker, amount, unlock_at);
+        events::publish_unstake_requested(&env, request_id, staker.clone(), amount, unlock_at);
+
+        audit::AuditManager::log_event(
+            &env,
+            staker,
+            "staking.unstake_req",
+            soroban_sdk::String::from_str(&env, &amount.to_string()),
+            "ok",
+        );
 
         Ok(request_id)
     }
@@ -229,6 +297,7 @@ impl StakingContract {
     /// Fails with `TimelockNotExpired` if called before `unlock_at`, and
     /// with `AlreadyWithdrawn` on duplicate calls.
     pub fn withdraw(env: Env, staker: Address, request_id: u64) -> Result<(), ContractError> {
+        let _guard = common::ReentrancyGuard::new(&env);
         Self::require_initialized(&env)?;
         staker.require_auth();
 
@@ -237,7 +306,7 @@ impl StakingContract {
 
         // Auth: only the original staker may withdraw.
         if request.staker != staker {
-            return Err(ContractError::Unauthorized);
+            return Self::unauthorized(&env, &staker, "withdraw", "request_owner");
         }
         if request.withdrawn {
             return Err(ContractError::AlreadyWithdrawn);
@@ -262,7 +331,15 @@ impl StakingContract {
             &request.amount,
         );
 
-        events::publish_withdrawn(&env, request_id, staker, request.amount);
+        events::publish_withdrawn(&env, request_id, staker.clone(), request.amount);
+
+        audit::AuditManager::log_event(
+            &env,
+            staker,
+            "staking.withdraw",
+            soroban_sdk::String::from_str(&env, &request.amount.to_string()),
+            "ok",
+        );
 
         Ok(())
     }
@@ -274,6 +351,8 @@ impl StakingContract {
     /// Rewards are transferred from the contract's reward-token balance.
     /// The contract must hold sufficient reward tokens (funded by the admin).
     pub fn claim_rewards(env: Env, staker: Address) -> Result<i128, ContractError> {
+        let _guard = common::ReentrancyGuard::new(&env);
+        Self::require_not_paused(&env)?;
         Self::require_initialized(&env)?;
         staker.require_auth();
 
@@ -303,7 +382,15 @@ impl StakingContract {
             &earned,
         );
 
-        events::publish_reward_claimed(&env, staker, earned);
+        events::publish_reward_claimed(&env, staker.clone(), earned);
+
+        audit::AuditManager::log_event(
+            &env,
+            staker,
+            "staking.claim",
+            soroban_sdk::String::from_str(&env, &earned.to_string()),
+            "ok",
+        );
 
         Ok(earned)
     }
@@ -413,6 +500,35 @@ impl StakingContract {
         timelock::get_request(&env, request_id).ok_or(ContractError::RequestNotFound)
     }
 
+    /// Return the ledger timestamp when `staker` made their first deposit.
+    ///
+    /// Returns `0` if the address has never staked.
+    pub fn get_stake_since(env: Env, staker: Address) -> u64 {
+        env.storage()
+            .persistent()
+            .get(&(USER_SINCE, staker))
+            .unwrap_or(0u64)
+    }
+
+    /// Return how many seconds `staker` has been continuously staking.
+    ///
+    /// Used by the Governor DAO to compute the time-weighted loyalty multiplier:
+    /// ```text
+    /// loyalty_mult = 1.0 + min(stake_age_days / 365, 1.0)   // up to 2×
+    /// ```
+    /// Returns `0` if the address has never staked.
+    pub fn get_stake_age(env: Env, staker: Address) -> u64 {
+        let since: u64 = env
+            .storage()
+            .persistent()
+            .get(&(USER_SINCE, staker))
+            .unwrap_or(0u64);
+        if since == 0 {
+            return 0;
+        }
+        env.ledger().timestamp().saturating_sub(since)
+    }
+
     pub fn is_initialized(env: Env) -> bool {
         env.storage().instance().has(&INITIALIZED)
     }
@@ -435,7 +551,7 @@ impl StakingContract {
     ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         current_admin.require_auth();
-        Self::require_admin(&env, &current_admin)?;
+        Self::require_admin(&env, &current_admin, "propose_admin")?;
 
         env.storage().instance().set(&PENDING_ADMIN, &new_admin);
 
@@ -457,7 +573,7 @@ impl StakingContract {
             .ok_or(ContractError::InvalidInput)?;
 
         if new_admin != pending {
-            return Err(ContractError::Unauthorized);
+            return Self::unauthorized(&env, &new_admin, "accept_admin", "pending_admin");
         }
 
         let old_admin: Address = env
@@ -478,7 +594,7 @@ impl StakingContract {
     pub fn cancel_admin_transfer(env: Env, current_admin: Address) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         current_admin.require_auth();
-        Self::require_admin(&env, &current_admin)?;
+        Self::require_admin(&env, &current_admin, "cancel_admin_transfer")?;
 
         let pending: Address = env
             .storage()
@@ -513,7 +629,7 @@ impl StakingContract {
     ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
-        Self::require_admin(&env, &caller)?;
+        Self::require_admin(&env, &caller, "configure_multisig")?;
 
         multisig::configure(&env, signers, threshold).map_err(|_| ContractError::InvalidInput)
     }
@@ -577,12 +693,18 @@ impl StakingContract {
     ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
+        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin, "set_reward_rate")?;
 
-        // -- Multisig gate --
+        if new_rate < 0 {
+            return Err(ContractError::InvalidInput);
+        }
+
+        // If multisig is configured, require an executable proposal and consume it.
         if !multisig::is_legacy_admin_allowed(&env) {
-            if !multisig::is_executable(&env, proposal_id) {
+            if proposal_id == 0 {
                 return Err(ContractError::MultisigRequired);
             }
+<<<<<<< feature/116-implemented-nonce
             multisig::mark_executed(&env, proposal_id).map_err(|_| ContractError::MultisigError)?;
         } else {
             Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin)?;
@@ -590,6 +712,16 @@ impl StakingContract {
 
         if new_rate < 0 {
             return Err(ContractError::InvalidInput);
+=======
+            let proposal =
+                multisig::get_proposal(&env, proposal_id).ok_or(ContractError::MultisigRequired)?;
+            if proposal.action != symbol_short!("RWD_RATE")
+                || !multisig::is_executable(&env, proposal_id)
+            {
+                return Err(ContractError::MultisigRequired);
+            }
+            multisig::mark_executed(&env, proposal_id).map_err(|_| ContractError::MultisigError)?;
+>>>>>>> master
         }
 
         let delay: u64 = env.storage().instance().get(&RATE_DELAY).unwrap_or(0);
@@ -616,7 +748,7 @@ impl StakingContract {
     pub fn apply_reward_rate(env: Env, caller: Address) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
-        Self::require_admin(&env, &caller)?;
+        Self::require_admin(&env, &caller, "apply_reward_rate")?;
 
         let proposal =
             timelock::get_rate_proposal(&env).ok_or(ContractError::NoPendingRateChange)?;
@@ -644,7 +776,7 @@ impl StakingContract {
     ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
-        Self::require_admin(&env, &caller)?;
+        Self::require_admin(&env, &caller, "set_rate_change_delay")?;
 
         env.storage().instance().set(&RATE_DELAY, &delay);
 
@@ -666,15 +798,23 @@ impl StakingContract {
     ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
+        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin, "set_lock_period")?;
 
-        // -- Multisig gate --
         if !multisig::is_legacy_admin_allowed(&env) {
-            if !multisig::is_executable(&env, proposal_id) {
+            if proposal_id == 0 {
                 return Err(ContractError::MultisigRequired);
             }
             multisig::mark_executed(&env, proposal_id).map_err(|_| ContractError::MultisigError)?;
         } else {
             Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin)?;
+            let proposal =
+                multisig::get_proposal(&env, proposal_id).ok_or(ContractError::MultisigRequired)?;
+            if proposal.action != symbol_short!("SET_LOCK")
+                || !multisig::is_executable(&env, proposal_id)
+            {
+                return Err(ContractError::MultisigRequired);
+            }
+            multisig::mark_executed(&env, proposal_id).map_err(|_| ContractError::MultisigError)?;
         }
 
         env.storage().instance().set(&LOCK_PERIOD, &new_period);
@@ -698,7 +838,7 @@ impl StakingContract {
         Self::require_initialized(&env)?;
         caller.require_auth();
         if !admin_tiers::promote_admin(&env, &caller, &target, tier) {
-            return Err(ContractError::Unauthorized);
+            return Self::unauthorized(&env, &caller, "promote_admin", "admin_tier:SuperAdmin");
         }
         admin_tiers::track_admin(&env, &target);
         Ok(())
@@ -711,7 +851,7 @@ impl StakingContract {
         Self::require_initialized(&env)?;
         caller.require_auth();
         if !admin_tiers::demote_admin(&env, &caller, &target) {
-            return Err(ContractError::Unauthorized);
+            return Self::unauthorized(&env, &caller, "demote_admin", "admin_tier:SuperAdmin");
         }
         admin_tiers::untrack_admin(&env, &target);
         Ok(())
@@ -722,7 +862,41 @@ impl StakingContract {
         admin_tiers::get_admin_tier(&env, &admin)
     }
 
+    // ── Pause management ──────────────────────────────────────────────────
+
+    /// Pause all state-mutating operations.
+    ///
+    /// Requires at least `ContractAdmin` tier, or legacy admin.
+    pub fn pause(env: Env, caller: Address) -> Result<(), ContractError> {
+        Self::require_initialized(&env)?;
+        caller.require_auth();
+        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin, "pause")?;
+        common::pausable::pause(&env, &caller);
+        Ok(())
+    }
+
+    /// Resume all state-mutating operations.
+    ///
+    /// Requires at least `ContractAdmin` tier, or legacy admin.
+    pub fn unpause(env: Env, caller: Address) -> Result<(), ContractError> {
+        Self::require_initialized(&env)?;
+        caller.require_auth();
+        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin, "unpause")?;
+        common::pausable::unpause(&env, &caller);
+        Ok(())
+    }
+
+    /// Returns whether the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        common::pausable::is_paused(&env)
+    }
+
     // ── Internal helpers ─────────────────────────────────────────────────────
+
+    /// Guard: revert if the contract is paused.
+    fn require_not_paused(env: &Env) -> Result<(), ContractError> {
+        common::pausable::require_not_paused(env).map_err(|_| ContractError::Paused)
+    }
 
     /// Guard: revert if the contract is not yet initialized.
     fn require_initialized(env: &Env) -> Result<(), ContractError> {
@@ -734,14 +908,14 @@ impl StakingContract {
 
     /// Guard: revert if `caller` is not the stored admin.
     /// Kept for backward compatibility.
-    fn require_admin(env: &Env, caller: &Address) -> Result<(), ContractError> {
+    fn require_admin(env: &Env, caller: &Address, action: &str) -> Result<(), ContractError> {
         let admin: Address = env
             .storage()
             .instance()
             .get(&ADMIN)
             .ok_or(ContractError::NotInitialized)?;
         if *caller != admin {
-            return Err(ContractError::Unauthorized);
+            return Self::unauthorized(env, caller, action, "legacy_admin");
         }
         Ok(())
     }
@@ -752,13 +926,14 @@ impl StakingContract {
         env: &Env,
         caller: &Address,
         min_tier: &AdminTier,
+        action: &str,
     ) -> Result<(), ContractError> {
         // First check the tiered system
         if admin_tiers::require_tier(env, caller, min_tier) {
             return Ok(());
         }
         // Fall back to legacy admin check
-        Self::require_admin(env, caller)
+        Self::require_admin(env, caller, action)
     }
 
     /// Flush the global reward-per-token accumulator without touching any

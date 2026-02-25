@@ -1,3 +1,5 @@
+#![allow(dead_code, clippy::manual_inspect, clippy::arithmetic_side_effects)]
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! # ZK Verifier Module
 //!
 //! This module provides a Zero-Knowledge (ZK) proof verification system for the Soroban ecosystem.
@@ -28,7 +30,7 @@ pub use crate::vk::VerificationKey;
 use common::{nonce, whitelist};
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, BytesN, Env,
-    Symbol, Vec,
+    String, Symbol, Vec,
 };
 // use verifier::ProofValidationError;
 
@@ -36,12 +38,14 @@ const ADMIN: Symbol = symbol_short!("ADMIN");
 const PENDING_ADMIN: Symbol = symbol_short!("PEND_ADM");
 const RATE_CFG: Symbol = symbol_short!("RATECFG");
 const RATE_TRACK: Symbol = symbol_short!("RLTRK");
-const VK: Symbol = symbol_short!("VK");
 
 /// Maximum number of public inputs accepted per proof verification.
 const MAX_PUBLIC_INPUTS: u32 = 16;
 
 /// Request structure for ZK access verification.
+// TODO: post-quantum migration - This struct currently hardcodes a Groth16 `Proof`.
+// Future PQ systems (like STARKs) will require an `enum ProofType` or dynamically sized bytes
+// to encapsulate changing proof shapes and public inputs matrices.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AccessRequest {
@@ -81,6 +85,12 @@ pub enum ContractError {
     MalformedProofData = 11,
     /// The provided nonce does not match the expected value (replay or out-of-order).
     InvalidNonce = 12,
+    /// The contract is paused and cannot process verification requests.
+    Paused = 12,
+    /// Invalid authentication level supplied to the verifier.
+    InvalidAuthLevel = 13,
+    /// Public inputs are insufficient for the required authentication level.
+    ProofRequiredForAuthLevel = 14,
 }
 
 /// Map low-level proof validation errors into contract-level errors.
@@ -150,6 +160,23 @@ fn validate_request(request: &AccessRequest) -> Result<(), ContractError> {
     Ok(())
 }
 
+fn validate_auth_level(level: u32) -> Result<(), ContractError> {
+    if !(1..=4).contains(&level) {
+        return Err(ContractError::InvalidAuthLevel);
+    }
+    Ok(())
+}
+
+fn validate_level4_attributes(request: &AccessRequest) -> Result<(), ContractError> {
+    // Require at least two public inputs at level 4:
+    // - primary operation binding
+    // - privacy-preserving attribute commitment
+    if request.public_inputs.len() < 2 {
+        return Err(ContractError::ProofRequiredForAuthLevel);
+    }
+    Ok(())
+}
+
 #[contractimpl]
 impl ZkVerifierContract {
     /// One-time initialization to set the admin address.
@@ -184,14 +211,13 @@ impl ZkVerifierContract {
     fn require_admin(env: &Env, caller: &Address) -> Result<(), ContractError> {
         caller.require_auth();
 
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&ADMIN)
-            .ok_or(ContractError::Unauthorized)?;
+        let admin: Address = match env.storage().instance().get(&ADMIN) {
+            Some(admin) => admin,
+            None => return Self::unauthorized(env, caller, action, "initialized_admin"),
+        };
 
         if caller != &admin {
-            return Err(ContractError::Unauthorized);
+            return Self::unauthorized(env, caller, action, "current_admin");
         }
 
         Ok(())
@@ -204,7 +230,7 @@ impl ZkVerifierContract {
         current_admin: Address,
         new_admin: Address,
     ) -> Result<(), ContractError> {
-        Self::require_admin(&env, &current_admin)?;
+        Self::require_admin(&env, &current_admin, "propose_admin")?;
 
         env.storage().instance().set(&PENDING_ADMIN, &new_admin);
 
@@ -225,14 +251,15 @@ impl ZkVerifierContract {
             .ok_or(ContractError::InvalidConfig)?;
 
         if new_admin != pending {
-            return Err(ContractError::Unauthorized);
+            return Self::unauthorized(&env, &new_admin, "accept_admin", "pending_admin");
         }
 
-        let old_admin: Address = env
-            .storage()
-            .instance()
-            .get(&ADMIN)
-            .ok_or(ContractError::Unauthorized)?;
+        let old_admin: Address = match env.storage().instance().get(&ADMIN) {
+            Some(admin) => admin,
+            None => {
+                return Self::unauthorized(&env, &new_admin, "accept_admin", "initialized_admin")
+            }
+        };
 
         env.storage().instance().set(&ADMIN, &new_admin);
         env.storage().instance().remove(&PENDING_ADMIN);
@@ -244,7 +271,7 @@ impl ZkVerifierContract {
 
     /// Cancel a pending admin transfer. Only the current admin can call this.
     pub fn cancel_admin_transfer(env: Env, current_admin: Address) -> Result<(), ContractError> {
-        Self::require_admin(&env, &current_admin)?;
+        Self::require_admin(&env, &current_admin, "cancel_admin_transfer")?;
 
         let pending: Address = env
             .storage()
@@ -271,7 +298,7 @@ impl ZkVerifierContract {
         max_requests_per_window: u64,
         window_duration_seconds: u64,
     ) -> Result<(), ContractError> {
-        Self::require_admin(&env, &caller)?;
+        Self::require_admin(&env, &caller, "set_rate_limit_config")?;
 
         if max_requests_per_window == 0 || window_duration_seconds == 0 {
             return Err(ContractError::InvalidConfig);
@@ -284,6 +311,22 @@ impl ZkVerifierContract {
 
         Ok(())
     }
+
+    /// Sets the ZK Verification Key for Groth16.
+    pub fn set_verification_key(
+        env: Env,
+        caller: Address,
+        vk: VerificationKey,
+    ) -> Result<(), ContractError> {
+        Self::require_admin(&env, &caller, "set_verification_key")?;
+        env.storage().instance().set(&symbol_short!("VK"), &vk);
+        Ok(())
+    }
+
+    /// Gets the configured Verification Key.
+    pub fn get_verification_key(env: Env) -> Option<VerificationKey> {
+        env.storage().instance().get(&symbol_short!("VK"))
+    }
     /// Return the current rate limiting configuration, if any.
     pub fn get_rate_limit_config(env: Env) -> Option<(u64, u64)> {
         env.storage().instance().get(&RATE_CFG)
@@ -295,14 +338,14 @@ impl ZkVerifierContract {
         caller: Address,
         enabled: bool,
     ) -> Result<(), ContractError> {
-        Self::require_admin(&env, &caller)?;
+        Self::require_admin(&env, &caller, "set_whitelist_enabled")?;
         whitelist::set_whitelist_enabled(&env, enabled);
         Ok(())
     }
 
     /// Adds an address to the whitelist.
     pub fn add_to_whitelist(env: Env, caller: Address, user: Address) -> Result<(), ContractError> {
-        Self::require_admin(&env, &caller)?;
+        Self::require_admin(&env, &caller, "add_to_whitelist")?;
         whitelist::add_to_whitelist(&env, &user);
         Ok(())
     }
@@ -313,7 +356,7 @@ impl ZkVerifierContract {
         caller: Address,
         user: Address,
     ) -> Result<(), ContractError> {
-        Self::require_admin(&env, &caller)?;
+        Self::require_admin(&env, &caller, "remove_from_whitelist")?;
         whitelist::remove_from_whitelist(&env, &user);
         Ok(())
     }
@@ -393,6 +436,7 @@ impl ZkVerifierContract {
     ///
     /// Returns `true` if the proof is valid and all checks pass, otherwise returns an error or `false`.
     pub fn verify_access(env: Env, request: AccessRequest) -> Result<bool, ContractError> {
+        common::pausable::require_not_paused(&env).map_err(|_| ContractError::Paused)?;
         request.user.require_auth();
 
         validate_request(&request).map_err(|err| {
@@ -422,7 +466,7 @@ impl ZkVerifierContract {
                 request.resource_id.clone(),
                 ContractError::Unauthorized,
             );
-            return Err(ContractError::Unauthorized);
+            return Self::unauthorized(&env, &request.user, "verify_access", "whitelisted_user");
         }
 
         Self::check_and_update_rate_limit(&env, &request.user).map_err(|err| {
@@ -435,12 +479,46 @@ impl ZkVerifierContract {
             err
         })?;
 
-        let is_valid = Bn254Verifier::verify_proof(&env, &request.proof, &request.public_inputs);
+        Bn254Verifier::validate_proof_components(&request.proof, &request.public_inputs)
+            .map_err(map_proof_validation_error)?;
+
+        // TODO: post-quantum migration - The verification branch below is hardcoded for BN254 Groth16.
+        // During migration, checking `request.proof_type` should branch to `PostQuantumVerifier::verify_proof`
+        // or a native host-function call if STARK verification limits CPU budgets.
+        let vk = Self::get_verification_key(env.clone()).ok_or(ContractError::InvalidConfig)?;
+        let is_valid =
+            Bn254Verifier::verify_proof(&env, &vk, &request.proof, &request.public_inputs);
         if is_valid {
             let proof_hash = PoseidonHasher::hash(&env, &request.public_inputs);
             AuditTrail::log_access(&env, request.user, request.resource_id, proof_hash);
+        } else {
+            Self::emit_access_violation(
+                &env,
+                &request.user,
+                "verify_access",
+                "valid_groth16_proof",
+            );
         }
         Ok(is_valid)
+    }
+
+    /// Verifies access with auth-level-aware ZK requirements.
+    ///
+    /// Level mapping:
+    /// - 1/2/3: standard proof verification path
+    /// - 4: requires additional attribute proof material in public inputs
+    pub fn verify_auth_level_access(
+        env: Env,
+        request: AccessRequest,
+        required_auth_level: u32,
+    ) -> Result<bool, ContractError> {
+        validate_auth_level(required_auth_level)?;
+
+        if required_auth_level >= 4 {
+            validate_level4_attributes(&request)?;
+        }
+
+        Self::verify_access(env, request)
     }
 
     /// Retrieves an audit record for a specific user and resource.

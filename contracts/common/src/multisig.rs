@@ -228,6 +228,21 @@ pub fn get_proposal(env: &Env, proposal_id: u64) -> Option<Proposal> {
     env.storage().persistent().get(&key)
 }
 
+/// Returns true when level-3 (multi-party) authorization is satisfied.
+///
+/// - If multisig is not configured, legacy admin flow is accepted.
+/// - If configured, the proposal must be executable.
+pub fn is_level3_authorized(env: &Env, proposal_id: Option<u64>) -> bool {
+    if is_legacy_admin_allowed(env) {
+        return true;
+    }
+
+    match proposal_id {
+        Some(id) => is_executable(env, id),
+        None => false,
+    }
+}
+
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
 fn is_signer(cfg: &MultisigConfig, addr: &Address) -> bool {

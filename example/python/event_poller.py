@@ -13,31 +13,31 @@ from stellar_sdk.soroban_rpc import EventFilter, EventFilterType
 from stellar_sdk.exceptions import SorobanRpcErrorResponse
 
 RPC_URL = "https://soroban-testnet.stellar.org"
-CONTRACT_ID = "C..." 
-POLL_INTERVAL_SECONDS = 5 
+CONTRACT_ID = "C..."
+POLL_INTERVAL_SECONDS = 5
 
 def main():
     server = SorobanServer(RPC_URL)
-    
+
     try:
         start_ledger = server.get_latest_ledger().sequence
     except ConnectionError as e:
         print(f"Network Connection failed: {e}")
         return
-        
+
     contract_filter = EventFilter(type=EventFilterType.CONTRACT, contract_ids=[CONTRACT_ID])
 
     while True:
         try:
             current_ledger = server.get_latest_ledger().sequence
             if current_ledger >= start_ledger:
-                
+
                 # Reset cursor for the new ledger tracking range
                 last_cursor = None
                 fetching_pages = True
-                
+
                 while fetching_pages:
-                    
+
                     # Protocol 23: start_ledger and cursor are mutually exclusive.
                     if last_cursor:
                         # Page 2+: Query by cursor only
@@ -53,19 +53,19 @@ def main():
                             filters=[contract_filter],
                             limit=100
                         )
-                    
+
                     if response.events:
                         for event in response.events:
                             print(f"🔔 Processed Event [{event.id}] in Ledger {event.ledger}")
-                        
+
                         # Protocol 23: paging_token removed from events. Use top-level cursor.
                         last_cursor = response.cursor
-                        
+
                         if len(response.events) < 100:
                             fetching_pages = False
                     else:
                         fetching_pages = False
-                        
+
                 # Advance the ledger track after paginating through all events
                 start_ledger = current_ledger + 1
 
@@ -80,7 +80,7 @@ def main():
             print(f"Pagination type error: {e}")
         except Exception:
             raise
-            
+
         time.sleep(POLL_INTERVAL_SECONDS)
 
 if __name__ == "__main__":

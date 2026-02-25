@@ -4,35 +4,54 @@
 //! - [`CommonError`] — standardised error codes for all contracts.
 //! - Consent and key-management helpers (requires `std` feature).
 //! - On-chain multisig, whitelist, meta-transaction, and rate-limiting utilities.
+//! - [`migration`] — contract upgrade migration framework with data versioning
+//!   and rollback support.
+//! - [`versioned_storage`] — lazy-migration storage layer built on top of
+//!   the migration framework.
 //!
 //! Contract-specific errors can extend the range starting at code **100** and
 //! above, ensuring no collisions with the common set.
 
 #![cfg_attr(not(feature = "std"), no_std)]
+#![allow(clippy::arithmetic_side_effects)]
+#![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 
 use soroban_sdk::contracterror;
 
 // ── Modules ──────────────────────────────────────────────────────────────────
 
+#[allow(clippy::enum_variant_names)]
 pub mod admin_tiers;
+pub mod concurrency;
+pub mod conflict_resolver;
 #[cfg(feature = "std")]
 pub mod consent;
 pub mod keys;
 pub mod meta_tx;
+pub mod metering;
 pub mod multisig;
 pub mod nonce;
 pub mod rate_limit;
+pub mod reentrancy_guard;
+pub mod session;
+pub mod risk_engine;
+pub mod vector_clock;
 pub mod whitelist;
 
 pub use admin_tiers::*;
+pub use concurrency::*;
 #[cfg(feature = "std")]
 pub use consent::*;
-#[cfg(feature = "std")]
 pub use keys::*;
 pub use meta_tx::*;
+pub use metering::*;
 pub use multisig::*;
 pub use nonce::*;
 pub use rate_limit::*;
+pub use reentrancy_guard::*;
+pub use session::*;
+pub use risk_engine::*;
+pub use vector_clock::*;
 pub use whitelist::*;
 
 // ── Shared error enum ────────────────────────────────────────────────────────
@@ -47,6 +66,7 @@ pub use whitelist::*;
 /// | 20 – 29 | Resource not found            |
 /// | 30 – 39 | Validation / input            |
 /// | 40 – 49 | Contract state                |
+/// | 50 – 59 | Migration & versioning        |
 /// | 100+    | Reserved for contract-specific |
 #[contracterror]
 #[derive(Clone, Debug, Eq, PartialEq, Copy)]

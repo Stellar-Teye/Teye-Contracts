@@ -93,6 +93,7 @@ pub enum Permission {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum Role {
+    None = 0,
     Patient = 1,
     Staff = 2,
     Optometrist = 3,
@@ -189,7 +190,11 @@ pub fn scoped_delegation_key(
 }
 
 pub fn delegatee_index_key(delegatee: &Address) -> (Symbol, Address) {
-    (symbol_short!("DELEG_IDX"), delegatee.clone())
+    (symbol_short!("DEL_IDX"), delegatee.clone())
+}
+
+pub fn delegator_index_key(delegator: &Address) -> (Symbol, Address) {
+    (symbol_short!("DLGTR_IDX"), delegator.clone())
 }
 
 pub fn acl_group_key(name: &String) -> (Symbol, String) {
@@ -208,12 +213,19 @@ pub fn access_policy_key(id: &String) -> (Symbol, String) {
     (symbol_short!("ACC_POL"), id.clone())
 }
 
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RevokedDelegation {
+    pub delegatee: Address,
+    pub is_scoped: bool,
+}
+
 pub fn user_credential_key(user: &Address) -> (Symbol, Address) {
     (symbol_short!("USER_CRED"), user.clone())
 }
 
 pub fn record_sensitivity_key(record_id: &u64) -> (Symbol, u64) {
-    (symbol_short!("REC_SENS"), record_id.clone())
+    (symbol_short!("REC_SENS"), *record_id)
 }
 
 // ======================== Core RBAC Engine ========================
@@ -328,10 +340,25 @@ pub fn delegate_role(
         .unwrap_or(Vec::new(env));
 
     if !delegators.contains(&delegator) {
-        delegators.push_back(delegator);
+        delegators.push_back(delegator.clone());
     }
     env.storage().persistent().set(&idx_key, &delegators);
     extend_ttl_address_key(env, &idx_key);
+
+    // Maintain the delegator's index of delegatees for cascade cleanup.
+    let delegator_idx_key = delegator_index_key(&delegator);
+    let mut delegatees: Vec<Address> = env
+        .storage()
+        .persistent()
+        .get(&delegator_idx_key)
+        .unwrap_or(Vec::new(env));
+    if !delegatees.contains(&delegatee) {
+        delegatees.push_back(delegatee);
+    }
+    env.storage()
+        .persistent()
+        .set(&delegator_idx_key, &delegatees);
+    extend_ttl_address_key(env, &delegator_idx_key);
 }
 
 /// Retrieve the active delegations for a particular `delegatee` representing `delegator`
@@ -385,10 +412,25 @@ pub fn delegate_permissions(
         .unwrap_or(Vec::new(env));
 
     if !delegators.contains(&delegator) {
-        delegators.push_back(delegator);
+        delegators.push_back(delegator.clone());
     }
     env.storage().persistent().set(&idx_key, &delegators);
     extend_ttl_address_key(env, &idx_key);
+
+    // Maintain the delegator's index of delegatees for cascade cleanup.
+    let delegator_idx_key = delegator_index_key(&delegator);
+    let mut delegatees: Vec<Address> = env
+        .storage()
+        .persistent()
+        .get(&delegator_idx_key)
+        .unwrap_or(Vec::new(env));
+    if !delegatees.contains(&delegatee) {
+        delegatees.push_back(delegatee);
+    }
+    env.storage()
+        .persistent()
+        .set(&delegator_idx_key, &delegatees);
+    extend_ttl_address_key(env, &delegator_idx_key);
 }
 
 /// Retrieve the active scoped delegation for a particular delegator→delegatee pair.
@@ -548,6 +590,65 @@ pub fn has_delegated_permission(
     false
 }
 
+/// Revoke all delegations (full role and scoped) originating from `delegator`.
+///
+/// Returns details for each removed delegation so callers can emit per-revocation events.
+pub fn revoke_delegations_from(env: &Env, delegator: &Address) -> Vec<RevokedDelegation> {
+    let delegator_idx_key = delegator_index_key(delegator);
+    let delegatees: Vec<Address> = env
+        .storage()
+        .persistent()
+        .get(&delegator_idx_key)
+        .unwrap_or(Vec::new(env));
+
+    let mut revoked = Vec::new(env);
+
+    for delegatee in delegatees.iter() {
+        let role_key = delegation_key(delegator, &delegatee);
+        if env.storage().persistent().has(&role_key) {
+            env.storage().persistent().remove(&role_key);
+            revoked.push_back(RevokedDelegation {
+                delegatee: delegatee.clone(),
+                is_scoped: false,
+            });
+        }
+
+        let scoped_key = scoped_delegation_key(delegator, &delegatee);
+        if env.storage().persistent().has(&scoped_key) {
+            env.storage().persistent().remove(&scoped_key);
+            revoked.push_back(RevokedDelegation {
+                delegatee: delegatee.clone(),
+                is_scoped: true,
+            });
+        }
+
+        let delegatee_idx_key = delegatee_index_key(&delegatee);
+        let delegators: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&delegatee_idx_key)
+            .unwrap_or(Vec::new(env));
+        let mut remaining = Vec::new(env);
+        for indexed_delegator in delegators.iter() {
+            if indexed_delegator != delegator.clone() {
+                remaining.push_back(indexed_delegator);
+            }
+        }
+
+        if remaining.is_empty() {
+            env.storage().persistent().remove(&delegatee_idx_key);
+        } else {
+            env.storage()
+                .persistent()
+                .set(&delegatee_idx_key, &remaining);
+            extend_ttl_address_key(env, &delegatee_idx_key);
+        }
+    }
+
+    env.storage().persistent().remove(&delegator_idx_key);
+    revoked
+}
+
 // ======================== ABAC Policy Engine ========================
 
 /// Check if current time satisfies time restriction
@@ -557,7 +658,7 @@ fn satisfies_time_restriction(env: &Env, restriction: &TimeRestriction) -> bool 
         TimeRestriction::BusinessHours => {
             let timestamp = env.ledger().timestamp();
             let hour = (timestamp / 3600) % 24;
-            hour >= 9 && hour <= 17
+            (9..=17).contains(&hour)
         }
         TimeRestriction::HourRange(start, end) => {
             let timestamp = env.ledger().timestamp();
@@ -616,7 +717,7 @@ pub fn evaluate_policy(env: &Env, policy: &AccessPolicy, context: &PolicyContext
     // Check role requirement
     if let OptionalRole::Some(required_role) = &conditions.required_role {
         if let Some(assignment) = get_active_assignment(env, &context.user) {
-            if assignment.role != *required_role {
+            if assignment.role != conditions.required_role {
                 return false;
             }
         } else {
@@ -683,10 +784,10 @@ pub fn evaluate_access_policies(
 ) -> bool {
     // Get all policies (in a real implementation, you might want to index policies by user/resource)
     // For now, we'll check a few default policy IDs
-    let mut default_policy_ids = Vec::new(&env);
-    default_policy_ids.push_back(String::from_str(&env, "default_medical_access"));
-    default_policy_ids.push_back(String::from_str(&env, "emergency_access"));
-    default_policy_ids.push_back(String::from_str(&env, "research_access"));
+    let mut default_policy_ids = Vec::new(env);
+    default_policy_ids.push_back(String::from_str(env, "default_medical_access"));
+    default_policy_ids.push_back(String::from_str(env, "emergency_access"));
+    default_policy_ids.push_back(String::from_str(env, "research_access"));
 
     let context = PolicyContext {
         user: user.clone(),
@@ -694,16 +795,24 @@ pub fn evaluate_access_policies(
         patient,
         current_time: env.ledger().timestamp(),
     };
+    let mut found_policy = false;
 
     for i in 0..default_policy_ids.len() {
         if let Some(policy_id) = default_policy_ids.get(i) {
             let key = access_policy_key(&policy_id);
             if let Some(policy) = env.storage().persistent().get::<_, AccessPolicy>(&key) {
+                found_policy = true;
                 if evaluate_policy(env, &policy, &context) {
                     return true;
                 }
             }
         }
+    }
+
+    // Backward-compatible default: if no ABAC policies are configured,
+    // don't block otherwise valid consent/access grants.
+    if !found_policy {
+        return true;
     }
 
     false
@@ -745,4 +854,157 @@ pub struct ConsentGrant {
     pub granted_at: u64,
     pub expires_at: u64,
     pub revoked: bool,
+}
+
+// ======================== Policy Engine Integration ========================
+
+/// Builds an [`teye_common::policy_dsl::EvalContext`] from the existing RBAC
+/// context, populating subject attributes (role, credential) automatically.
+pub fn build_eval_context(
+    env: &Env,
+    user: &Address,
+    action: &str,
+    resource_id: Option<u64>,
+) -> teye_common::policy_dsl::EvalContext {
+    let mut attr_keys = Vec::new(env);
+    let mut attr_vals = Vec::new(env);
+
+    // Populate role attribute from the active assignment
+    if let Some(assignment) = get_active_assignment(env, user) {
+        attr_keys.push_back(String::from_str(env, "role"));
+        let role_str = match assignment.role {
+            Role::None => "none",
+            Role::Patient => "patient",
+            Role::Staff => "staff",
+            Role::Optometrist => "optometrist",
+            Role::Ophthalmologist => "ophthalmologist",
+            Role::Admin => "admin",
+        };
+        attr_vals.push_back(String::from_str(env, role_str));
+    }
+
+    // Populate credential attribute
+    let cred = get_user_credential(env, user);
+    if cred != CredentialType::None {
+        attr_keys.push_back(String::from_str(env, "credential"));
+        let cred_str = match cred {
+            CredentialType::None => "none",
+            CredentialType::MedicalLicense => "medical_license",
+            CredentialType::ResearchCredentials => "research",
+            CredentialType::EmergencyCredentials => "emergency",
+            CredentialType::AdminCredentials => "admin",
+        };
+        attr_vals.push_back(String::from_str(env, cred_str));
+    }
+
+    // Populate sensitivity attribute if a resource is specified
+    if let Some(rid) = resource_id {
+        let sensitivity = get_record_sensitivity(env, &rid);
+        attr_keys.push_back(String::from_str(env, "sensitivity"));
+        let sens_str = match sensitivity {
+            SensitivityLevel::Public => "public",
+            SensitivityLevel::Standard => "standard",
+            SensitivityLevel::Confidential => "confidential",
+            SensitivityLevel::Restricted => "restricted",
+        };
+        attr_vals.push_back(String::from_str(env, sens_str));
+    }
+
+    let res_id_str = match resource_id {
+        Some(id) => {
+            let mut buf = String::from_str(env, "record_");
+            // Simple numeric-to-string for on-chain use
+            let id_str = id_to_string(env, id);
+            buf = concat_strings(env, &buf, &id_str);
+            buf
+        }
+        None => String::from_str(env, "global"),
+    };
+
+    teye_common::policy_dsl::EvalContext {
+        subject: user.clone(),
+        resource_id: res_id_str,
+        action: String::from_str(env, action),
+        timestamp: env.ledger().timestamp(),
+        attr_keys,
+        attr_vals,
+    }
+}
+
+/// Evaluates the composable policy engine for a given user and action.
+///
+/// This function complements the existing `has_permission` / ABAC checks by
+/// delegating to the common crate's policy engine. Returns `true` if the
+/// policy engine permits the action, `false` otherwise.
+pub fn check_policy_engine(
+    env: &Env,
+    user: &Address,
+    action: &str,
+    resource_id: Option<u64>,
+) -> bool {
+    let ctx = build_eval_context(env, user, action, resource_id);
+    let result = teye_common::policy_engine::evaluate(env, &ctx);
+    result.effect == teye_common::policy_dsl::PolicyEffect::Permit
+}
+
+/// Runs a policy simulation without side-effects, useful for what-if analysis.
+pub fn simulate_policy_check(
+    env: &Env,
+    user: &Address,
+    action: &str,
+    resource_id: Option<u64>,
+) -> teye_common::policy_dsl::SimulationResult {
+    let ctx = build_eval_context(env, user, action, resource_id);
+    teye_common::policy_engine::simulate(env, &ctx)
+}
+
+// ── Numeric helpers for on-chain string building ────────────────────────────
+
+fn id_to_string(env: &Env, mut id: u64) -> String {
+    if id == 0 {
+        return String::from_str(env, "0");
+    }
+    let mut digits: soroban_sdk::Vec<u32> = Vec::new(env);
+    while id > 0 {
+        digits.push_back((id % 10) as u32);
+        id /= 10;
+    }
+    let mut result = String::from_str(env, "");
+    let len = digits.len();
+    for i in 0..len {
+        let d = digits.get(len - 1 - i).unwrap();
+        let ch = match d {
+            0 => "0",
+            1 => "1",
+            2 => "2",
+            3 => "3",
+            4 => "4",
+            5 => "5",
+            6 => "6",
+            7 => "7",
+            8 => "8",
+            9 => "9",
+            _ => "0",
+        };
+        result = concat_strings(env, &result, &String::from_str(env, ch));
+    }
+    result
+}
+
+fn concat_strings(env: &Env, a: &String, b: &String) -> String {
+    let a_bytes = a.to_bytes();
+    let b_bytes = b.to_bytes();
+    let mut combined = soroban_sdk::Bytes::new(env);
+    for i in 0..a_bytes.len() {
+        combined.push_back(a_bytes.get(i).unwrap());
+    }
+    for i in 0..b_bytes.len() {
+        combined.push_back(b_bytes.get(i).unwrap());
+    }
+    let mut buf = [0u8; 256];
+    let len = combined.len() as usize;
+    for (i, slot) in buf.iter_mut().enumerate().take(len) {
+        *slot = combined.get(i as u32).unwrap();
+    }
+    String::from_bytes(env, &buf[..len])
 }

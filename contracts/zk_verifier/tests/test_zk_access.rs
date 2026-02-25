@@ -1,17 +1,16 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::unwrap_used, clippy::expect_used, deprecated)]
 #![cfg(test)]
 
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Events, Ledger},
-    Address, BytesN, Env, IntoVal, TryIntoVal, Vec,
+    xdr::{ContractEventBody, ScVal},
+    Address, BytesN, Env, IntoVal, TryFromVal, Vec,
 };
 use zk_verifier::vk::{G1Point, G2Point, VerificationKey};
 use zk_verifier::ZkAccessHelper;
-use zk_verifier::{
-    AccessRejectedEvent, AccessRequest, ContractError, ZkVerifierContract, ZkVerifierContractClient,
-};
-// use crate::verifier::{G1Point as VkG1Point, G2Point as VkG2Point, Proof};
+use zk_verifier::{AccessRejectedEvent, ContractError, ZkVerifierContract, ZkVerifierContractClient};
+
 fn setup_vk(env: &Env) -> VerificationKey {
     // Valid BN254 G1 point: (1, 2) is on y^2 = x^3 + 3
     let g1_x = BytesN::from_array(
@@ -101,8 +100,7 @@ fn test_valid_proof_verification_and_audit() {
     let admin = Address::generate(&env);
     client.initialize(&admin);
 
-    let vk = setup_vk(&env);
-    client.set_verification_key(&admin, &vk);
+    let _vk = setup_vk(&env);
 
     let user = Address::generate(&env);
     let resource_id = [2u8; 32];
@@ -155,8 +153,7 @@ fn test_invalid_proof_verification() {
     let admin = Address::generate(&env);
     client.initialize(&admin);
 
-    let vk = setup_vk(&env);
-    client.set_verification_key(&admin, &vk);
+    let _vk = setup_vk(&env);
 
     let user = Address::generate(&env);
     let resource_id = [3u8; 32];
@@ -233,6 +230,7 @@ fn test_verify_access_cpu_budget_valid_proof() {
     let request =
         ZkAccessHelper::create_request(&env, user, resource_id, proof_a, proof_b, proof_c, &[&pi]);
 
+    #[allow(deprecated)]
     let mut budget = env.budget();
     budget.reset_default();
     budget.reset_tracker();
@@ -282,6 +280,7 @@ fn test_verify_access_cpu_budget_invalid_proof() {
     let request =
         ZkAccessHelper::create_request(&env, user, resource_id, proof_a, proof_b, proof_c, &[&pi]);
 
+    #[allow(deprecated)]
     let mut budget = env.budget();
     budget.reset_default();
     budget.reset_tracker();
@@ -308,8 +307,7 @@ fn test_rate_limit_enforcement_and_reset() {
     let admin = Address::generate(&env);
     client.initialize(&admin);
 
-    let vk = setup_vk(&env);
-    client.set_verification_key(&admin, &vk);
+    let _vk = setup_vk(&env);
 
     let user = Address::generate(&env);
     let resource_id = [4u8; 32];
@@ -378,8 +376,7 @@ fn test_whitelist_enforcement_and_toggle() {
     let admin = Address::generate(&env);
     client.initialize(&admin);
 
-    let vk = setup_vk(&env);
-    client.set_verification_key(&admin, &vk);
+    let _vk = setup_vk(&env);
 
     let allowed_user = Address::generate(&env);
     let blocked_user = Address::generate(&env);
@@ -525,7 +522,31 @@ fn test_empty_public_inputs_rejected() {
         Ok(ContractError::EmptyPublicInputs)
     ));
 
-    let _events = env.events().all();
+    let events = env.events().all();
+    let event = events.events().last().unwrap();
+    let ContractEventBody::V0(body) = &event.body;
+
+    let expected_topics: soroban_sdk::Vec<soroban_sdk::Val> = (
+        symbol_short!("REJECT"),
+        user.clone(),
+        BytesN::from_array(&env, &[10u8; 32]),
+    )
+        .into_val(&env);
+    let mut expected_scvals = std::vec::Vec::new();
+    for topic in expected_topics.iter() {
+        expected_scvals.push(ScVal::try_from_val(&env, &topic).unwrap());
+    }
+    assert_eq!(body.topics.as_slice(), expected_scvals.as_slice());
+
+    let expected_payload = AccessRejectedEvent {
+        user: user.clone(),
+        resource_id: BytesN::from_array(&env, &[10u8; 32]),
+        error: ContractError::EmptyPublicInputs as u32,
+        timestamp: env.ledger().timestamp(),
+    };
+    let expected_val: soroban_sdk::Val = expected_payload.into_val(&env);
+    let expected_data = ScVal::try_from_val(&env, &expected_val).unwrap();
+    assert_eq!(body.data, expected_data);
 }
 
 #[test]
@@ -791,13 +812,16 @@ fn test_malformed_public_input_first_byte_not_one() {
         proof_c,
         &[&bad_pi],
     );
-
-    let result = client.try_verify_access(&request);
-    // assert!(result.is_err(), "All-zero public input should be rejected");
-    assert!(matches!(
-        result.unwrap_err(),
-        Ok(ContractError::ZeroedPublicInput)
+  
     ));
+    let is_err = result.is_err();
+    assert!(is_err, "All-zero public input should be rejected");
+    if is_err {
+        assert!(matches!(
+            result.unwrap_err(),
+            Ok(ContractError::ZeroedPublicInput)
+        ));
+    }
 }
 
 #[test]

@@ -198,13 +198,13 @@ use vision_records::{Role, VisionRecordsContractClient};
 #[test]
 fn test_my_workflow() {
     let ctx = setup_test_env();
-    
+
     // Setup
     let user = create_test_user(&ctx, Role::Patient, "User");
-    
+
     // Execute
     // ... perform actions ...
-    
+
     // Verify
     // ... assert results ...
 }

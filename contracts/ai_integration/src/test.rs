@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 extern crate std;
 
 use soroban_sdk::{testutils::Address as _, Address, Env, String};

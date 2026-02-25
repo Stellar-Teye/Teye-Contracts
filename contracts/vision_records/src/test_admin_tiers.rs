@@ -39,10 +39,7 @@ fn test_super_admin_promotes_contract_admin() {
     let target = Address::generate(&env);
 
     client.promote_admin(&admin, &target, &AdminTier::ContractAdmin);
-    assert_eq!(
-        client.get_admin_tier(&target),
-        Some(AdminTier::ContractAdmin)
-    );
+    assert_eq!(client.get_admin_tier(&target), Some(AdminTier::ContractAdmin));
 }
 
 #[test]
@@ -51,10 +48,7 @@ fn test_super_admin_promotes_operator_admin() {
     let target = Address::generate(&env);
 
     client.promote_admin(&admin, &target, &AdminTier::OperatorAdmin);
-    assert_eq!(
-        client.get_admin_tier(&target),
-        Some(AdminTier::OperatorAdmin)
-    );
+    assert_eq!(client.get_admin_tier(&target), Some(AdminTier::OperatorAdmin));
 }
 
 #[test]
@@ -74,10 +68,7 @@ fn test_super_admin_demotes_admin() {
     let target = Address::generate(&env);
 
     client.promote_admin(&admin, &target, &AdminTier::ContractAdmin);
-    assert_eq!(
-        client.get_admin_tier(&target),
-        Some(AdminTier::ContractAdmin)
-    );
+    assert_eq!(client.get_admin_tier(&target), Some(AdminTier::ContractAdmin));
 
     client.demote_admin(&admin, &target);
     assert_eq!(client.get_admin_tier(&target), None);

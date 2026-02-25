@@ -43,8 +43,10 @@ impl AuditTrail {
         let prev_hash = if chain.is_empty() {
             BytesN::from_array(env, &[0u8; 32])
         } else {
-            let last = chain.get(chain.len() - 1).unwrap();
-            hash_record(env, &last)
+            match chain.last() {
+                Some(last) => hash_record(env, &last),
+                None => BytesN::from_array(env, &[0u8; 32]),
+            }
         };
 
         let record = AuditRecord {
@@ -92,15 +94,24 @@ impl AuditTrail {
         }
 
         let zero = BytesN::from_array(env, &[0u8; 32]);
-        let first = chain.get(0).unwrap();
+        let first = match chain.first() {
+            Some(item) => item,
+            None => return true,
+        };
         if first.prev_hash != zero {
             return false;
         }
 
         let mut i: u32 = 1;
         while i < chain.len() {
-            let prev = chain.get(i - 1).unwrap();
-            let current = chain.get(i).unwrap();
+            let prev = match chain.get(i - 1) {
+                Some(item) => item,
+                None => return false,
+            };
+            let current = match chain.get(i) {
+                Some(item) => item,
+                None => return false,
+            };
             if current.prev_hash != hash_record(env, &prev) {
                 return false;
             }

@@ -98,6 +98,17 @@ pub struct AccessRevokedEvent {
     pub timestamp: u64,
 }
 
+/// Event published when revoking a grantee's access cascades to delegations they issued.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CascadingRevocationEvent {
+    pub patient: Address,
+    pub revoked_grantee: Address,
+    pub delegatee: Address,
+    pub is_scoped: bool,
+    pub timestamp: u64,
+}
+
 /// Event published when an expired access grant is purged.
 #[soroban_sdk::contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -141,6 +152,16 @@ pub struct ContractPausedEvent {
 pub struct ContractResumedEvent {
     pub caller: Address,
     pub scope: PauseScope,
+    pub timestamp: u64,
+}
+
+/// Event published when an unauthorized or denied action is attempted.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccessViolationEvent {
+    pub caller: Address,
+    pub action: String,
+    pub required_permission: String,
     pub timestamp: u64,
 }
 
@@ -277,6 +298,29 @@ pub fn publish_access_revoked(env: &Env, patient: Address, grantee: Address) {
     env.events().publish(topics, data);
 }
 
+pub fn publish_cascading_revocation(
+    env: &Env,
+    patient: Address,
+    revoked_grantee: Address,
+    delegatee: Address,
+    is_scoped: bool,
+) {
+    let topics = (
+        symbol_short!("CASC_REV"),
+        patient.clone(),
+        revoked_grantee.clone(),
+        delegatee.clone(),
+    );
+    let data = CascadingRevocationEvent {
+        patient,
+        revoked_grantee,
+        delegatee,
+        is_scoped,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
 pub fn publish_batch_records_added(env: &Env, provider: Address, count: u32) {
     let topics = (symbol_short!("BATCH_R"), provider.clone());
     let data = BatchRecordsAddedEvent {
@@ -302,6 +346,22 @@ pub fn publish_contract_resumed(env: &Env, caller: Address, scope: PauseScope) {
     let data = ContractResumedEvent {
         caller,
         scope,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+pub fn publish_access_violation(
+    env: &Env,
+    caller: Address,
+    action: String,
+    required_permission: String,
+) {
+    let topics = (symbol_short!("ACC_VIOL"), caller.clone(), action.clone());
+    let data = AccessViolationEvent {
+        caller,
+        action,
+        required_permission,
         timestamp: env.ledger().timestamp(),
     };
     env.events().publish(topics, data);
@@ -1106,6 +1166,99 @@ pub fn publish_sensitivity_set(
         record_id,
         sensitivity,
         set_by,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+// ── Structured event streaming helpers ───────────────────────────────────────
+//
+// These functions emit events in a format compatible with the `events` contract
+// streaming system. Each publishes under a hierarchical topic so that external
+// subscribers can filter using wildcard patterns (e.g. `records.vision.*`).
+
+/// Emit a structured streaming event when a vision record is created.
+pub fn emit_record_created(
+    env: &Env,
+    record_id: u64,
+    patient: Address,
+    provider: Address,
+    record_type: RecordType,
+) {
+    let topics = (symbol_short!("STREAM"), symbol_short!("REC_CRT"));
+    let data = RecordAddedEvent {
+        record_id,
+        patient,
+        provider,
+        record_type,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+/// Emit a structured streaming event when a prescription is added.
+pub fn emit_prescription_created(env: &Env, record_id: u64, patient: Address, provider: Address) {
+    let topics = (symbol_short!("STREAM"), symbol_short!("RX_CRT"));
+    let data = RecordAddedEvent {
+        record_id,
+        patient,
+        provider,
+        record_type: RecordType::Prescription,
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(topics, data);
+}
+
+/// Emit a structured streaming event when access control changes.
+pub fn emit_access_changed(
+    env: &Env,
+    patient: Address,
+    grantee: Address,
+    level: AccessLevel,
+    granted: bool,
+) {
+    if granted {
+        let topics = (symbol_short!("STREAM"), symbol_short!("ACC_CHG"));
+        let data = AccessGrantedEvent {
+            patient,
+            grantee,
+            level,
+            duration_seconds: 0,
+            expires_at: 0,
+            timestamp: env.ledger().timestamp(),
+        };
+        env.events().publish(topics, data);
+    } else {
+        let topics = (symbol_short!("STREAM"), symbol_short!("ACC_CHG"));
+        let data = AccessRevokedEvent {
+            patient,
+            grantee,
+            timestamp: env.ledger().timestamp(),
+        };
+        env.events().publish(topics, data);
+    }
+}
+
+/// Emit a structured streaming event for emergency access actions.
+pub fn emit_emergency_event(
+    env: &Env,
+    access_id: u64,
+    patient: Address,
+    requester: Address,
+    granted: bool,
+) {
+    let action = if granted {
+        symbol_short!("EM_GRANT")
+    } else {
+        symbol_short!("EM_REVOK")
+    };
+    let topics = (symbol_short!("STREAM"), action);
+    let data = EmergencyAccessGrantedEvent {
+        access_id,
+        patient,
+        requester,
+        condition: EmergencyCondition::LifeThreatening,
+        expires_at: 0,
         timestamp: env.ledger().timestamp(),
     };
     env.events().publish(topics, data);
