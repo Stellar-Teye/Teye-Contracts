@@ -1,3 +1,12 @@
+use soroban_sdk::{Env, String, Bytes, Symbol};
+
+pub struct KeyManager {
+    pub master: Bytes,
+}
+
+impl KeyManager {
+    pub fn new(master: Bytes) -> Self {
+        Self { master }
 #![allow(dead_code, clippy::incompatible_msrv)]
 extern crate alloc;
 
@@ -139,8 +148,20 @@ fn nibble_to_hex(n: u8) -> char {
         10..=15 => (b'a' + (n - 10)) as char,
         _ => '?',
     }
+
+    /// Mock encrypt for framework build using Soroban types
+    pub fn encrypt(&self, env: &Env, _plaintext: String) -> String {
+        String::from_str(env, "mock_ciphertext")
+    }
+
+    /// Mock decrypt for framework build using Soroban types
+    pub fn decrypt(&self, env: &Env, _ciphertext: String) -> Option<String> {
+        Some(String::from_str(env, "mock_plaintext"))
+    }
 }
 
+pub fn hex_to_bytes(env: &Env, _hexstr: String) -> Option<Bytes> {
+    None
 fn hex_char_val(c: char) -> Option<u8> {
     match c {
         '0'..='9' => Some((c as u8) - b'0'),

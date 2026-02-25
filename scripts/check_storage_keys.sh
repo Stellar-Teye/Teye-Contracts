@@ -23,6 +23,7 @@ echo "Checking for storage key collisions in $CONTRACTS_DIR..."
 for contract in "$CONTRACTS_DIR"/*/; do
     if [ -d "$contract/src" ]; then
         contract_name=$(basename "$contract")
+        
 
         # We want to find actual DEFINITIONS or unique usages that represent keys.
         # This is tricky without a full parser, but we can look for:

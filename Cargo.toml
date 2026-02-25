@@ -17,6 +17,7 @@ members = [
     "contracts/treasury",
     "contracts/audit",
     "contracts/emr_bridge",
+    "contracts/state_channel",
     "contracts/metering",
     "sdk/zk_prover",
 ]
