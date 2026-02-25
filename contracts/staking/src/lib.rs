@@ -44,6 +44,7 @@ pub enum ContractError {
     AlreadyWithdrawn = 7,
     RequestNotFound = 8,
     TokensIdentical = 9,
+    SlashingUnauthorized = 10,
 }
 
 // ── Public-facing types (re-exported for test consumers) ─────────────────────
@@ -662,6 +663,40 @@ impl StakingContract {
         env.storage()
             .persistent()
             .set(&(USER_RPT_PAID, user.clone()), &current_rpt);
+    }
+    
+    /// Penalize a staker by reducing their staked balance.
+    ///
+    /// Requires at least `ContractAdmin` tier or a specific authorized caller.
+    pub fn slash(env: Env, caller: Address, staker: Address, amount: i128) -> Result<(), ContractError> {
+        Self::require_initialized(&env)?;
+        caller.require_auth();
+        
+        // Ensure the caller has permission to slash. 
+        // In a production system, this might also check against an authorized delegation contract address.
+        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin)?;
+
+        if amount <= 0 {
+            return Err(ContractError::InvalidInput);
+        }
+
+        let user_stake_key = (USER_STAKE, staker.clone());
+        let prev_stake: i128 = env.storage().persistent().get(&user_stake_key).unwrap_or(0);
+        
+        if prev_stake == 0 {
+            return Ok(()); // Nothing to slash
+        }
+
+        let new_stake = prev_stake.saturating_sub(amount);
+        env.storage().persistent().set(&user_stake_key, &new_stake);
+
+        let prev_total: i128 = env.storage().instance().get(&TOTAL_STAKED).unwrap_or(0);
+        let new_total = prev_total.saturating_sub(prev_stake.min(amount));
+        env.storage().instance().set(&TOTAL_STAKED, &new_total);
+
+        events::publish_staked(&env, staker, -amount, new_total); // Reusing staked event for balance changes
+
+        Ok(())
     }
 }
 
