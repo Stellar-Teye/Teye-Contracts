@@ -12,7 +12,9 @@ crate-type = ["cdylib", "rlib"]
 doctest = false
 
 [dependencies]
-common = { path = "../common" }
+soroban-sdk = { workspace = true }
+zk_verifier = { path = "../zk_verifier", default-features = false }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+zk_verifier = { path = "../zk_verifier", features = ["testutils"] }

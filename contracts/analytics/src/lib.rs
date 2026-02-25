@@ -1,52 +1,56 @@
-#![no_std]
+pub mod aggregation;
+pub mod differential_privacy;
+pub mod homomorphic;
 
 #[cfg(test)]
 mod test;
 
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec};
 
+use crate::aggregation::Aggregator;
+use crate::differential_privacy::DifferentialPrivacy;
+use crate::homomorphic::{HomomorphicEngine, PaillierPrivateKey, PaillierPublicKey};
+
 // ── Storage keys ────────────────────────────────────────────────────────────────
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
 const AGGREGATOR: Symbol = symbol_short!("AGGR");
 const METRIC: Symbol = symbol_short!("METRIC");
+const PUB_KEY: Symbol = symbol_short!("PUB_KEY");
+const PRIV_KEY: Symbol = symbol_short!("PRIV_KEY");
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-/// Describes the dimensions for an aggregate metric.
-///
-/// All fields are **coarse-grained** and intended to avoid direct identification
-/// of individual patients. Off-chain indexers should pre-aggregate data before
-/// pushing it into this contract.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MetricDimensions {
-    /// Optional region or site identifier (e.g., "EU", "US", "ClinicA").
     pub region: Option<Symbol>,
-    /// Optional coarse age band (e.g., "A18_39", "A40_64", "A65P").
     pub age_band: Option<Symbol>,
-    /// Optional condition or diagnostic bucket (e.g., "MYOPIA", "GLAUCOMA").
     pub condition: Option<Symbol>,
-    /// Time bucket as a UNIX timestamp (e.g., start of day/week/month).
     pub time_bucket: u64,
 }
 
-/// Stored value for a metric: simple count plus optional numeric aggregate.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MetricValue {
-    /// Number of events or records observed.
     pub count: i128,
-    /// Sum of a numeric signal (e.g., visual acuity score); used to compute averages off-chain.
     pub sum: i128,
 }
 
-/// Point-in-time value for trend queries.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TrendPoint {
     pub time_bucket: u64,
     pub value: MetricValue,
+}
+
+#[soroban_sdk::contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum ContractError {
+    AlreadyInitialized = 1,
+    NotInitialized = 2,
+    Unauthorized = 3,
 }
 
 // ── Contract ───────────────────────────────────────────────────────────────────
@@ -56,84 +60,99 @@ pub struct AnalyticsContract;
 
 #[contractimpl]
 impl AnalyticsContract {
-    // ── Administration ────────────────────────────────────────────────────────
-
-    /// Initialise the analytics contract with an admin and an authorised aggregator.
-    ///
-    /// The aggregator address represents an off-chain process that computes
-    /// privacy-preserving aggregates from raw vision records and pushes them
-    /// on-chain.
-    pub fn initialize(env: Env, admin: Address, aggregator: Address) {
+    pub fn initialize(
+        env: Env,
+        admin: Address,
+        aggregator: Address,
+        pub_key: PaillierPublicKey,
+        priv_key: Option<PaillierPrivateKey>,
+    ) -> Result<(), ContractError> {
         if env.storage().instance().has(&ADMIN) {
-            panic!("already initialized");
+            return Err(ContractError::AlreadyInitialized);
         }
         env.storage().instance().set(&ADMIN, &admin);
         env.storage().instance().set(&AGGREGATOR, &aggregator);
+        env.storage().instance().set(&PUB_KEY, &pub_key);
+        if let Some(pk) = priv_key {
+            env.storage().instance().set(&PRIV_KEY, &pk);
+        }
+        Ok(())
     }
 
     pub fn get_admin(env: Env) -> Address {
-        env.storage().instance().get(&ADMIN).expect("admin not set")
+        env.storage().instance().get(&ADMIN).unwrap()
     }
 
     pub fn get_aggregator(env: Env) -> Address {
-        env.storage()
-            .instance()
-            .get(&AGGREGATOR)
-            .expect("aggregator not set")
+        env.storage().instance().get(&AGGREGATOR).unwrap()
     }
 
-    fn require_aggregator(env: &Env, caller: &Address) {
-        let expected: Address = env
+    // ── Homomorphic Operations ────────────────────────────────────────────────
+
+    pub fn encrypt(env: Env, m: i128) -> i128 {
+        let pub_key: PaillierPublicKey = env.storage().instance().get(&PUB_KEY).unwrap();
+        HomomorphicEngine::encrypt(&env, &pub_key, m)
+    }
+
+    pub fn add_ciphertexts(env: Env, c1: i128, c2: i128) -> i128 {
+        let pub_key: PaillierPublicKey = env.storage().instance().get(&PUB_KEY).unwrap();
+        HomomorphicEngine::add_ciphertexts(&pub_key, c1, c2)
+    }
+
+    pub fn decrypt(env: Env, caller: Address, c: i128) -> Result<i128, ContractError> {
+        caller.require_auth();
+        let aggregator: Address = env.storage().instance().get(&AGGREGATOR).unwrap();
+        if caller != aggregator {
+            return Err(ContractError::Unauthorized);
+        }
+        let pub_key: PaillierPublicKey = env.storage().instance().get(&PUB_KEY).unwrap();
+        let priv_key: PaillierPrivateKey = env
             .storage()
             .instance()
-            .get(&AGGREGATOR)
-            .expect("aggregator not set");
-        if caller != &expected {
-            panic!("unauthorized aggregator");
-        }
+            .get(&PRIV_KEY)
+            .ok_or(ContractError::Unauthorized)?;
+        Ok(HomomorphicEngine::decrypt(&pub_key, &priv_key, c))
     }
 
-    // ── Metric ingestion ──────────────────────────────────────────────────────
+    // ── Aggregation ──────────────────────────────────────────────────────────
 
-    /// Records an aggregate contribution to a named metric.
-    ///
-    /// This call is designed for **pre-aggregated**, privacy-preserving data
-    /// produced by off-chain analytics pipelines. It should never be invoked
-    /// with per-patient identifiers.
-    ///
-    /// - `kind`  – logical metric name (e.g., "record_count", "myopia_prevalence")
-    /// - `dims`  – aggregation dimensions (region, age band, condition, time bucket)
-    /// - `count_delta` – increment to apply to the count
-    /// - `sum_delta`   – increment to apply to the numeric sum (0 if not used)
-    pub fn record_metric(
+    pub fn aggregate_records(
         env: Env,
         caller: Address,
         kind: Symbol,
         dims: MetricDimensions,
-        count_delta: i128,
-        sum_delta: i128,
-    ) {
+        ciphertexts: Vec<i128>,
+    ) -> Result<(), ContractError> {
         caller.require_auth();
-        Self::require_aggregator(&env, &caller);
-
-        if count_delta == 0 && sum_delta == 0 {
-            return;
+        let aggregator = Self::get_aggregator(env.clone());
+        if caller != aggregator {
+            return Err(ContractError::Unauthorized);
         }
 
-        let key = (METRIC, kind, dims.clone());
+        let pub_key: PaillierPublicKey = env.storage().instance().get(&PUB_KEY).unwrap();
+        let agg_ciphertext = Aggregator::aggregate_sum(&pub_key, ciphertexts.clone());
+
+        // For this demo, we "record" the decrypted value with DP noise
+        let priv_key: PaillierPrivateKey = env.storage().instance().get(&PRIV_KEY).unwrap();
+        let plaintext_sum = HomomorphicEngine::decrypt(&pub_key, &priv_key, agg_ciphertext);
+
+        let noisy_sum = DifferentialPrivacy::add_laplace_noise(&env, plaintext_sum, 1, 10);
+        let count = ciphertexts.len() as i128;
+
+        let key = (METRIC, kind, dims);
         let mut current: MetricValue = env
             .storage()
             .persistent()
             .get(&key)
             .unwrap_or(MetricValue { count: 0, sum: 0 });
 
-        current.count = current.count.saturating_add(count_delta);
-        current.sum = current.sum.saturating_add(sum_delta);
+        current.count = current.count.saturating_add(count);
+        current.sum = current.sum.saturating_add(noisy_sum);
 
         env.storage().persistent().set(&key, &current);
+        Ok(())
     }
 
-    /// Returns the current value for a given metric + dimensions.
     pub fn get_metric(env: Env, kind: Symbol, dims: MetricDimensions) -> MetricValue {
         let key = (METRIC, kind, dims);
         env.storage()
@@ -142,13 +161,6 @@ impl AnalyticsContract {
             .unwrap_or(MetricValue { count: 0, sum: 0 })
     }
 
-    // ── Trend analysis ────────────────────────────────────────────────────────
-
-    /// Returns a time-ordered sequence of metric values for a fixed set of
-    /// dimensions over a closed interval of time buckets.
-    ///
-    /// This is intended for trend visualisation (e.g., monthly myopia
-    /// prevalence in a region across a year).
     pub fn get_trend(
         env: Env,
         kind: Symbol,
@@ -158,66 +170,19 @@ impl AnalyticsContract {
         start_bucket: u64,
         end_bucket: u64,
     ) -> Vec<TrendPoint> {
-        if end_bucket < start_bucket {
-            return Vec::new(&env);
-        }
-
         let mut out = Vec::new(&env);
-        let mut bucket = start_bucket;
-
-        while bucket <= end_bucket {
+        for bucket in start_bucket..=end_bucket {
             let dims = MetricDimensions {
                 region: region.clone(),
                 age_band: age_band.clone(),
                 condition: condition.clone(),
                 time_bucket: bucket,
             };
-            let value = Self::get_metric(env.clone(), kind.clone(), dims.clone());
             out.push_back(TrendPoint {
                 time_bucket: bucket,
-                value,
+                value: Self::get_metric(env.clone(), kind.clone(), dims),
             });
-
-            // Simple increment by 1 bucket; callers choose bucket granularity.
-            bucket = bucket.saturating_add(1);
         }
-
         out
-    }
-
-    // ── Population metrics ────────────────────────────────────────────────────
-
-    /// Returns aggregate metrics for a given time bucket across all regions,
-    /// age bands, and conditions for the specified metric kind.
-    ///
-    /// This is useful for high-level population health dashboards.
-    pub fn get_population_metrics(env: Env, kind: Symbol, time_bucket: u64) -> MetricValue {
-        // NOTE: This naive implementation iterates over the combinations of a
-        // small fixed set of labels is expected to be used with a limited set
-        // of regions/conditions. For more complex analytics, prefer off-chain
-        // aggregation on indexer data.
-        //
-        // To keep on-chain logic simple and gas-efficient, we only provide
-        // a minimal population aggregation entry point that sums all stored
-        // MetricValue entries for the given time bucket.
-
-        let mut total = MetricValue { count: 0, sum: 0 };
-
-        // There is no efficient on-chain key iteration; in practice, callers
-        // will track known dimension combinations off-chain and query them
-        // individually, then sum locally. We expose this helper primarily for
-        // tests and simple single-dimension use cases by returning the metric
-        // for the "anonymous" bucket (no region/age/condition).
-        let dims = MetricDimensions {
-            region: None,
-            age_band: None,
-            condition: None,
-            time_bucket,
-        };
-        let value = Self::get_metric(env, kind, dims);
-        total.count = total.count.saturating_add(value.count);
-        total.sum = total.sum.saturating_add(value.sum);
-
-        total
     }
 }

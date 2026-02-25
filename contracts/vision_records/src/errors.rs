@@ -102,6 +102,20 @@ pub enum ContractError {
     ContractPaused = 23,
     InsufficientPermissions = 24,
     TransientFailure = 25,
+    MetaTxExpired = 26,
+    NonceAlreadyUsed = 27,
+    ConsentRequired = 28,
+    ConsentExpired = 29,
+    EmergencyAccessNotFound = 30,
+    AppointmentNotFound = 31,
+    AppointmentNotVerified = 32,
+    InvalidEmergencyCondition = 33,
+    InvalidAttestation = 34,
+    InvalidAppointmentTime = 35,
+    InvalidAppointmentStatus = 36,
+    VersionConflict = 37,
+    ConflictQueued = 38,
+    ConflictNotFound = 39,
 }
 
 impl ContractError {
@@ -118,17 +132,32 @@ impl ContractError {
             | ContractError::InvalidPermission
             | ContractError::InvalidDataHash
             | ContractError::InvalidRecordType
-            | ContractError::InvalidVerificationStatus => ErrorCategory::Validation,
+            | ContractError::InvalidVerificationStatus
+            | ContractError::InvalidEmergencyCondition
+            | ContractError::InvalidAttestation
+            | ContractError::InvalidAppointmentTime
+            | ContractError::InvalidAppointmentStatus
+            | ContractError::AppointmentNotVerified
+            | ContractError::MetaTxExpired => ErrorCategory::Validation,
+            ContractError::VersionConflict | ContractError::ConflictQueued => {
+                ErrorCategory::StateConflict
+            }
             ContractError::Unauthorized
             | ContractError::AccessDenied
             | ContractError::InsufficientPermissions
-            | ContractError::ExpiredAccess => ErrorCategory::Authorization,
+            | ContractError::ExpiredAccess
+            | ContractError::ConsentRequired
+            | ContractError::ConsentExpired => ErrorCategory::Authorization,
             ContractError::UserNotFound
             | ContractError::RecordNotFound
-            | ContractError::ProviderNotFound => ErrorCategory::NotFound,
+            | ContractError::ProviderNotFound
+            | ContractError::EmergencyAccessNotFound
+            | ContractError::AppointmentNotFound => ErrorCategory::NotFound,
             ContractError::ProviderAlreadyRegistered
             | ContractError::DuplicateRecord
-            | ContractError::DelegationExpired => ErrorCategory::StateConflict,
+            | ContractError::DelegationExpired
+            | ContractError::NonceAlreadyUsed => ErrorCategory::StateConflict,
+            ContractError::ConflictNotFound => ErrorCategory::NotFound,
             ContractError::StorageError => ErrorCategory::Storage,
             ContractError::TransientFailure | ContractError::RateLimitExceeded => {
                 ErrorCategory::Transient
@@ -151,17 +180,30 @@ impl ContractError {
             | ContractError::InvalidDataHash
             | ContractError::InvalidRecordType
             | ContractError::InvalidVerificationStatus
+            | ContractError::InvalidEmergencyCondition
+            | ContractError::InvalidAttestation
+            | ContractError::InvalidAppointmentTime
+            | ContractError::InvalidAppointmentStatus
             | ContractError::UserNotFound
             | ContractError::RecordNotFound
             | ContractError::ProviderNotFound
-            | ContractError::DuplicateRecord => ErrorSeverity::Low,
+            | ContractError::DuplicateRecord
+            | ContractError::MetaTxExpired => ErrorSeverity::Low,
             ContractError::Unauthorized
             | ContractError::AccessDenied
             | ContractError::InsufficientPermissions
             | ContractError::ExpiredAccess
+            | ContractError::ConsentRequired
+            | ContractError::ConsentExpired
             | ContractError::ProviderAlreadyRegistered
             | ContractError::DelegationExpired
-            | ContractError::RateLimitExceeded => ErrorSeverity::Medium,
+            | ContractError::RateLimitExceeded
+            | ContractError::NonceAlreadyUsed => ErrorSeverity::Medium,
+            ContractError::EmergencyAccessNotFound
+            | ContractError::AppointmentNotFound
+            | ContractError::AppointmentNotVerified => ErrorSeverity::Low,
+            ContractError::VersionConflict | ContractError::ConflictQueued => ErrorSeverity::Medium,
+            ContractError::ConflictNotFound => ErrorSeverity::Low,
             ContractError::StorageError | ContractError::TransientFailure => ErrorSeverity::High,
             ContractError::Paused | ContractError::ContractPaused => ErrorSeverity::Critical,
         }
@@ -175,6 +217,7 @@ impl ContractError {
             ContractError::TransientFailure
                 | ContractError::RateLimitExceeded
                 | ContractError::StorageError
+                | ContractError::VersionConflict
         )
     }
 
@@ -207,6 +250,22 @@ impl ContractError {
             ContractError::ContractPaused => "Contract is paused",
             ContractError::InsufficientPermissions => "Insufficient permissions for operation",
             ContractError::TransientFailure => "Transient failure, operation may succeed on retry",
+            ContractError::MetaTxExpired => "Meta-transaction has expired",
+            ContractError::NonceAlreadyUsed => "Nonce has already been used",
+            ContractError::ConsentRequired => "Active patient consent is required",
+            ContractError::ConsentExpired => "Patient consent has expired",
+            ContractError::EmergencyAccessNotFound => "Emergency access request not found",
+            ContractError::AppointmentNotFound => "Appointment not found",
+            ContractError::AppointmentNotVerified => "Appointment is not verified",
+            ContractError::InvalidEmergencyCondition => "Invalid emergency condition provided",
+            ContractError::InvalidAttestation => "Invalid emergency attestation provided",
+            ContractError::InvalidAppointmentTime => "Invalid appointment time provided",
+            ContractError::InvalidAppointmentStatus => "Invalid appointment status provided",
+            ContractError::VersionConflict => {
+                "Record version conflict detected, retry with current version"
+            }
+            ContractError::ConflictQueued => "Concurrent modification conflict queued for review",
+            ContractError::ConflictNotFound => "Conflict entry not found",
         }
     }
 }

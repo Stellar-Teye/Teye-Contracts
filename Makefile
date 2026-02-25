@@ -1,4 +1,4 @@
-.PHONY: all build test clean fmt lint setup deploy-local deploy-testnet deploy-mainnet
+.PHONY: all build test clean fmt lint setup deploy-local deploy-testnet deploy-mainnet deploy-secure
 
 # Default target
 all: build test
@@ -74,6 +74,14 @@ deploy-mainnet:
 	@read -p "Are you sure? (yes/no): " confirm && [ "$$confirm" = "yes" ]
 	./scripts/deploy.sh mainnet
 
+# Secure deploy with admin transfer (least-privilege)
+# Usage: ADMIN_ADDRESS=GXXX... NETWORK=testnet make deploy-secure
+deploy-secure:
+ifndef ADMIN_ADDRESS
+	$(error ADMIN_ADDRESS is required. Usage: ADMIN_ADDRESS=GXXX... make deploy-secure)
+endif
+	./scripts/deploy.sh $(or $(NETWORK),testnet) vision_records --admin $(ADMIN_ADDRESS)
+
 # Generate documentation
 docs:
 	cargo doc --no-deps --open
@@ -101,4 +109,5 @@ help:
 	@echo "  setup         - Setup dev environment"
 	@echo "  deploy-local  - Deploy to local network"
 	@echo "  deploy-testnet - Deploy to testnet"
+	@echo "  deploy-secure - Deploy with admin transfer (least-privilege)"
 	@echo "  check         - Run all checks"

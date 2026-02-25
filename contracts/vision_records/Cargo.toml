@@ -6,19 +6,26 @@ license.workspace = true
 edition.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+autotests = false
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 doctest = false
 
+[[test]]
+name = "property"
+path = "tests/property/main.rs"
+
 [dependencies]
 soroban-sdk = { workspace = true }
 audit       = { path = "../audit" }
+teye-common = { path = "../common", package = "common" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 proptest = { workspace = true }
 proptest-derive = { workspace = true }
+ed25519-dalek = "2.1"
 
 [features]
 testutils = ["soroban-sdk/testutils"]

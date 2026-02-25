@@ -1,65 +1,67 @@
-name: Security Scanning
+name: Security
 
 on:
   push:
-    branches: [ master, develop ]
+    branches: [master, develop]
   pull_request:
-    branches: [ master, develop ]
+    branches: [master, develop]
   schedule:
-    # Run security scan daily at 2 AM UTC
-    - cron: '0 2 * * *'
+    - cron: "0 2 * * *"   # Daily at 02:00 UTC
   workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   RUST_VERSION: "1.92.0"
 
 jobs:
-  # Cargo audit for known vulnerabilities
+  # ── Dependency vulnerability audit ───────────────────────────
   audit:
-    name: Dependency Security Audit
+    name: Dependency Audit
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Install cargo-audit
-        run: |
-          cargo install cargo-audit --features=fix
+        run: cargo install cargo-audit --features=fix
 
       - name: Run cargo audit
         run: cargo audit
 
-      - name: Upload audit results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: audit-results
-          path: |
-            Cargo.lock
-          retention-days: 30
-
-  # Clippy security lints
-  clippy-security:
-    name: Security-focused Clippy
+  # ── Licence & advisory policy (cargo-deny) ───────────────────
+  deny:
+    name: License & Advisory Check
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories licenses sources
+
+  # ── Security-focused Clippy ──────────────────────────────────
+  clippy-security:
+    name: Security Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config libudev-dev libhidapi-dev
+
+      - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.RUST_VERSION }}
           components: clippy
           targets: wasm32-unknown-unknown
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/
@@ -67,11 +69,10 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+          key: ${{ runner.os }}-sec-clippy-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-sec-clippy-
 
-      - name: Run security-focused Clippy
+      - name: Run security-focused Clippy lints
         run: |
           cargo clippy --all-targets --all-features \
             -- -D warnings \
@@ -80,58 +81,62 @@ jobs:
             -W clippy::panic \
             -W clippy::arithmetic_side_effects
 
-  # Check for hardcoded secrets
-  secret-scanning:
+  # ── Secret scanning ──────────────────────────────────────────
+  secrets:
     name: Secret Scanning
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history for secret scanning
-
-      - name: Install Gitleaks
-        run: |
-          wget https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz
-          tar -xzf gitleaks_8.18.4_linux_x64.tar.gz
-          chmod +x gitleaks
-          sudo mv gitleaks /usr/local/bin/
+          fetch-depth: 0
 
       - name: Run Gitleaks
-        run: gitleaks detect --source . --verbose --redact
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # NOTE: Dependency Review requires Dependency Graph to be enabled in repo settings
-  # See: https://github.com/YOUR_ORG/YOUR_REPO/settings/security_analysis
-  # Uncomment the job below once Dependency Graph is enabled
-  # dependency-review:
-  #   name: Dependency Review
-  #   runs-on: ubuntu-latest
-  #   if: github.event_name == 'pull_request'
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
-  #     - name: Dependency Review
-  #       uses: actions/dependency-review-action@v4
-  #       with:
-  #         fail-on-severity: moderate
-
-  # Security summary
-  security-summary:
-    name: Security Summary
+  # ── Dependency review (PR only) ──────────────────────────────
+  dependency-review:
+    name: Dependency Review
     runs-on: ubuntu-latest
-    needs: [audit, clippy-security, secret-scanning]
-    if: always()
+    if: github.event_name == 'pull_request'
     steps:
-      - name: Generate security report
-        run: |
-          echo "## Security Scan Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- Dependency Audit: ${{ needs.audit.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Clippy Security: ${{ needs.clippy-security.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Secret Scanning: ${{ needs.secret-scanning.result }}" >> $GITHUB_STEP_SUMMARY
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
 
-          if [ "${{ needs.audit.result }}" != "success" ] || \
-             [ "${{ needs.clippy-security.result }}" != "success" ] || \
-             [ "${{ needs.secret-scanning.result }}" != "success" ]; then
-            echo "⚠️ Security issues detected. Please review the results." >> $GITHUB_STEP_SUMMARY
+  # ── Summary gate ─────────────────────────────────────────────
+  security-pass:
+    name: Security Pass
+    if: always()
+    needs: [audit, deny, clippy-security, secrets]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate results
+        run: |
+          echo "## Security Scan Summary" >> "$GITHUB_STEP_SUMMARY"
+          results=(
+            "Dependency Audit:${{ needs.audit.result }}"
+            "License & Advisory:${{ needs.deny.result }}"
+            "Security Clippy:${{ needs.clippy-security.result }}"
+            "Secret Scanning:${{ needs.secrets.result }}"
+          )
+
+          failed=0
+          for r in "${results[@]}"; do
+            name="${r%%:*}"
+            status="${r#*:}"
+            if [ "$status" = "success" ] || [ "$status" = "skipped" ]; then
+              echo "- ✅ $name" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "- ⚠️ $name ($status)" >> "$GITHUB_STEP_SUMMARY"
+              failed=1
+            fi
+          done
+
+          if [ "$failed" -eq 1 ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "⚠️ Security issues detected — review the results above." >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi

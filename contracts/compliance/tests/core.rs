@@ -20,13 +20,17 @@ fn test_audit_record() {
     // Test searchable functionality while we are at it
     let hits = log.search("user1");
     assert_eq!(hits, vec![1]);
+
+    let mut log = AuditLog::default();
+    log.record("user1", "read", "record:1", 1000);
+    assert_eq!(log.query().len(), 1);
 }
 
 #[test]
 fn test_retention() {
-    let mut rm = RetentionManager::new();
+    let mut rm = RetentionManager::new(1000);
     rm.add_policy("phi", 1);
     // new records shouldn't be purged immediately
     let now = rm.created_at;
-    assert!(!rm.should_purge(now, "phi"));
+    assert!(!rm.should_purge(now, "phi", 1000));
 }

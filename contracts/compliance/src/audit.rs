@@ -64,6 +64,12 @@ pub struct ComplianceAuditLog {
     log: MerkleLog,
     /// HMAC-SHA256-based forward index for keyword search.
     search: SearchEngine,
+#[derive(Debug, Clone)]
+pub struct AuditEntry {
+    pub actor: String,
+    pub action: String,
+    pub target: String,
+    pub timestamp: u64,
 }
 
 impl ComplianceAuditLog {
@@ -277,5 +283,19 @@ mod tests {
         );
         assert_eq!(log.search("datacenter:EU"), vec![1]);
         assert_eq!(log.search("sensitivity:high"), vec![1]);
+
+impl AuditLog {
+    /// Records an audit entry. For key rotation, use action="rotate_master_secure" and target="master_key".
+    pub fn record(&mut self, actor: &str, action: &str, target: &str, now: u64) {
+        self.entries.push(AuditEntry {
+            actor: actor.to_string(),
+            action: action.to_string(),
+            target: target.to_string(),
+            timestamp: now,
+        });
+    }
+
+    pub fn query(&self) -> &[AuditEntry] {
+        &self.entries
     }
 }

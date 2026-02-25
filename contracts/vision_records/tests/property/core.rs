@@ -1,3 +1,8 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::arithmetic_side_effects
+)]
 //! Property-based tests for the core contract functions.
 //!
 //! Invariants tested:
@@ -74,11 +79,10 @@ proptest! {
         let rtype = record_type_from_u8(record_type_seed);
         let hash = String::from_str(
             &env,
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        );
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",        );
 
         let id = client.add_record(&_admin, &patient, &provider, &rtype, &hash);
-        let record = client.get_record(&id);
+        let record = client.get_record(&provider, &id);
 
         prop_assert_eq!(record.patient, patient);
         prop_assert_eq!(record.provider, provider);
@@ -95,8 +99,7 @@ proptest! {
         let provider = Address::generate(&env);
         let hash = String::from_str(
             &env,
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        );
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",        );
 
         let mut added_ids: Vec<u64> = Vec::new();
 
@@ -134,8 +137,7 @@ proptest! {
         for i in 0..n_records {
             let hash = String::from_str(
                 &env,
-                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            );
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",            );
             client.add_record(&_admin, &patient, &provider, &RecordType::Diagnosis, &hash);
             prop_assert_eq!(client.get_record_count(), i.saturating_add(1) as u64);
         }
@@ -150,8 +152,7 @@ proptest! {
         let provider = Address::generate(&env);
         let hash = String::from_str(
             &env,
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        );
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",        );
 
         let mut ids_a: Vec<u64> = Vec::new();
         let mut ids_b: Vec<u64> = Vec::new();

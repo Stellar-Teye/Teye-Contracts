@@ -1,5 +1,6 @@
 #![allow(clippy::arithmetic_side_effects)]
-use soroban_sdk::{contracttype, symbol_short, Env, String, Symbol};
+use soroban_sdk::{contracttype, symbol_short, Env, String, Symbol, Vec};
+use teye_common::concurrency::{self, FieldChange, UpdateOutcome, VersionStamp};
 
 const TTL_THRESHOLD: u32 = 5184000;
 const TTL_EXTEND_TO: u32 = 10368000;
@@ -58,8 +59,10 @@ pub struct VisualField {
     pub right_eye_defects: String,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum OptVisualField {
     None,
     Some(VisualField),
@@ -73,8 +76,10 @@ pub struct RetinalImaging {
     pub findings: String,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum OptRetinalImaging {
     None,
     Some(RetinalImaging),
@@ -92,6 +97,7 @@ pub struct FundusPhotography {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum OptFundusPhotography {
     None,
     Some(FundusPhotography),
@@ -128,4 +134,49 @@ pub fn set_examination(env: &Env, exam: &EyeExamination) {
 pub fn remove_examination(env: &Env, record_id: u64) {
     let key = exam_key(record_id);
     env.storage().persistent().remove(&key);
+}
+
+/// Performs a versioned (OCC) update of an eye examination record.
+///
+/// The caller must supply the `expected_version` they read before making
+/// modifications, along with the `node_id` that identifies the provider in
+/// the vector clock and the list of field-level changes.
+///
+/// Returns the [`UpdateOutcome`] so the contract layer can decide whether
+/// the update was applied, merged, or queued as a conflict.
+pub fn versioned_set_examination(
+    env: &Env,
+    exam: &EyeExamination,
+    expected_version: u64,
+    node_id: u32,
+    provider: &soroban_sdk::Address,
+    changed_fields: &Vec<FieldChange>,
+) -> UpdateOutcome {
+    let outcome = concurrency::compare_and_swap(
+        env,
+        exam.record_id,
+        expected_version,
+        node_id,
+        provider,
+        changed_fields,
+    );
+
+    match &outcome {
+        UpdateOutcome::Applied(_) | UpdateOutcome::Merged(_) => {
+            let key = exam_key(exam.record_id);
+            env.storage().persistent().set(&key, exam);
+            extend_ttl_exam_key(env, &key);
+            concurrency::save_field_snapshot(env, exam.record_id, changed_fields);
+        }
+        UpdateOutcome::Conflicted(_) => {
+            // Record is not updated — conflict must be resolved first.
+        }
+    }
+
+    outcome
+}
+
+/// Retrieves the current OCC version stamp for an examination record.
+pub fn get_exam_version(env: &Env, record_id: u64) -> VersionStamp {
+    concurrency::get_version_stamp(env, record_id)
 }

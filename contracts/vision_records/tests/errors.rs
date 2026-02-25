@@ -1,3 +1,8 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::arithmetic_side_effects
+)]
 mod common;
 
 use common::setup_test_env;
@@ -52,7 +57,8 @@ fn test_error_logging_on_user_not_found() {
 fn test_error_logging_on_record_not_found() {
     let ctx = setup_test_env();
 
-    let result = ctx.client.try_get_record(&999);
+    let caller = Address::generate(&ctx.env);
+    let result = ctx.client.try_get_record(&caller, &999);
 
     assert!(result.is_err());
 
@@ -307,7 +313,8 @@ fn test_multiple_error_types() {
     let user = Address::generate(&ctx.env);
     let _ = ctx.client.try_get_user(&user);
 
-    let record_result = ctx.client.try_get_record(&999);
+    let caller = Address::generate(&ctx.env);
+    let record_result = ctx.client.try_get_record(&caller, &999);
     assert!(record_result.is_err());
 
     let provider = Address::generate(&ctx.env);
