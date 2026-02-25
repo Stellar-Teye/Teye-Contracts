@@ -12,6 +12,8 @@ pub struct AuditRecord {
     pub proof_hash: BytesN<32>,
     /// The ledger timestamp of the verification event.
     pub timestamp: u64,
+    /// The expiry timestamp of the access request.
+    pub expires_at: u64,
     /// Hash of the previous audit record in the chain (zero for the first record).
     pub prev_hash: BytesN<32>,
 }
@@ -23,6 +25,7 @@ fn hash_record(env: &Env, record: &AuditRecord) -> BytesN<32> {
     buf.extend_from_array(&record.resource_id.to_array());
     buf.extend_from_array(&record.prev_hash.to_array());
     buf.extend_from_array(&record.timestamp.to_be_bytes());
+    buf.extend_from_array(&record.expires_at.to_be_bytes());
     env.crypto().keccak256(&buf).into()
 }
 
@@ -32,7 +35,7 @@ pub struct AuditTrail;
 impl AuditTrail {
     /// Logs a successful access verification event to persistent storage and emits an event.
     /// Each new record is chained to the previous one via `prev_hash`.
-    pub fn log_access(env: &Env, user: Address, resource_id: BytesN<32>, proof_hash: BytesN<32>) {
+    pub fn log_access(env: &Env, user: Address, resource_id: BytesN<32>, proof_hash: BytesN<32>, expires_at: u64) {
         let key = (&user, &resource_id);
         let mut chain: Vec<AuditRecord> = env
             .storage()
@@ -54,6 +57,7 @@ impl AuditTrail {
             resource_id: resource_id.clone(),
             proof_hash,
             timestamp: env.ledger().timestamp(),
+            expires_at,
             prev_hash,
         };
 
@@ -119,5 +123,18 @@ impl AuditTrail {
         }
 
         true
+    }
+
+    pub fn log_verification(env: &Env, submitter: &Address, proof_id: u64, verified: bool) {
+        let record = VerificationRecord {
+            submitter: submitter.clone(),
+            proof_id,
+            verified,
+            timestamp: env.ledger().timestamp(),
+        };
+        env.storage()
+            .persistent()
+            .set(&("verification", proof_id), &record);
+        env.events().publish(("verification", proof_id), (submitter, verified));
     }
 }

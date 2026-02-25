@@ -1101,6 +1101,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 
 [[package]]
+name = "orchestrator"
+version = "1.2.2"
+dependencies = [
+ "common",
+ "proptest",
+ "proptest-derive",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "p256"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1855,6 +1865,14 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys",
+]
+
+[[package]]
+name = "teye-state-channel"
+version = "1.2.2"
+dependencies = [
+ "common",
+ "soroban-sdk",
 ]
 
 [[package]]

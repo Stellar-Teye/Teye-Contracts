@@ -49,6 +49,7 @@ fn make_request(env: &Env, user: &Address, num_inputs: u32) -> AccessRequest {
         proof_b,
         proof_c,
         &pi_refs,
+        env.ledger().timestamp() + 1000,
     )
 }
 

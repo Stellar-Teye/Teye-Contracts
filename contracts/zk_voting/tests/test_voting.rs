@@ -2,6 +2,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, Vec};
+use zk_verifier::verifier::{G1Point, G2Point};
 use zk_verifier::Proof;
 use zk_voting::merkle::{make_leaf, MerkleTree};
 use zk_voting::{ZkVoting, ZkVotingClient};
@@ -11,29 +12,37 @@ use zk_voting::{ZkVoting, ZkVotingClient};
 /// Build a valid Groth16 proof (matches Bn254Verifier mock rules:
 /// a[0]==1, c[0]==1, public_inputs[0][0]==1).
 fn valid_proof(env: &Env) -> (Proof, Vec<BytesN<32>>) {
-    let mut a_bytes = [0u8; 32];
-    a_bytes[0] = 1;
-    let mut c_bytes = [0u8; 32];
-    c_bytes[0] = 1;
+    // a is a G1Point: x=[1,0..], y=[0..]
+    let mut ax = [0u8; 32];
+    ax[0] = 1;
+    let ay = [0u8; 32];
+
+    // b is a G2Point: x=(x0,x1), y=(y0,y1) — all zeros is fine for the mock
+    let bx0 = [0u8; 32];
+    let bx1 = [0u8; 32];
+    let by0 = [0u8; 32];
+    let by1 = [0u8; 32];
+
+    // c is a G1Point: x=[1,0..], y=[0..]
+    let mut cx = [0u8; 32];
+    cx[0] = 1;
+    let cy = [0u8; 32];
+
+    let mut pi = [0u8; 32];
+    pi[0] = 1;
 
     let proof = Proof {
-        a: zk_verifier::verifier::G1Point {
-            x: BytesN::from_array(env, &a_bytes),
-            y: BytesN::from_array(env, &[0u8; 32]),
+        a: G1Point {
+            x: BytesN::from_array(env, &ax),
+            y: BytesN::from_array(env, &ay),
         },
-        b: zk_verifier::verifier::G2Point {
-            x: (
-                BytesN::from_array(env, &[0u8; 32]),
-                BytesN::from_array(env, &[0u8; 32]),
-            ),
-            y: (
-                BytesN::from_array(env, &[0u8; 32]),
-                BytesN::from_array(env, &[0u8; 32]),
-            ),
+        b: G2Point {
+            x: (BytesN::from_array(env, &bx0), BytesN::from_array(env, &bx1)),
+            y: (BytesN::from_array(env, &by0), BytesN::from_array(env, &by1)),
         },
-        c: zk_verifier::verifier::G1Point {
-            x: BytesN::from_array(env, &c_bytes),
-            y: BytesN::from_array(env, &[0u8; 32]),
+        c: G1Point {
+            x: BytesN::from_array(env, &cx),
+            y: BytesN::from_array(env, &cy),
         },
     };
 
@@ -45,33 +54,30 @@ fn valid_proof(env: &Env) -> (Proof, Vec<BytesN<32>>) {
     (proof, inputs)
 }
 
-/// Build an invalid proof (a[0]==0 fails the mock verifier).
+/// Build an invalid proof (a.x[0]==0 fails the mock verifier).
 fn invalid_proof(env: &Env) -> (Proof, Vec<BytesN<32>>) {
+    // All-zero G1/G2 points — mock verifier rejects because a.x[0] != 1
+    let z32 = [0u8; 32];
+
     let proof = Proof {
-        a: zk_verifier::verifier::G1Point {
-            x: BytesN::from_array(env, &[0u8; 32]),
-            y: BytesN::from_array(env, &[0u8; 32]),
+        a: G1Point {
+            x: BytesN::from_array(env, &z32),
+            y: BytesN::from_array(env, &z32),
         },
-        b: zk_verifier::verifier::G2Point {
-            x: (
-                BytesN::from_array(env, &[0u8; 32]),
-                BytesN::from_array(env, &[0u8; 32]),
-            ),
-            y: (
-                BytesN::from_array(env, &[0u8; 32]),
-                BytesN::from_array(env, &[0u8; 32]),
-            ),
+        b: G2Point {
+            x: (BytesN::from_array(env, &z32), BytesN::from_array(env, &z32)),
+            y: (BytesN::from_array(env, &z32), BytesN::from_array(env, &z32)),
         },
-        c: zk_verifier::verifier::G1Point {
-            x: BytesN::from_array(env, &[0u8; 32]),
-            y: BytesN::from_array(env, &[0u8; 32]),
+        c: G1Point {
+            x: BytesN::from_array(env, &z32),
+            y: BytesN::from_array(env, &z32),
         },
     };
 
     let pi = [0u8; 32];
 
     let mut inputs: Vec<BytesN<32>> = Vec::new(env);
-    inputs.push_back(BytesN::from_array(env, &pi));
+    inputs.push_back(BytesN::from_array(env, &z32));
     (proof, inputs)
 }
 

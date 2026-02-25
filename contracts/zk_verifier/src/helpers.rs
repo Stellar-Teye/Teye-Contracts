@@ -1,7 +1,12 @@
+<<<<<<< HEAD
 use crate::{
     verifier::{G1Point, G2Point, Proof, PoseidonHasher},
     AccessRequest,
 };
+=======
+use crate::verifier::{G1Point, G2Point};
+use crate::{AccessRequest, Proof};
+>>>>>>> 8ac60fcc51b5991fb5c3c3a879dcb5daa5df7d74
 use soroban_sdk::{BytesN, Env, Vec};
 
 /// Helper utility for creating ZK access requests.
@@ -20,6 +25,7 @@ impl ZkAccessHelper {
     ///
     /// This helper is intended for use in tests and off-chain tools to ensure consistent
     /// formatting of the `AccessRequest` structure submitted to the `ZkVerifierContract`.
+    #[allow(clippy::too_many_arguments)]
     pub fn create_request(
         env: &Env,
         user: soroban_sdk::Address,
@@ -28,6 +34,7 @@ impl ZkAccessHelper {
         proof_b: [u8; 128],
         proof_c: [u8; 64],
         public_inputs: &[&[u8; 32]],
+        expires_at: u64,
     ) -> AccessRequest {
         let mut pi_vec = Vec::new(env);
         for &pi in public_inputs {
@@ -58,6 +65,8 @@ impl ZkAccessHelper {
                 },
             },
             public_inputs: pi_vec,
+            expires_at,
+            nonce: 0, // Default nonce; caller should set appropriately for replay protection
         }
     }
 }

@@ -2,7 +2,26 @@
 
 ## Overview
 
-The Vision Records contract includes a comprehensive test suite covering unit tests, integration tests, and property-based tests. This document describes the testing strategy, test organization, and how to run the tests.
+This document provides a quick reference for testing in the Teye contract suite. For comprehensive testing strategy, coverage requirements, and quality gates, see the [Testing Strategy Guide](testing-strategy.md).
+
+## Quick Start
+
+```bash
+# Run all tests
+cargo test --all
+
+# Run tests for specific contract
+cargo test -p vision_records
+
+# Run benchmarks
+cargo bench
+
+# Run fuzz tests
+cargo fuzz run vision_records
+
+# Check coverage
+./scripts/run_coverage.sh
+```
 
 ## Test Structure
 

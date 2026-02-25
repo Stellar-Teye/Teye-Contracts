@@ -28,6 +28,7 @@ The platform provides a comprehensive solution for modern vision care data manag
 - [Helpful Links](#-helpful-links)
 - [Contribution Guidelines](#-contribution-guidelines)
 - [License](#-license)
+- [Compliance Documentation](docs/compliance/) - HIPAA compliance and regulatory requirements
 - [Support](#-support)
 
 ---
@@ -323,7 +324,9 @@ make deploy-mainnet
 
 - [API Reference](docs/api.md)
 - [Architecture Overview](docs/architecture.md)
+- [Data Flow Diagrams](docs/data-flows.md)
 - [Security Model](docs/security.md)
+- [Production Runbook](docs/runbook/README.md)
 
 ### Repository Resources
 

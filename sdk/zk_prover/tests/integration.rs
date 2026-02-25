@@ -29,7 +29,7 @@ fn test_prover_generates_valid_proof() {
     let witness = AccessWitness { secret };
 
     // 1. Generate the proof via SDK
-    let request = generate_proof(&env, user, resource_id, witness, &[&pi]);
+    let request = generate_proof(&env, user, resource_id, witness, &[&pi], env.ledger().timestamp() + 1000);
 
     // 2. Submit to the verifier
     let result = client.try_verify_access(&request);
@@ -65,7 +65,7 @@ fn test_prover_generates_invalid_proof() {
     let witness = AccessWitness { secret };
 
     // 1. Generate the proof via SDK
-    let request = generate_proof(&env, user, resource_id, witness, &[&pi]);
+    let request = generate_proof(&env, user, resource_id, witness, &[&pi], env.ledger().timestamp() + 1000);
 
     // 2. Submit to the verifier
     let result = client.try_verify_access(&request);
