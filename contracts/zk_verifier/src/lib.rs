@@ -18,13 +18,15 @@
 mod audit;
 pub mod events;
 mod helpers;
+pub mod plonk;
 pub mod verifier;
 pub mod vk;
 
 pub use crate::audit::{AuditRecord, AuditTrail};
 pub use crate::events::AccessRejectedEvent;
 pub use crate::helpers::ZkAccessHelper;
-pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof, ProofValidationError};
+pub use crate::plonk::PlonkVerifier;
+pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof, ProofValidationError, ZkVerifier};
 pub use crate::vk::VerificationKey;
 
 use common::whitelist;
@@ -457,7 +459,7 @@ impl ZkVerifierContract {
             err
         })?;
 
-        Bn254Verifier::validate_proof_components(&request.proof, &request.public_inputs)
+        <Bn254Verifier as ZkVerifier>::validate_proof_components(&request.proof, &request.public_inputs)
             .map_err(map_proof_validation_error)?;
 
         // TODO: post-quantum migration - The verification branch below is hardcoded for BN254 Groth16.
@@ -465,7 +467,7 @@ impl ZkVerifierContract {
         // or a native host-function call if STARK verification limits CPU budgets.
         let vk = Self::get_verification_key(env.clone()).ok_or(ContractError::InvalidConfig)?;
         let is_valid =
-            Bn254Verifier::verify_proof(&env, &vk, &request.proof, &request.public_inputs);
+            <Bn254Verifier as ZkVerifier>::verify_proof(&env, &vk, &request.proof, &request.public_inputs);
         if is_valid {
             let proof_hash = PoseidonHasher::hash(&env, &request.public_inputs);
             AuditTrail::log_access(&env, request.user, request.resource_id, proof_hash);
@@ -475,6 +477,73 @@ impl ZkVerifierContract {
                 &request.user,
                 "verify_access",
                 "valid_groth16_proof",
+            );
+        }
+        Ok(is_valid)
+    }
+
+    /// Verifies a ZK proof for resource access using PLONK.
+    ///
+    /// This endpoint provides PLONK-based verification as an alternative to Groth16.
+    /// PLONK offers universal setup (no trusted ceremony) and circuit flexibility.
+    /// 
+    /// It performs the same security checks as `verify_access`:
+    /// 1. Authorizes the user.
+    /// 2. Validates the request shape.
+    /// 3. Checks whitelist and rate limits.
+    /// 4. Verifies the PLONK proof via `PlonkVerifier`.
+    /// 5. Logs the access in the `AuditTrail` if successful.
+    ///
+    /// Returns `true` if the proof is valid and all checks pass, otherwise returns an error or `false`.
+    pub fn verify_access_plonk(env: Env, request: AccessRequest) -> Result<bool, ContractError> {
+        common::pausable::require_not_paused(&env).map_err(|_| ContractError::Paused)?;
+        request.user.require_auth();
+
+        validate_request(&request).map_err(|err| {
+            events::publish_access_rejected(
+                &env,
+                request.user.clone(),
+                request.resource_id.clone(),
+                err,
+            );
+            err
+        })?;
+
+        if !whitelist::check_whitelist_access(&env, &request.user) {
+            events::publish_access_rejected(
+                &env,
+                request.user.clone(),
+                request.resource_id.clone(),
+                ContractError::Unauthorized,
+            );
+            return Self::unauthorized(&env, &request.user, "verify_access_plonk", "whitelisted_user");
+        }
+
+        Self::check_and_update_rate_limit(&env, &request.user).map_err(|err| {
+            events::publish_access_rejected(
+                &env,
+                request.user.clone(),
+                request.resource_id.clone(),
+                err,
+            );
+            err
+        })?;
+
+        <PlonkVerifier as ZkVerifier>::validate_proof_components(&request.proof, &request.public_inputs)
+            .map_err(map_proof_validation_error)?;
+
+        let vk = Self::get_verification_key(env.clone()).ok_or(ContractError::InvalidConfig)?;
+        let is_valid =
+            <PlonkVerifier as ZkVerifier>::verify_proof(&env, &vk, &request.proof, &request.public_inputs);
+        if is_valid {
+            let proof_hash = PoseidonHasher::hash(&env, &request.public_inputs);
+            AuditTrail::log_access(&env, request.user, request.resource_id, proof_hash);
+        } else {
+            Self::emit_access_violation(
+                &env,
+                &request.user,
+                "verify_access_plonk",
+                "valid_plonk_proof",
             );
         }
         Ok(is_valid)

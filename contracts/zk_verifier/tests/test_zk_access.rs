@@ -964,3 +964,313 @@ fn test_audit_chain_empty_is_valid() {
         "Empty audit chain should be valid"
     );
 }
+// ================================
+// PLONK Verifier Tests
+// ================================
+
+#[test]
+fn test_plonk_valid_proof_verification() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let vk = setup_vk(&env);
+    client.set_verification_key(&admin, &vk);
+
+    let user = Address::generate(&env);
+    let resource_id = BytesN::from_array(&env, &[42u8; 32]);
+
+    // Create PLONK-compatible proof (first byte = 2 for PLONK compatibility)
+    let mut proof_a = [0u8; 64];
+    proof_a[0] = 2; // PLONK marker
+    proof_a[32] = 0x02;
+    let mut proof_b = [0u8; 128];
+    proof_b[0] = 2;
+    proof_b[32] = 0x02;
+    proof_b[64] = 0x03;
+    proof_b[96] = 0x04;
+    let mut proof_c = [0u8; 64];
+    proof_c[0] = 2;
+    proof_c[32] = 0x02;
+    let mut pi = [0u8; 32];
+    pi[0] = 2; // PLONK public input marker
+
+    let request = ZkAccessHelper::create_request(
+        &env,
+        user.clone(),
+        resource_id,
+        proof_a,
+        proof_b,
+        proof_c,
+        &[&pi],
+    );
+
+    // Verify using PLONK endpoint
+    assert!(
+        client.verify_access_plonk(&request),
+        "Valid PLONK proof should verify successfully"
+    );
+
+    // Should be logged in audit trail
+    let record = client.get_audit_record(&user, &resource_id);
+    assert!(record.is_some(), "Audit record should exist");
+}
+
+#[test]
+fn test_plonk_invalid_proof_rejection() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let vk = setup_vk(&env);
+    client.set_verification_key(&admin, &vk);
+
+    let user = Address::generate(&env);
+    let resource_id = BytesN::from_array(&env, &[43u8; 32]);
+
+    // Create invalid PLONK proof (wrong marker bytes)
+    let mut proof_a = [0u8; 64];
+    proof_a[0] = 0xFF; // Invalid marker
+    proof_a[32] = 0x02;
+    let mut proof_b = [0u8; 128];
+    proof_b[0] = 0xFF;
+    proof_b[32] = 0x02;
+    proof_b[64] = 0x03;
+    proof_b[96] = 0x04;
+    let mut proof_c = [0u8; 64];
+    proof_c[0] = 0xFF;
+    proof_c[32] = 0x02;
+    let mut pi = [0u8; 32];
+    pi[0] = 0xFF;
+
+    let request = ZkAccessHelper::create_request(
+        &env,
+        user.clone(),
+        resource_id,
+        proof_a,
+        proof_b,
+        proof_c,
+        &[&pi],
+    );
+
+    // Invalid PLONK proof should fail
+    assert!(
+        !client.verify_access_plonk(&request),
+        "Invalid PLONK proof should be rejected"
+    );
+
+    // Should NOT be logged in audit trail
+    let record = client.get_audit_record(&user, &resource_id);
+    assert!(record.is_none(), "No audit record should exist for failed proof");
+}
+
+#[test]
+fn test_plonk_and_groth16_coexistence() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let vk = setup_vk(&env);
+    client.set_verification_key(&admin, &vk);
+
+    let user = Address::generate(&env);
+    let resource_id_groth16 = BytesN::from_array(&env, &[44u8; 32]);
+    let resource_id_plonk = BytesN::from_array(&env, &[45u8; 32]);
+
+    // Create Groth16 proof
+    let mut proof_a_g16 = [0u8; 64];
+    proof_a_g16[0] = 1;
+    proof_a_g16[32] = 0x02;
+    let mut proof_b_g16 = [0u8; 128];
+    proof_b_g16[0] = 1;
+    proof_b_g16[32] = 0x02;
+    proof_b_g16[64] = 0x03;
+    proof_b_g16[96] = 0x04;
+    let mut proof_c_g16 = [0u8; 64];
+    proof_c_g16[0] = 1;
+    proof_c_g16[32] = 0x02;
+    let mut pi_g16 = [0u8; 32];
+    pi_g16[0] = 1;
+
+    let request_groth16 = ZkAccessHelper::create_request(
+        &env,
+        user.clone(),
+        resource_id_groth16.clone(),
+        proof_a_g16,
+        proof_b_g16,
+        proof_c_g16,
+        &[&pi_g16],
+    );
+
+    // Create PLONK proof
+    let mut proof_a_plonk = [0u8; 64];
+    proof_a_plonk[0] = 2;
+    proof_a_plonk[32] = 0x02;
+    let mut proof_b_plonk = [0u8; 128];
+    proof_b_plonk[0] = 2;
+    proof_b_plonk[32] = 0x02;
+    proof_b_plonk[64] = 0x03;
+    proof_b_plonk[96] = 0x04;
+    let mut proof_c_plonk = [0u8; 64];
+    proof_c_plonk[0] = 2;
+    proof_c_plonk[32] = 0x02;
+    let mut pi_plonk = [0u8; 32];
+    pi_plonk[0] = 2;
+
+    let request_plonk = ZkAccessHelper::create_request(
+        &env,
+        user.clone(),
+        resource_id_plonk.clone(),
+        proof_a_plonk,
+        proof_b_plonk,
+        proof_c_plonk,
+        &[&pi_plonk],
+    );
+
+    // Both verifiers should work independently
+    assert!(
+        client.verify_access(&request_groth16),
+        "Groth16 verification should succeed"
+    );
+    assert!(
+        client.verify_access_plonk(&request_plonk),
+        "PLONK verification should succeed"
+    );
+
+    // Both should have audit records
+    assert!(
+        client.get_audit_record(&user, &resource_id_groth16).is_some(),
+        "Groth16 audit record should exist"
+    );
+    assert!(
+        client.get_audit_record(&user, &resource_id_plonk).is_some(),
+        "PLONK audit record should exist"
+    );
+}
+
+#[test]
+fn test_plonk_respects_pause() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let vk = setup_vk(&env);
+    client.set_verification_key(&admin, &vk);
+
+    let user = Address::generate(&env);
+    let resource_id = BytesN::from_array(&env, &[46u8; 32]);
+
+    let mut proof_a = [0u8; 64];
+    proof_a[0] = 2;
+    proof_a[32] = 0x02;
+    let mut proof_b = [0u8; 128];
+    proof_b[0] = 2;
+    proof_b[32] = 0x02;
+    proof_b[64] = 0x03;
+    proof_b[96] = 0x04;
+    let mut proof_c = [0u8; 64];
+    proof_c[0] = 2;
+    proof_c[32] = 0x02;
+    let mut pi = [0u8; 32];
+    pi[0] = 2;
+
+    let request = ZkAccessHelper::create_request(
+        &env,
+        user.clone(),
+        resource_id,
+        proof_a,
+        proof_b,
+        proof_c,
+        &[&pi],
+    );
+
+    // Pause the contract
+    client.pause(&admin);
+
+    // PLONK verification should fail while paused
+    let result = client.try_verify_access_plonk(&request);
+    assert!(result.is_err(), "PLONK verification should fail when paused");
+
+    // Unpause
+    client.unpause(&admin);
+
+    // Should work again
+    assert!(
+        client.verify_access_plonk(&request),
+        "PLONK verification should succeed after unpause"
+    );
+}
+
+#[test]
+fn test_plonk_multiple_public_inputs() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let vk = setup_vk(&env);
+    client.set_verification_key(&admin, &vk);
+
+    let user = Address::generate(&env);
+    let resource_id = BytesN::from_array(&env, &[47u8; 32]);
+
+    let mut proof_a = [0u8; 64];
+    proof_a[0] = 2;
+    proof_a[32] = 0x02;
+    let mut proof_b = [0u8; 128];
+    proof_b[0] = 2;
+    proof_b[32] = 0x02;
+    proof_b[64] = 0x03;
+    proof_b[96] = 0x04;
+    let mut proof_c = [0u8; 64];
+    proof_c[0] = 2;
+    proof_c[32] = 0x02;
+    
+    // Multiple public inputs
+    let mut pi1 = [0u8; 32];
+    pi1[0] = 2;
+    let mut pi2 = [0u8; 32];
+    pi2[0] = 3;
+    let mut pi3 = [0u8; 32];
+    pi3[0] = 4;
+
+    let request = ZkAccessHelper::create_request(
+        &env,
+        user.clone(),
+        resource_id,
+        proof_a,
+        proof_b,
+        proof_c,
+        &[&pi1, &pi2, &pi3],
+    );
+
+    // Should handle multiple public inputs
+    assert!(
+        client.verify_access_plonk(&request),
+        "PLONK should handle multiple public inputs"
+    );
+}
