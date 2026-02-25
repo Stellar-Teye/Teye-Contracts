@@ -13,33 +13,40 @@
 //! above, ensuring no collisions with the common set.
 
 #![cfg_attr(not(feature = "std"), no_std)]
+#![allow(clippy::arithmetic_side_effects)]
+#![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 
 use soroban_sdk::contracterror;
 
 // ── Modules ──────────────────────────────────────────────────────────────────
 
+#[allow(clippy::enum_variant_names)]
 pub mod admin_tiers;
+pub mod conflict_resolver;
 #[cfg(feature = "std")]
 pub mod consent;
 pub mod keys;
 pub mod meta_tx;
-pub mod migration;
+pub mod metering;
 pub mod multisig;
+pub mod pausable;
 pub mod rate_limit;
 pub mod reentrancy_guard;
-pub mod versioned_storage;
+pub mod vector_clock;
 pub mod whitelist;
 
 pub use admin_tiers::*;
+pub use concurrency::*;
 #[cfg(feature = "std")]
 pub use consent::*;
 pub use keys::*;
 pub use meta_tx::*;
-pub use migration::*;
+pub use metering::*;
 pub use multisig::*;
+pub use pausable::*;
 pub use rate_limit::*;
 pub use reentrancy_guard::*;
-pub use versioned_storage::*;
+pub use vector_clock::*;
 pub use whitelist::*;
 
 // ── Shared error enum ────────────────────────────────────────────────────────

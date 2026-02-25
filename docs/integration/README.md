@@ -14,7 +14,7 @@ To interact with Teye-Contracts, you need to connect to the Stellar RPC network 
 * A Soroban RPC URL (e.g., `https://soroban-testnet.stellar.org`)
 
 ### Authentication Flow
-Teye-Contracts strictly adhere to Stellar's native authentication (`soroban_auth`). Third-party apps should NEVER ask for a user's secret key. 
+Teye-Contracts strictly adhere to Stellar's native authentication (`soroban_auth`). Third-party apps should NEVER ask for a user's secret key.
 
 1. **Frontend (Web3):** Use a wallet provider like [Freighter](https://freighter.app/) to request the user's signature for a transaction payload.
    👉 *See `example/js/freighter_auth.js` for a complete implementation.*

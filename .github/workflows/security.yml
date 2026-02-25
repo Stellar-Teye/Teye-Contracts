@@ -140,4 +140,3 @@ jobs:
             echo "⚠️ Security issues detected — review the results above." >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
-

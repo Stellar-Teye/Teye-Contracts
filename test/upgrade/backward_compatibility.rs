@@ -16,9 +16,11 @@ mod backward_compat_tests {
     // Helpers
     // ─────────────────────────────────────────────────────────
 
-    fn make_env() -> Env {
-        Env::default()
-    }
+    // Simulate loading old state into new contract version
+    let migrated: StateV2 = serde_json::from_str(&serialized).unwrap_or_else(|_| {
+        // fallback migration
+        your_crate_name::migrate::migrate_v1_to_v2(old_state.clone())
+    });
 
     fn v1_record(env: &Env) -> Map<Symbol, Bytes> {
         let mut m = Map::new(env);

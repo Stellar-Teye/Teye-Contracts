@@ -1,10 +1,21 @@
-use crate::{AccessRequest, verifier::{Proof, G1Point, G2Point}};
+use crate::{
+    verifier::{G1Point, G2Point, Proof},
+    AccessRequest,
+};
 use soroban_sdk::{BytesN, Env, Vec};
 
 /// Helper utility for creating ZK access requests.
 pub struct ZkAccessHelper;
 
 impl ZkAccessHelper {
+    fn to_bytesn32(env: &Env, bytes: &[u8]) -> BytesN<32> {
+        let mut buf = [0u8; 32];
+        if bytes.len() == 32 {
+            buf.copy_from_slice(bytes);
+        }
+        BytesN::from_array(env, &buf)
+    }
+
     /// Formats raw cryptographic proof points and public inputs into a standard `AccessRequest`.
     ///
     /// This helper is intended for use in tests and off-chain tools to ensure consistent
@@ -28,22 +39,22 @@ impl ZkAccessHelper {
             resource_id: BytesN::from_array(env, &resource_id),
             proof: Proof {
                 a: G1Point {
-                    x: BytesN::from_array(env, &proof_a[0..32].try_into().unwrap()),
-                    y: BytesN::from_array(env, &proof_a[32..64].try_into().unwrap()),
+                    x: Self::to_bytesn32(env, &proof_a[0..32]),
+                    y: Self::to_bytesn32(env, &proof_a[32..64]),
                 },
                 b: G2Point {
                     x: (
-                        BytesN::from_array(env, &proof_b[0..32].try_into().unwrap()),
-                        BytesN::from_array(env, &proof_b[32..64].try_into().unwrap()),
+                        Self::to_bytesn32(env, &proof_b[0..32]),
+                        Self::to_bytesn32(env, &proof_b[32..64]),
                     ),
                     y: (
-                        BytesN::from_array(env, &proof_b[64..96].try_into().unwrap()),
-                        BytesN::from_array(env, &proof_b[96..128].try_into().unwrap()),
+                        Self::to_bytesn32(env, &proof_b[64..96]),
+                        Self::to_bytesn32(env, &proof_b[96..128]),
                     ),
                 },
                 c: G1Point {
-                    x: BytesN::from_array(env, &proof_c[0..32].try_into().unwrap()),
-                    y: BytesN::from_array(env, &proof_c[32..64].try_into().unwrap()),
+                    x: Self::to_bytesn32(env, &proof_c[0..32]),
+                    y: Self::to_bytesn32(env, &proof_c[32..64]),
                 },
             },
             public_inputs: pi_vec,

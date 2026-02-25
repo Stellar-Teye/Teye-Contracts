@@ -456,11 +456,13 @@ fn test_encrypt_decrypt_roundtrip() {
     use common::KeyManager;
 
     let mut km = KeyManager::new(vec![0x0f, 0x1e, 0x2d, 0x3c]);
-    km.create_data_key("dkey1", vec![0xaa, 0xbb, 0xcc], None);
+    km.create_data_key("dkey1", vec![0xaa, 0xbb, 0xcc], None, 1000);
 
     let plaintext = "e3b0c44298fc1c149afbf4c8996fb924";
     let ciphertext = km.encrypt(Some("dkey1"), plaintext);
-    let decrypted = km.decrypt(Some("dkey1"), &ciphertext).expect("decrypt failed");
+    let decrypted = km
+        .decrypt(Some("dkey1"), &ciphertext)
+        .expect("decrypt failed");
 
     assert_eq!(decrypted, plaintext);
 }

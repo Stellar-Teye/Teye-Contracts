@@ -1,5 +1,23 @@
-use your_crate_name::state_v1::StateV1;
-use your_crate_name::migrate::migrate_v1_to_v2;
+#[derive(Debug, Clone)]
+struct StateV1 {
+    owner: String,
+    balance: u64,
+}
+
+#[derive(Debug, Clone)]
+struct StateV2 {
+    owner: String,
+    balance: u64,
+    version: u32,
+}
+
+fn migrate_v1_to_v2(old: StateV1) -> StateV2 {
+    StateV2 {
+        owner: old.owner,
+        balance: old.balance,
+        version: 2,
+    }
+}
 
 fn main() {
     println!("--- Simulating Upgrade ---");

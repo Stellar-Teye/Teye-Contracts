@@ -672,6 +672,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca81e6b4777c89fd810c25a4be2b1bd93ea034fbe58e6a75216a34c6b82c539b"
 
 [[package]]
+name = "events"
+version = "1.2.2"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -765,6 +772,14 @@ dependencies = [
  "r-efi",
  "wasip2",
  "wasip3",
+]
+
+[[package]]
+name = "governor"
+version = "1.2.2"
+dependencies = [
+ "common",
+ "soroban-sdk",
 ]
 
 [[package]]

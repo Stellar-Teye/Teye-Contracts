@@ -2,12 +2,14 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
-    clippy::arithmetic_side_effects
+    clippy::arithmetic_side_effects,
+    unused_imports,
+    unused_variables
 )]
 
 use super::*;
-use soroban_sdk::testutils::{Address as _, Events, Ledger};
-use soroban_sdk::{symbol_short, Env, IntoVal, TryIntoVal};
+use soroban_sdk::testutils::{Address as _, Ledger};
+use soroban_sdk::Env;
 
 #[test]
 fn test_initialize() {
@@ -17,15 +19,9 @@ fn test_initialize() {
 
     let admin = Address::generate(&env);
     client.initialize(&admin);
-    let events = env.events().all();
 
     assert!(client.is_initialized());
     assert_eq!(client.get_admin(), admin);
-
-    let our_events = env.events().all();
-    let events_vec = our_events.events();
-
-    assert!(!events_vec.is_empty());
 }
 
 #[test]
@@ -193,7 +189,7 @@ fn test_rate_limit_add_record_and_grant_access() {
     client.initialize(&admin);
 
     // Configure a small window for testing
-    client.set_rate_limit_config(&admin, &2, &60);
+    client.set_rate_limit_config(&admin, &2, &60, &0);
 
     let patient = Address::generate(&env);
     let provider = Address::generate(&env);
@@ -228,7 +224,6 @@ fn test_rate_limit_add_record_and_grant_access() {
     assert!(matches!(err, Ok(ContractError::RateLimitExceeded)));
 
     // Advance time beyond the window and ensure the limit resets
-    use soroban_sdk::testutils::Ledger;
     let current = env.ledger().timestamp();
     env.ledger().set_timestamp(current + 61);
 

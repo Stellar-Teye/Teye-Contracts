@@ -1,22 +1,14 @@
 #![no_main]
 
-use libfuzzer_sys::fuzz_target;
 use arbitrary::Arbitrary;
+use libfuzzer_sys::fuzz_target;
 use soroban_sdk::{testutils::Address as _, Address, Env, String};
-use vision_records::{
-    VisionRecordsContract, VisionRecordsContractClient, Role, RecordType
-};
+use vision_records::{RecordType, Role, VisionRecordsContract, VisionRecordsContractClient};
 
 #[derive(Arbitrary, Debug)]
 pub enum FuzzAction {
-    RegisterUser {
-        name_len: u8,
-        role: u8,
-    },
-    AddRecord {
-        record_type: u8,
-        hash_len: u8,
-    },
+    RegisterUser { name_len: u8, role: u8 },
+    AddRecord { record_type: u8, hash_len: u8 },
 }
 
 fuzz_target!(|actions: Vec<FuzzAction>| {
@@ -34,7 +26,12 @@ fuzz_target!(|actions: Vec<FuzzAction>| {
     let provider = Address::generate(&env);
     users.push(provider.clone());
 
-    let _ = client.try_register_user(&admin, &provider, &Role::Optometrist, &String::from_str(&env, "Provider"));
+    let _ = client.try_register_user(
+        &admin,
+        &provider,
+        &Role::Optometrist,
+        &String::from_str(&env, "Provider"),
+    );
 
     for action in actions {
         match action {
@@ -64,7 +61,10 @@ fuzz_target!(|actions: Vec<FuzzAction>| {
                 let _ = client.try_register_user(caller, &user, &role_enum, &name);
                 users.push(user);
             }
-            FuzzAction::AddRecord { record_type, hash_len } => {
+            FuzzAction::AddRecord {
+                record_type,
+                hash_len,
+            } => {
                 let r_type = match record_type % 6 {
                     0 => RecordType::Examination,
                     1 => RecordType::Prescription,

@@ -22,12 +22,12 @@ A sudden transition to a post-quantum proof system is risky due to differing pro
 2. **Dual-Verifier Implementation**: Update the `ZkVerifierContract` to support *both* BN254 SNARKs and a selected PQ alternative (likely a STARK or a lattice-based SNARK). The `AccessRequest` structure will migrate from hardcoded `Proof` structs to a generic `enum ProofType { Groth16(BN254Proof), STARK(StarkProof) }`.
 
 ### Phase 2: Dual Verification & Gradual Upgrade
-3. **SDK Update**: The `sdk/zk_prover` will be updated to allow dApps to generate the new proof types. 
+3. **SDK Update**: The `sdk/zk_prover` will be updated to allow dApps to generate the new proof types.
 4. **Soft-Deprecation**: Emit events warning legacy indexers and off-chain clients that BN254 verification is deprecated. Encourage ecosystem participants to upgrade circuit toolchains.
 5. **Circuit Upgrade**: Ensure all `identity`, `zk_voting`, and `vision_records` circuit logic is ported (from Circom to Cairo/Winterfell for STARKs, for instance).
 
 ### Phase 3: Final Quantum-Safe Enclavement
-6. **Hard-Deprecation**: Disallow `ProofType::Groth16` in the `ZkVerifierContract` entirely. 
+6. **Hard-Deprecation**: Disallow `ProofType::Groth16` in the `ZkVerifierContract` entirely.
 7. **Cleanup**: Remove legacy BN254 parsing and validation logic from the contract to save Wasm space and minimize attack surface.
 
 ## Action Items

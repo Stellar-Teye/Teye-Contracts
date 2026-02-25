@@ -1,4 +1,5 @@
-#![allow(dead_code, clippy::manual_inspect)]
+#![allow(dead_code, clippy::manual_inspect, clippy::arithmetic_side_effects)]
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! # ZK Verifier Module
 //!
 //! This module provides a Zero-Knowledge (ZK) proof verification system for the Soroban ecosystem.
@@ -36,14 +37,14 @@ const ADMIN: Symbol = symbol_short!("ADMIN");
 const PENDING_ADMIN: Symbol = symbol_short!("PEND_ADM");
 const RATE_CFG: Symbol = symbol_short!("RATECFG");
 const RATE_TRACK: Symbol = symbol_short!("RLTRK");
-const VK: Symbol = symbol_short!("VK");
+
 
 /// Maximum number of public inputs accepted per proof verification.
 const MAX_PUBLIC_INPUTS: u32 = 16;
 
 /// Request structure for ZK access verification.
 // TODO: post-quantum migration - This struct currently hardcodes a Groth16 `Proof`.
-// Future PQ systems (like STARKs) will require an `enum ProofType` or dynamically sized bytes 
+// Future PQ systems (like STARKs) will require an `enum ProofType` or dynamically sized bytes
 // to encapsulate changing proof shapes and public inputs matrices.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -79,6 +80,8 @@ pub enum ContractError {
     ZeroedPublicInput = 10,
     /// Cross-contract proof deserialization produced structurally invalid data.
     MalformedProofData = 11,
+    /// The contract is paused and cannot process verification requests.
+    Paused = 12,
 }
 
 /// Map low-level proof validation errors into contract-level errors.
@@ -139,6 +142,23 @@ fn validate_request(request: &AccessRequest) -> Result<(), ContractError> {
         return Err(ContractError::DegenerateProof);
     }
 
+    Ok(())
+}
+
+fn validate_auth_level(level: u32) -> Result<(), ContractError> {
+    if !(1..=4).contains(&level) {
+        return Err(ContractError::InvalidAuthLevel);
+    }
+    Ok(())
+}
+
+fn validate_level4_attributes(request: &AccessRequest) -> Result<(), ContractError> {
+    // Require at least two public inputs at level 4:
+    // - primary operation binding
+    // - privacy-preserving attribute commitment
+    if request.public_inputs.len() < 2 {
+        return Err(ContractError::ProofRequiredForAuthLevel);
+    }
     Ok(())
 }
 
@@ -278,7 +298,11 @@ impl ZkVerifierContract {
     }
 
     /// Sets the ZK Verification Key for Groth16.
-    pub fn set_verification_key(env: Env, caller: Address, vk: VerificationKey) -> Result<(), ContractError> {
+    pub fn set_verification_key(
+        env: Env,
+        caller: Address,
+        vk: VerificationKey,
+    ) -> Result<(), ContractError> {
         Self::require_admin(&env, &caller, "set_verification_key")?;
         env.storage().instance().set(&symbol_short!("VK"), &vk);
         Ok(())
@@ -330,6 +354,27 @@ impl ZkVerifierContract {
         whitelist::is_whitelisted(&env, &user)
     }
 
+    // ── Pause management ──────────────────────────────────────────────────
+
+    /// Pause all state-mutating operations. Only the admin can call this.
+    pub fn pause(env: Env, caller: Address) -> Result<(), ContractError> {
+        Self::require_admin(&env, &caller, "pause")?;
+        common::pausable::pause(&env, &caller);
+        Ok(())
+    }
+
+    /// Resume all state-mutating operations. Only the admin can call this.
+    pub fn unpause(env: Env, caller: Address) -> Result<(), ContractError> {
+        Self::require_admin(&env, &caller, "unpause")?;
+        common::pausable::unpause(&env, &caller);
+        Ok(())
+    }
+
+    /// Returns whether the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        common::pausable::is_paused(&env)
+    }
+
     fn check_and_update_rate_limit(env: &Env, user: &Address) -> Result<(), ContractError> {
         let cfg: Option<(u64, u64)> = env.storage().instance().get(&RATE_CFG);
         let (max_requests_per_window, window_duration_seconds) = match cfg {
@@ -375,6 +420,7 @@ impl ZkVerifierContract {
     ///
     /// Returns `true` if the proof is valid and all checks pass, otherwise returns an error or `false`.
     pub fn verify_access(env: Env, request: AccessRequest) -> Result<bool, ContractError> {
+        common::pausable::require_not_paused(&env).map_err(|_| ContractError::Paused)?;
         request.user.require_auth();
 
         validate_request(&request).map_err(|err| {
@@ -423,7 +469,8 @@ impl ZkVerifierContract {
         // During migration, checking `request.proof_type` should branch to `PostQuantumVerifier::verify_proof`
         // or a native host-function call if STARK verification limits CPU budgets.
         let vk = Self::get_verification_key(env.clone()).ok_or(ContractError::InvalidConfig)?;
-        let is_valid = Bn254Verifier::verify_proof(&env, &vk, &request.proof, &request.public_inputs);
+        let is_valid =
+            Bn254Verifier::verify_proof(&env, &vk, &request.proof, &request.public_inputs);
         if is_valid {
             let proof_hash = PoseidonHasher::hash(&env, &request.public_inputs);
             AuditTrail::log_access(&env, request.user, request.resource_id, proof_hash);
@@ -436,6 +483,25 @@ impl ZkVerifierContract {
             );
         }
         Ok(is_valid)
+    }
+
+    /// Verifies access with auth-level-aware ZK requirements.
+    ///
+    /// Level mapping:
+    /// - 1/2/3: standard proof verification path
+    /// - 4: requires additional attribute proof material in public inputs
+    pub fn verify_auth_level_access(
+        env: Env,
+        request: AccessRequest,
+        required_auth_level: u32,
+    ) -> Result<bool, ContractError> {
+        validate_auth_level(required_auth_level)?;
+
+        if required_auth_level >= 4 {
+            validate_level4_attributes(&request)?;
+        }
+
+        Self::verify_access(env, request)
     }
 
     /// Retrieves an audit record for a specific user and resource.
@@ -452,11 +518,7 @@ impl ZkVerifierContract {
     /// Verifies the integrity of the audit chain for a given user and resource.
     ///
     /// Returns `true` if all hash links are valid, or if the chain is empty.
-    pub fn verify_audit_chain(
-        env: Env,
-        user: Address,
-        resource_id: BytesN<32>,
-    ) -> bool {
+    pub fn verify_audit_chain(env: Env, user: Address, resource_id: BytesN<32>) -> bool {
         AuditTrail::verify_chain(&env, user, resource_id)
     }
 }

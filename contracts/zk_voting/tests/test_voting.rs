@@ -1,4 +1,5 @@
 #![cfg(test)]
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, Vec};
 use zk_verifier::Proof;
@@ -21,15 +22,21 @@ fn valid_proof(env: &Env) -> (Proof, Vec<BytesN<32>>) {
             y: BytesN::from_array(env, &[0u8; 32]),
         },
         b: zk_verifier::verifier::G2Point {
-            x: (BytesN::from_array(env, &[0u8; 32]), BytesN::from_array(env, &[0u8; 32])),
-            y: (BytesN::from_array(env, &[0u8; 32]), BytesN::from_array(env, &[0u8; 32])),
+            x: (
+                BytesN::from_array(env, &[0u8; 32]),
+                BytesN::from_array(env, &[0u8; 32]),
+            ),
+            y: (
+                BytesN::from_array(env, &[0u8; 32]),
+                BytesN::from_array(env, &[0u8; 32]),
+            ),
         },
         c: zk_verifier::verifier::G1Point {
             x: BytesN::from_array(env, &c_bytes),
             y: BytesN::from_array(env, &[0u8; 32]),
         },
     };
-    
+
     let mut pi = [0u8; 32];
     pi[0] = 1;
 
@@ -46,15 +53,21 @@ fn invalid_proof(env: &Env) -> (Proof, Vec<BytesN<32>>) {
             y: BytesN::from_array(env, &[0u8; 32]),
         },
         b: zk_verifier::verifier::G2Point {
-            x: (BytesN::from_array(env, &[0u8; 32]), BytesN::from_array(env, &[0u8; 32])),
-            y: (BytesN::from_array(env, &[0u8; 32]), BytesN::from_array(env, &[0u8; 32])),
+            x: (
+                BytesN::from_array(env, &[0u8; 32]),
+                BytesN::from_array(env, &[0u8; 32]),
+            ),
+            y: (
+                BytesN::from_array(env, &[0u8; 32]),
+                BytesN::from_array(env, &[0u8; 32]),
+            ),
         },
         c: zk_verifier::verifier::G1Point {
             x: BytesN::from_array(env, &[0u8; 32]),
             y: BytesN::from_array(env, &[0u8; 32]),
         },
     };
-    
+
     let pi = [0u8; 32];
 
     let mut inputs: Vec<BytesN<32>> = Vec::new(env);
@@ -74,7 +87,7 @@ fn setup() -> (Env, Address, ZkVotingClient<'static>, BytesN<32>) {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, ZkVoting);
+    let contract_id = env.register(ZkVoting, ());
     let client = ZkVotingClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
 
@@ -91,8 +104,20 @@ fn setup() -> (Env, Address, ZkVotingClient<'static>, BytesN<32>) {
     client.set_merkle_root(&admin, &root);
 
     // Setup verification key
-    let g1 = zk_verifier::vk::G1Point { x: BytesN::from_array(&env, &[0u8; 32]), y: BytesN::from_array(&env, &[0u8; 32]) };
-    let g2 = zk_verifier::vk::G2Point { x: (BytesN::from_array(&env, &[0u8; 32]), BytesN::from_array(&env, &[0u8; 32])), y: (BytesN::from_array(&env, &[0u8; 32]), BytesN::from_array(&env, &[0u8; 32])) };
+    let g1 = zk_verifier::vk::G1Point {
+        x: BytesN::from_array(&env, &[0u8; 32]),
+        y: BytesN::from_array(&env, &[0u8; 32]),
+    };
+    let g2 = zk_verifier::vk::G2Point {
+        x: (
+            BytesN::from_array(&env, &[0u8; 32]),
+            BytesN::from_array(&env, &[0u8; 32]),
+        ),
+        y: (
+            BytesN::from_array(&env, &[0u8; 32]),
+            BytesN::from_array(&env, &[0u8; 32]),
+        ),
+    };
     let mut ic = Vec::new(&env);
     ic.push_back(g1.clone());
     let vk = zk_verifier::vk::VerificationKey {
