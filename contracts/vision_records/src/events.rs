@@ -1144,7 +1144,13 @@ pub fn publish_sensitivity_set(
 // subscribers can filter using wildcard patterns (e.g. `records.vision.*`).
 
 /// Emit a structured streaming event when a vision record is created.
-pub fn emit_record_created(env: &Env, record_id: u64, patient: Address, provider: Address, record_type: RecordType) {
+pub fn emit_record_created(
+    env: &Env,
+    record_id: u64,
+    patient: Address,
+    provider: Address,
+    record_type: RecordType,
+) {
     let topics = (symbol_short!("STREAM"), symbol_short!("REC_CRT"));
     let data = RecordAddedEvent {
         record_id,
@@ -1170,7 +1176,13 @@ pub fn emit_prescription_created(env: &Env, record_id: u64, patient: Address, pr
 }
 
 /// Emit a structured streaming event when access control changes.
-pub fn emit_access_changed(env: &Env, patient: Address, grantee: Address, level: AccessLevel, granted: bool) {
+pub fn emit_access_changed(
+    env: &Env,
+    patient: Address,
+    grantee: Address,
+    level: AccessLevel,
+    granted: bool,
+) {
     if granted {
         let topics = (symbol_short!("STREAM"), symbol_short!("ACC_CHG"));
         let data = AccessGrantedEvent {
@@ -1194,14 +1206,24 @@ pub fn emit_access_changed(env: &Env, patient: Address, grantee: Address, level:
 }
 
 /// Emit a structured streaming event for emergency access actions.
-pub fn emit_emergency_event(env: &Env, access_id: u64, patient: Address, requester: Address, granted: bool) {
-    let action = if granted { symbol_short!("EM_GRANT") } else { symbol_short!("EM_REVOK") };
+pub fn emit_emergency_event(
+    env: &Env,
+    access_id: u64,
+    patient: Address,
+    requester: Address,
+    granted: bool,
+) {
+    let action = if granted {
+        symbol_short!("EM_GRANT")
+    } else {
+        symbol_short!("EM_REVOK")
+    };
     let topics = (symbol_short!("STREAM"), action);
     let data = EmergencyAccessGrantedEvent {
         access_id,
         patient,
         requester,
-        condition: EmergencyCondition::Other,
+        condition: EmergencyCondition::LifeThreatening,
         expires_at: 0,
         timestamp: env.ledger().timestamp(),
     };

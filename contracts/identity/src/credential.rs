@@ -7,6 +7,8 @@
 //! Verification is delegated to the `zk_verifier` contract via a cross-contract
 //! call to `verify_access`.
 
+#![allow(deprecated)]
+
 use soroban_sdk::{symbol_short, Address, BytesN, Env, Symbol, Vec};
 
 // Re-use the proof type definitions from the zk_verifier crate.

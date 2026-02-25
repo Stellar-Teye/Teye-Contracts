@@ -9,7 +9,7 @@
 
 use crate::subscription::dispatch_to_subscribers;
 use crate::{EventEnvelope, EventError};
-use soroban_sdk::{contracttype, symbol_short, Env, Address, String, Vec};
+use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Vec};
 
 // ── Storage key constants ────────────────────────────────────────────────────
 
@@ -106,7 +106,7 @@ pub fn replay_topic(
     from_event_id: u64,
     limit: u32,
 ) -> Result<Vec<EventEnvelope>, EventError> {
-    if limit == 0 || topic.len() == 0 {
+    if limit == 0 || topic.is_empty() {
         return Err(EventError::InvalidInput);
     }
 
@@ -162,10 +162,8 @@ pub fn create_checkpoint(env: &Env) -> Result<u64, EventError> {
         .persistent()
         .set(&checkpoint_key(chkpt_id), &checkpoint);
 
-    env.events().publish(
-        (symbol_short!("CHKPT"), chkpt_id),
-        checkpoint.clone(),
-    );
+    env.events()
+        .publish((symbol_short!("CHKPT"), chkpt_id), checkpoint.clone());
 
     Ok(chkpt_id)
 }
@@ -190,7 +188,7 @@ pub fn get_checkpoint(env: &Env, checkpoint_id: u64) -> Result<u64, EventError> 
 /// This reduces replay overhead for consumers that only need the latest state.
 #[allow(clippy::arithmetic_side_effects)]
 pub fn compact_topic(env: &Env, topic: &String) -> Result<u32, EventError> {
-    if topic.len() == 0 {
+    if topic.is_empty() {
         return Err(EventError::InvalidInput);
     }
 
@@ -239,12 +237,12 @@ pub fn compact_topic(env: &Env, topic: &String) -> Result<u32, EventError> {
     env.storage().persistent().set(&idx_key, &new_index);
 
     // Record compaction metadata
-    env.storage().persistent().set(&compacted_key(topic), &removed);
+    env.storage()
+        .persistent()
+        .set(&compacted_key(topic), &removed);
 
-    env.events().publish(
-        (symbol_short!("COMPACT"), topic.clone()),
-        removed,
-    );
+    env.events()
+        .publish((symbol_short!("COMPACT"), topic.clone()), removed);
 
     Ok(removed)
 }
@@ -278,10 +276,8 @@ pub fn push_dead_letter(
     dlq.push_back(entry.clone());
     env.storage().persistent().set(&DLQ_KEY, &dlq);
 
-    env.events().publish(
-        (symbol_short!("DLQ_PUSH"), subscriber.clone()),
-        event_id,
-    );
+    env.events()
+        .publish((symbol_short!("DLQ_PUSH"), subscriber.clone()), event_id);
 
     Ok(())
 }

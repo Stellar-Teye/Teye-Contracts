@@ -114,7 +114,7 @@ pub fn create_subscription(
     subscriber: &Address,
     topic_pattern: &String,
 ) -> Result<u64, EventError> {
-    if topic_pattern.len() == 0 {
+    if topic_pattern.is_empty() {
         return Err(EventError::InvalidTopicPattern);
     }
 
@@ -136,7 +136,9 @@ pub fn create_subscription(
         active: true,
     };
 
-    env.storage().persistent().set(&sub_key(sub_id), &subscription);
+    env.storage()
+        .persistent()
+        .set(&sub_key(sub_id), &subscription);
 
     // Append to user's subscription list
     let user_key = user_subs_key(subscriber);
@@ -205,7 +207,11 @@ pub fn get_subscriptions(env: &Env, subscriber: &Address) -> Vec<Subscription> {
 
     let mut result = Vec::new(env);
     for id in sub_ids.iter() {
-        if let Some(sub) = env.storage().persistent().get::<_, Subscription>(&sub_key(id)) {
+        if let Some(sub) = env
+            .storage()
+            .persistent()
+            .get::<_, Subscription>(&sub_key(id))
+        {
             result.push_back(sub);
         }
     }
@@ -223,7 +229,7 @@ pub fn create_consumer_group(
     topic_pattern: &String,
     members: &Vec<Address>,
 ) -> Result<u64, EventError> {
-    if group_name.len() == 0 || topic_pattern.len() == 0 {
+    if group_name.is_empty() || topic_pattern.is_empty() {
         return Err(EventError::InvalidInput);
     }
 
@@ -255,10 +261,8 @@ pub fn create_consumer_group(
     all_groups.push_back(group_id);
     env.storage().persistent().set(&global_key, &all_groups);
 
-    env.events().publish(
-        (symbol_short!("GRP_NEW"), owner.clone()),
-        group.clone(),
-    );
+    env.events()
+        .publish((symbol_short!("GRP_NEW"), owner.clone()), group.clone());
 
     Ok(group_id)
 }
@@ -319,7 +323,7 @@ pub fn register_webhook(
     topic_pattern: &String,
     url_hash: &String,
 ) -> Result<u64, EventError> {
-    if topic_pattern.len() == 0 || url_hash.len() == 0 {
+    if topic_pattern.is_empty() || url_hash.is_empty() {
         return Err(EventError::InvalidInput);
     }
 
@@ -345,7 +349,9 @@ pub fn register_webhook(
         active: true,
     };
 
-    env.storage().persistent().set(&webhook_key(webhook_id), &webhook);
+    env.storage()
+        .persistent()
+        .set(&webhook_key(webhook_id), &webhook);
 
     // Append to user's webhook list
     let mut user_whks: Vec<u64> = env
@@ -366,20 +372,14 @@ pub fn register_webhook(
     all_whks.push_back(webhook_id);
     env.storage().persistent().set(&global_key, &all_whks);
 
-    env.events().publish(
-        (symbol_short!("WHK_NEW"), owner.clone()),
-        webhook.clone(),
-    );
+    env.events()
+        .publish((symbol_short!("WHK_NEW"), owner.clone()), webhook.clone());
 
     Ok(webhook_id)
 }
 
 /// Remove (deactivate) a webhook. Only the original owner can do this.
-pub fn remove_webhook(
-    env: &Env,
-    owner: &Address,
-    webhook_id: u64,
-) -> Result<(), EventError> {
+pub fn remove_webhook(env: &Env, owner: &Address, webhook_id: u64) -> Result<(), EventError> {
     let key = webhook_key(webhook_id);
     let mut webhook: WebhookRegistration = env
         .storage()
@@ -394,10 +394,8 @@ pub fn remove_webhook(
     webhook.active = false;
     env.storage().persistent().set(&key, &webhook);
 
-    env.events().publish(
-        (symbol_short!("WHK_REM"), owner.clone()),
-        webhook_id,
-    );
+    env.events()
+        .publish((symbol_short!("WHK_REM"), owner.clone()), webhook_id);
 
     Ok(())
 }
@@ -503,7 +501,11 @@ pub fn dispatch_to_subscribers(env: &Env, envelope: &EventEnvelope) {
         {
             if sub.active && topic_matches(env, &sub.topic_pattern, &envelope.topic) {
                 env.events().publish(
-                    (symbol_short!("DISPATCH"), sub.subscriber.clone(), envelope.event_id),
+                    (
+                        symbol_short!("DISPATCH"),
+                        sub.subscriber.clone(),
+                        envelope.event_id,
+                    ),
                     envelope.topic.clone(),
                 );
             }
@@ -519,11 +521,7 @@ pub fn dispatch_to_subscribers(env: &Env, envelope: &EventEnvelope) {
 
     for gid in all_group_ids.iter() {
         let key = group_key(gid);
-        if let Some(mut group) = env
-            .storage()
-            .persistent()
-            .get::<_, ConsumerGroup>(&key)
-        {
+        if let Some(mut group) = env.storage().persistent().get::<_, ConsumerGroup>(&key) {
             if topic_matches(env, &group.topic_pattern, &envelope.topic) {
                 let member_count = group.members.len();
                 if member_count > 0 {

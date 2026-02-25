@@ -93,7 +93,12 @@ pub fn emit_guardian_changed(env: &Env, owner: Address, guardian: Address, added
 }
 
 /// Emit a streaming event when recovery is initiated.
-pub fn emit_recovery_initiated(env: &Env, owner: Address, new_address: Address, initiated_by: Address) {
+pub fn emit_recovery_initiated(
+    env: &Env,
+    owner: Address,
+    new_address: Address,
+    initiated_by: Address,
+) {
     env.events().publish(
         (symbol_short!("STREAM"), symbol_short!("ID_RINIT")),
         RecoveryInitiatedEvent {

@@ -95,10 +95,7 @@ impl EventStreamContract {
         env.storage().instance().set(&EVT_CTR, &0u64);
         env.storage().instance().set(&LAMPORT, &0u64);
 
-        env.events().publish(
-            (symbol_short!("INIT"),),
-            admin,
-        );
+        env.events().publish((symbol_short!("INIT"),), admin);
 
         Ok(())
     }
@@ -136,7 +133,7 @@ impl EventStreamContract {
         Self::require_initialized(&env)?;
         Self::require_authorized_publisher(&env, &caller)?;
 
-        if topic.len() == 0 {
+        if topic.is_empty() {
             return Err(EventError::InvalidInput);
         }
 
@@ -176,10 +173,8 @@ impl EventStreamContract {
         // Dispatch to subscriber matching
         subscription::dispatch_to_subscribers(&env, &envelope);
 
-        env.events().publish(
-            (symbol_short!("EVT_PUB"), topic, caller),
-            envelope.clone(),
-        );
+        env.events()
+            .publish((symbol_short!("EVT_PUB"), topic, caller), envelope.clone());
 
         Ok(event_id)
     }
@@ -223,20 +218,13 @@ impl EventStreamContract {
     }
 
     /// Retrieve the schema hash for a given topic and version.
-    pub fn get_schema(
-        env: Env,
-        topic: String,
-        version: u32,
-    ) -> Result<String, EventError> {
+    pub fn get_schema(env: Env, topic: String, version: u32) -> Result<String, EventError> {
         Self::require_initialized(&env)?;
         registry::get_schema(&env, &topic, version)
     }
 
     /// Return the latest schema version registered for a topic.
-    pub fn get_latest_schema_version(
-        env: Env,
-        topic: String,
-    ) -> Result<u32, EventError> {
+    pub fn get_latest_schema_version(env: Env, topic: String) -> Result<u32, EventError> {
         Self::require_initialized(&env)?;
         registry::get_latest_version(&env, &topic)
     }
@@ -330,11 +318,7 @@ impl EventStreamContract {
     }
 
     /// Remove a previously registered webhook.
-    pub fn remove_webhook(
-        env: Env,
-        caller: Address,
-        webhook_id: u64,
-    ) -> Result<(), EventError> {
+    pub fn remove_webhook(env: Env, caller: Address, webhook_id: u64) -> Result<(), EventError> {
         caller.require_auth();
         Self::require_initialized(&env)?;
         subscription::remove_webhook(&env, &caller, webhook_id)
@@ -366,10 +350,7 @@ impl EventStreamContract {
 
     /// Create a checkpoint at the current event log position.
     /// Returns the checkpoint ID that can be used for future replays.
-    pub fn create_checkpoint(
-        env: Env,
-        caller: Address,
-    ) -> Result<u64, EventError> {
+    pub fn create_checkpoint(env: Env, caller: Address) -> Result<u64, EventError> {
         caller.require_auth();
         Self::require_initialized(&env)?;
         Self::require_admin(&env, &caller)?;
@@ -377,21 +358,14 @@ impl EventStreamContract {
     }
 
     /// Retrieve the event ID stored at a given checkpoint.
-    pub fn get_checkpoint(
-        env: Env,
-        checkpoint_id: u64,
-    ) -> Result<u64, EventError> {
+    pub fn get_checkpoint(env: Env, checkpoint_id: u64) -> Result<u64, EventError> {
         Self::require_initialized(&env)?;
         replay::get_checkpoint(&env, checkpoint_id)
     }
 
     /// Compact events for a topic: merges sequential update events to reduce
     /// replay overhead while preserving the final state.
-    pub fn compact_topic(
-        env: Env,
-        caller: Address,
-        topic: String,
-    ) -> Result<u32, EventError> {
+    pub fn compact_topic(env: Env, caller: Address, topic: String) -> Result<u32, EventError> {
         caller.require_auth();
         Self::require_initialized(&env)?;
         Self::require_admin(&env, &caller)?;
@@ -414,9 +388,7 @@ impl EventStreamContract {
     }
 
     /// Return all dead letter entries (failed deliveries awaiting retry).
-    pub fn get_dead_letters(
-        env: Env,
-    ) -> Result<Vec<replay::DeadLetterEntry>, EventError> {
+    pub fn get_dead_letters(env: Env) -> Result<Vec<replay::DeadLetterEntry>, EventError> {
         Self::require_initialized(&env)?;
         Ok(replay::get_dead_letters(&env))
     }
@@ -436,11 +408,7 @@ impl EventStreamContract {
     // ── Source contract registration ─────────────────────────────────────────
 
     /// Register an address as an authorized event publisher.
-    pub fn register_source(
-        env: Env,
-        caller: Address,
-        source: Address,
-    ) -> Result<(), EventError> {
+    pub fn register_source(env: Env, caller: Address, source: Address) -> Result<(), EventError> {
         caller.require_auth();
         Self::require_initialized(&env)?;
         Self::require_admin(&env, &caller)?;

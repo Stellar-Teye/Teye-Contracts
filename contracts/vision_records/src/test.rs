@@ -7,7 +7,7 @@
 
 use super::*;
 use soroban_sdk::testutils::{Address as _, Events, Ledger};
-use soroban_sdk::{symbol_short, Env, IntoVal, TryIntoVal};
+use soroban_sdk::Env;
 
 #[test]
 fn test_initialize() {
@@ -17,7 +17,7 @@ fn test_initialize() {
 
     let admin = Address::generate(&env);
     client.initialize(&admin);
-    let events = env.events().all();
+    let _events = env.events().all();
 
     assert!(client.is_initialized());
     assert_eq!(client.get_admin(), admin);
@@ -193,7 +193,7 @@ fn test_rate_limit_add_record_and_grant_access() {
     client.initialize(&admin);
 
     // Configure a small window for testing
-    client.set_rate_limit_config(&admin, &2, &60);
+    client.set_rate_limit_config(&admin, &2, &60, &0);
 
     let patient = Address::generate(&env);
     let provider = Address::generate(&env);

@@ -33,7 +33,7 @@ pub fn register_schema(
     version: u32,
     schema_hash: &String,
 ) -> Result<(), EventError> {
-    if topic.len() == 0 || schema_hash.len() == 0 {
+    if topic.is_empty() || schema_hash.is_empty() {
         return Err(EventError::InvalidInput);
     }
 
@@ -80,11 +80,7 @@ pub fn get_latest_version(env: &Env, topic: &String) -> Result<u32, EventError> 
 
 /// Validate that a schema exists for the given topic and version.
 /// Used before publishing events to guarantee schema compliance.
-pub fn require_schema_exists(
-    env: &Env,
-    topic: &String,
-    version: u32,
-) -> Result<(), EventError> {
+pub fn require_schema_exists(env: &Env, topic: &String, version: u32) -> Result<(), EventError> {
     let key = schema_key(topic, version);
     if env.storage().persistent().has(&key) {
         Ok(())
@@ -100,10 +96,8 @@ pub fn register_source(env: &Env, source: &Address) {
     let key = source_key(source);
     env.storage().persistent().set(&key, &true);
 
-    env.events().publish(
-        (symbol_short!("SRC_REG"), source.clone()),
-        true,
-    );
+    env.events()
+        .publish((symbol_short!("SRC_REG"), source.clone()), true);
 }
 
 /// Check if an address is an authorized event publisher.

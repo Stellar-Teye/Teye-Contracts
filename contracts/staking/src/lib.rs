@@ -7,7 +7,7 @@ pub mod timelock;
 use common::admin_tiers::{self, AdminTier};
 use common::multisig;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, token, Address, Env, String, Symbol,
+    contract, contractimpl, contracttype, symbol_short, token, Address, BytesN, Env, String, Symbol,
 };
 
 use timelock::{RateChangeProposal, UnstakeRequest};
@@ -168,7 +168,7 @@ impl StakingContract {
             .ok_or(ContractError::NotInitialized)?;
         token::Client::new(&env, &stake_token).transfer(
             &staker,
-            &env.current_contract_address(),
+            env.current_contract_address(),
             &amount,
         );
 
@@ -535,10 +535,9 @@ impl StakingContract {
     ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
-        Self::require_admin(&env, &caller)?;
+        Self::require_admin(&env, &caller, "configure_multisig")?;
 
-        multisig::configure(&env, signers, threshold)
-            .map_err(|_| ContractError::InvalidInput)
+        multisig::configure(&env, signers, threshold).map_err(|_| ContractError::InvalidInput)
     }
 
     /// Create a multisig proposal for an admin action.
@@ -568,8 +567,7 @@ impl StakingContract {
         Self::require_initialized(&env)?;
         approver.require_auth();
 
-        multisig::approve(&env, &approver, proposal_id)
-            .map_err(|_| ContractError::MultisigError)
+        multisig::approve(&env, &approver, proposal_id).map_err(|_| ContractError::MultisigError)
     }
 
     /// Return the current multisig configuration, if any.
@@ -597,7 +595,7 @@ impl StakingContract {
         env: Env,
         caller: Address,
         new_rate: i128,
-        proposal_id: u64,
+        _proposal_id: u64,
     ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
@@ -677,7 +675,7 @@ impl StakingContract {
         env: Env,
         caller: Address,
         new_period: u64,
-        proposal_id: u64,
+        _proposal_id: u64,
     ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();

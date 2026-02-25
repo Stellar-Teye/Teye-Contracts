@@ -1,18 +1,12 @@
-#![cfg(test)]
 extern crate std;
 
 use crate::{ContractError, StakingContract, StakingContractClient};
-use common::multisig::{MultisigConfig, MultisigError};
-use soroban_sdk::{
-    symbol_short,
-    testutils::{Address as _, Ledger},
-    Address, BytesN, Env, Vec,
-};
+use soroban_sdk::{symbol_short, testutils::Address as _, Address, BytesN, Env, Vec};
 
 fn setup() -> (Env, StakingContractClient<'static>, Address) {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, StakingContract);
+    let contract_id = env.register(StakingContract, ());
     let client = StakingContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -23,8 +17,8 @@ fn setup() -> (Env, StakingContractClient<'static>, Address) {
         &admin,
         &stake_token,
         &reward_token,
-        &1000,   // reward_rate
-        &86400,  // lock_period
+        &1000,  // reward_rate
+        &86400, // lock_period
     );
 
     (env, client, admin)
@@ -93,7 +87,10 @@ fn test_multisig_happy_path() {
 
     // Cannot execute the same proposal again
     let res_double = client.try_set_reward_rate(&admin, &3000, &proposal_id);
-    assert_eq!(res_double.unwrap_err().unwrap(), ContractError::MultisigRequired);
+    assert_eq!(
+        res_double.unwrap_err().unwrap(),
+        ContractError::MultisigRequired
+    );
 }
 
 #[test]

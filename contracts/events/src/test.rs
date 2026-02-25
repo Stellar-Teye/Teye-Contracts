@@ -1,9 +1,6 @@
 extern crate std;
 
-use soroban_sdk::{
-    testutils::Address as _,
-    Address, Env, String, Vec,
-};
+use soroban_sdk::{testutils::Address as _, Address, Env, String, Vec};
 
 use crate::{EventError, EventStreamContract, EventStreamContractClient};
 
@@ -330,9 +327,21 @@ fn test_topic_matching_wildcard() {
     let topic_update = String::from_str(&env, "records.vision.update");
     let topic_wrong = String::from_str(&env, "staking.staked.create");
 
-    assert!(crate::subscription::topic_matches(&env, &pattern, &topic_create));
-    assert!(crate::subscription::topic_matches(&env, &pattern, &topic_update));
-    assert!(!crate::subscription::topic_matches(&env, &pattern, &topic_wrong));
+    assert!(crate::subscription::topic_matches(
+        &env,
+        &pattern,
+        &topic_create
+    ));
+    assert!(crate::subscription::topic_matches(
+        &env,
+        &pattern,
+        &topic_update
+    ));
+    assert!(!crate::subscription::topic_matches(
+        &env,
+        &pattern,
+        &topic_wrong
+    ));
 }
 
 #[test]
