@@ -31,9 +31,13 @@ pub mod meta_tx;
 pub mod metering;
 pub mod multisig;
 pub mod policy_dsl;
+pub mod policy_engine;
+pub mod progressive_auth;
 pub mod pausable;
 pub mod rate_limit;
 pub mod reentrancy_guard;
+pub mod session;
+pub mod risk_engine;
 pub mod vector_clock;
 pub mod whitelist;
 
@@ -46,8 +50,11 @@ pub use meta_tx::*;
 pub use metering::*;
 pub use multisig::*;
 pub use pausable::*;
+pub use progressive_auth::*;
 pub use rate_limit::*;
 pub use reentrancy_guard::*;
+pub use session::*;
+pub use risk_engine::*;
 pub use vector_clock::*;
 pub use whitelist::*;
 

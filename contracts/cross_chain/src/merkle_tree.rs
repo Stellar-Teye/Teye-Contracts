@@ -214,7 +214,7 @@ impl SparseMerkleTree {
     /// proofs; use `TREE_DEPTH` for the main patient-record tree and a small
     /// `d` (e.g. `32`) for per-record field sub-trees.
     pub fn with_depth(env: &Env, d: usize) -> Self {
-        let depth = d.max(1).min(TREE_DEPTH);
+        let depth = d.clamp(1, TREE_DEPTH);
         Self {
             state: TreeState {
                 root: BytesN::from_array(env, &NULL_ROOT),
@@ -550,7 +550,7 @@ impl SparseMerkleTree {
             current = hash_node(env, &left, &right);
         }
 
-        &current == &proof.record_root
+        current == proof.record_root
     }
 }
 

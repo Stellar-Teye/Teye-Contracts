@@ -1,4 +1,6 @@
 #![no_std]
+#![allow(deprecated)]
+#![allow(clippy::too_many_arguments)]
 
 mod attestation;
 mod derivation;
@@ -142,6 +144,7 @@ pub enum ContractError {
 pub struct KeyManagerContract;
 
 #[contractimpl]
+#[allow(clippy::too_many_arguments)]
 impl KeyManagerContract {
     pub fn initialize(env: Env, admin: Address, identity_contract: Address) {
         if env.storage().instance().has(&ADMIN) {
@@ -201,6 +204,7 @@ impl KeyManagerContract {
         Ok(record.id)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn derive_key(
         env: Env,
         caller: Address,
@@ -548,7 +552,7 @@ impl KeyManagerContract {
         if record.policy.not_after > 0 && now > record.policy.not_after {
             return Err(ContractError::PolicyViolation);
         }
-        if record.policy.allowed_ops.len() > 0 && !record.policy.allowed_ops.contains(operation) {
+        if !record.policy.allowed_ops.is_empty() && !record.policy.allowed_ops.contains(operation) {
             return Err(ContractError::PolicyViolation);
         }
         Ok(())

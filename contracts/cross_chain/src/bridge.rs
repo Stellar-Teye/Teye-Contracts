@@ -194,11 +194,10 @@ pub fn anchor_root(env: &Env, root: BytesN<32>, source_chain: Symbol) {
 /// * `record_id`          — 32-byte record identifier.
 /// * `record_data`        — Raw serialised record payload.
 /// * `all_fields`         — Complete list of named fields in the record.
-///                          Each [`FieldEntry`] carries a `key` (typically
-///                          the UTF-8 field name as `Bytes`) and a `value`.
+///   Each [`FieldEntry`] carries a `key` (typically the UTF-8 field name as
+///   `Bytes`) and a `value`.
 /// * `selected_field_keys`— If `Some`, only prove the fields whose `key`
-///                          bytes appear in this list.  If `None`, prove every
-///                          field in `all_fields`.
+///   bytes appear in this list. If `None`, prove every field in `all_fields`.
 /// * `source_chain`       — Chain identifier written into the package.
 ///
 /// # How proof is constructed
@@ -349,11 +348,10 @@ pub fn try_export_record(
 /// * `env`             — Soroban execution environment.
 /// * `package`         — The [`ExportPackage`] received from the source chain.
 /// * `anchored_root`   — The state root to verify against (must have been
-///                       registered via [`anchor_root`] beforehand).
+///   registered via [`anchor_root`] beforehand).
 /// * `finality_depth`  — Minimum number of ledgers that must have elapsed
-///                       since `anchored_root` was registered before it is
-///                       considered final.  A value of `0` disables the
-///                       check.
+///   since `anchored_root` was registered before it is considered final.
+///   A value of `0` disables the check.
 ///
 /// # Storage side effects
 ///
