@@ -1,0 +1,18 @@
+[package]
+name = "test-framework"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "framework/mod.rs"
+doctest = false
+
+[dependencies]
+soroban-sdk = { version = "25.0.0", features = ["testutils"] }
+staking     = { path = "../contracts/staking", features = ["testutils"] }
+common      = { path = "../contracts/common", features = ["testutils"] }
+proptest    = { version = "1" }
+
+[dev-dependencies]
+soroban-sdk = { version = "25.0.0", features = ["testutils"] }

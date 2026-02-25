@@ -1766,11 +1766,8 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 name = "staking"
 version = "1.2.2"
 dependencies = [
-
  "audit",
-
  "common",
-
  "soroban-sdk",
 ]
 
@@ -1865,6 +1862,16 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys",
+]
+
+[[package]]
+name = "test-framework"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "proptest",
+ "soroban-sdk",
+ "staking",
 ]
 
 [[package]]
@@ -1978,11 +1985,8 @@ dependencies = [
 name = "vision_records"
 version = "1.2.2"
 dependencies = [
- "audit",
-
  "common",
  "ed25519-dalek",
- "key_manager",
  "proptest",
  "proptest-derive",
  "soroban-sdk",

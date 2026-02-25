@@ -21,6 +21,7 @@ members = [
     "contracts/state_channel",
     "contracts/metering",
     "sdk/zk_prover",
+    "test",
 ]
 
 [workspace.package]
