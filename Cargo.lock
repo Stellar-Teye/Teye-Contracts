@@ -164,6 +164,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "audit"
+version = "1.2.2"
+dependencies = [
+ "hex",
+ "hmac",
+ "sha2",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -277,6 +286,7 @@ version = "1.2.2"
 name = "compliance"
 version = "1.2.2"
 dependencies = [
+ "audit",
  "common",
  "soroban-sdk",
 ]
@@ -1622,6 +1632,7 @@ dependencies = [
 name = "staking"
 version = "1.2.2"
 dependencies = [
+ "audit",
  "soroban-sdk",
 ]
 
@@ -1797,6 +1808,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 name = "vision_records"
 version = "1.2.2"
 dependencies = [
+ "audit",
  "proptest",
  "proptest-derive",
  "soroban-sdk",

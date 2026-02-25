@@ -3,6 +3,10 @@
 pub mod events;
 pub mod rewards;
 pub mod timelock;
+pub mod audit;
+
+extern crate alloc;
+use alloc::string::ToString;
 
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, token, Address, Env, Symbol,
@@ -97,11 +101,19 @@ impl StakingContract {
 
         events::publish_initialized(
             &env,
-            admin,
-            stake_token,
+            admin.clone(),
+            stake_token.clone(),
             reward_token,
             reward_rate,
             lock_period,
+        );
+
+        audit::AuditManager::log_event(
+            &env,
+            admin,
+            "staking.initialize",
+            stake_token.to_string(),
+            "ok",
         );
 
         Ok(())
@@ -150,7 +162,15 @@ impl StakingContract {
         let new_total = prev_total.saturating_add(amount);
         env.storage().instance().set(&TOTAL_STAKED, &new_total);
 
-        events::publish_staked(&env, staker, amount, new_total);
+        events::publish_staked(&env, staker.clone(), amount, new_total);
+
+        audit::AuditManager::log_event(
+            &env,
+            staker,
+            "staking.stake",
+            soroban_sdk::String::from_str(&env, &amount.to_string()),
+            "ok",
+        );
 
         Ok(())
     }
@@ -203,7 +223,15 @@ impl StakingContract {
         };
         timelock::store_request(&env, &request);
 
-        events::publish_unstake_requested(&env, request_id, staker, amount, unlock_at);
+        events::publish_unstake_requested(&env, request_id, staker.clone(), amount, unlock_at);
+
+        audit::AuditManager::log_event(
+            &env,
+            staker,
+            "staking.unstake_req",
+            soroban_sdk::String::from_str(&env, &amount.to_string()),
+            "ok",
+        );
 
         Ok(request_id)
     }
@@ -246,7 +274,15 @@ impl StakingContract {
             &request.amount,
         );
 
-        events::publish_withdrawn(&env, request_id, staker, request.amount);
+        events::publish_withdrawn(&env, request_id, staker.clone(), request.amount);
+
+        audit::AuditManager::log_event(
+            &env,
+            staker,
+            "staking.withdraw",
+            soroban_sdk::String::from_str(&env, &request.amount.to_string()),
+            "ok",
+        );
 
         Ok(())
     }
@@ -287,7 +323,15 @@ impl StakingContract {
             &earned,
         );
 
-        events::publish_reward_claimed(&env, staker, earned);
+        events::publish_reward_claimed(&env, staker.clone(), earned);
+
+        audit::AuditManager::log_event(
+            &env,
+            staker,
+            "staking.claim",
+            soroban_sdk::String::from_str(&env, &earned.to_string()),
+            "ok",
+        );
 
         Ok(earned)
     }

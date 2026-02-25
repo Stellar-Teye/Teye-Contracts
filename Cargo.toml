@@ -12,6 +12,7 @@ members = [
     "contracts/cross_chain",
     "contracts/analytics",
     "contracts/treasury",
+    "contracts/audit",
 ]
 
 [workspace.package]

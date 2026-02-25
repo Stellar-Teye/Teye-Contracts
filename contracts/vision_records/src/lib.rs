@@ -1,4 +1,5 @@
 #![no_std]
+extern crate alloc;
 pub mod rbac;
 pub mod validation;
 
@@ -6,10 +7,12 @@ pub mod errors;
 pub mod events;
 pub mod examination;
 pub mod provider;
+pub mod audit;
 
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol, Vec,
 };
+use alloc::string::ToString;
 
 pub use errors::{
     create_error_context, log_error, ContractError, ErrorCategory, ErrorLogEntry, ErrorSeverity,
@@ -208,6 +211,14 @@ impl VisionRecordsContract {
         // Assign the role in the RBAC system
         rbac::assign_role(&env, user.clone(), role.clone(), 0);
 
+        audit::AuditManager::log_event(
+            &env,
+            caller.clone(),
+            "user.register",
+            user.to_string(),
+            "ok",
+        );
+
         events::publish_user_registered(&env, user, role, name);
 
         Ok(())
@@ -294,6 +305,14 @@ impl VisionRecordsContract {
             .set(&patient_key, &patient_records);
         extend_ttl_address_key(&env, &patient_key);
 
+        audit::AuditManager::log_event(
+            &env,
+            caller.clone(),
+            "record.add",
+            soroban_sdk::String::from_str(&env, &record_id.to_string()),
+            "ok",
+        );
+
         events::publish_record_added(&env, record_id, patient, provider, record_type);
 
         Ok(record_id)
@@ -373,6 +392,15 @@ impl VisionRecordsContract {
         };
 
         examination::set_examination(&env, &exam);
+
+        audit::AuditManager::log_event(
+            &env,
+            caller.clone(),
+            "examination.add",
+            soroban_sdk::String::from_str(&env, &record_id.to_string()),
+            "ok",
+        );
+
         events::publish_examination_added(&env, record_id);
 
         Ok(())
@@ -451,6 +479,14 @@ impl VisionRecordsContract {
         env.storage().persistent().set(&key, &grant);
         extend_ttl_access_key(&env, &key);
 
+        audit::AuditManager::log_event(
+            &env,
+            caller.clone(),
+            "access.grant",
+            grantee.to_string(),
+            "ok",
+        );
+
         events::publish_access_granted(&env, patient, grantee, level, duration_seconds, expires_at);
 
         Ok(())
@@ -479,6 +515,14 @@ impl VisionRecordsContract {
 
         let key = (symbol_short!("ACCESS"), patient.clone(), grantee.clone());
         env.storage().persistent().remove(&key);
+
+        audit::AuditManager::log_event(
+            &env,
+            patient.clone(),
+            "access.revoke",
+            grantee.to_string(),
+            "ok",
+        );
 
         events::publish_access_revoked(&env, patient, grantee);
 
@@ -618,6 +662,14 @@ impl VisionRecordsContract {
             provider::add_provider_to_specialty_index(&env, &specialty, &provider);
         }
 
+        audit::AuditManager::log_event(
+            &env,
+            caller.clone(),
+            "provider.register",
+            provider.to_string(),
+            "ok",
+        );
+
         events::publish_provider_registered(&env, provider.clone(), name, provider_id);
 
         Ok(provider_id)
@@ -651,6 +703,14 @@ impl VisionRecordsContract {
 
         // Status index is updated automatically in set_provider
         provider::set_provider(&env, &provider_data);
+
+        audit::AuditManager::log_event(
+            &env,
+            caller.clone(),
+            "provider.verify",
+            provider.to_string(),
+            "ok",
+        );
 
         events::publish_provider_verified(&env, provider, caller, status);
 
