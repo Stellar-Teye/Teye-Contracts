@@ -4,6 +4,10 @@
 //! - [`CommonError`] — standardised error codes for all contracts.
 //! - Consent and key-management helpers (requires `std` feature).
 //! - On-chain multisig, whitelist, meta-transaction, and rate-limiting utilities.
+//! - [`migration`] — contract upgrade migration framework with data versioning
+//!   and rollback support.
+//! - [`versioned_storage`] — lazy-migration storage layer built on top of
+//!   the migration framework.
 //!
 //! Contract-specific errors can extend the range starting at code **100** and
 //! above, ensuring no collisions with the common set.
@@ -57,6 +61,7 @@ pub use whitelist::*;
 /// | 20 – 29 | Resource not found            |
 /// | 30 – 39 | Validation / input            |
 /// | 40 – 49 | Contract state                |
+/// | 50 – 59 | Migration & versioning        |
 /// | 100+    | Reserved for contract-specific |
 #[contracterror]
 #[derive(Clone, Debug, Eq, PartialEq, Copy)]
