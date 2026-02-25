@@ -1,0 +1,19 @@
+[package]
+name = "audit"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+doctest = false
+
+[dependencies]
+sha2     = { version = "0.10", default-features = false }
+hmac     = { version = "0.12", default-features = false }
+hex      = { version = "0.4",  default-features = false, features = ["alloc"] }
+
+[dev-dependencies]

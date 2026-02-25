@@ -29,3 +29,9 @@ name = "staking_fuzz"
 path = "fuzz_targets/staking.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "audit_fuzz"
+path = "fuzz_targets/audit.rs"
+test = false
+doc = false

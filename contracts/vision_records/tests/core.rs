@@ -270,13 +270,15 @@ fn test_events_and_version() {
 
     assert_eq!(ctx.client.version(), 1);
 
-    // Test initialization event by creating a fresh contract instance
+    // Test initialization event by creating a fresh contract instance.
+    // `initialize` does NOT call AuditManager, so only 1 event is emitted.
     let contract_id2 = ctx.env.register(vision_records::VisionRecordsContract, ());
     let client2 = vision_records::VisionRecordsContractClient::new(&ctx.env, &contract_id2);
     client2.initialize(&ctx.admin);
     assert_eq!(ctx.env.events().all().len(), 1); // Kills publish_initialized missed mutant
 
-    // Test register user event
+    // Test register user event.
+    // Emits 2 events: publish_user_registered + AUDIT event.
     let user = Address::generate(&ctx.env);
     ctx.client.register_user(
         &ctx.admin,
@@ -284,9 +286,10 @@ fn test_events_and_version() {
         &Role::Patient,
         &String::from_str(&ctx.env, "Patient Profile"),
     );
-    assert_eq!(ctx.env.events().all().len(), 1); // Kills publish_user_registered mutant
+    assert_eq!(ctx.env.events().all().len(), 2); // 1 domain event + 1 AUDIT event
 
-    // Test add record event
+    // Test add record event.
+    // Emits 2 events: publish_record_added + AUDIT event.
     let provider = create_test_user(&ctx, Role::Optometrist, "Provider");
     let hash = String::from_str(&ctx.env, "dddddddddddddddddddddddddddddddd");
     ctx.client
@@ -294,7 +297,8 @@ fn test_events_and_version() {
     // Should have record_added event and audit log event (2 events)
     assert!(ctx.env.events().all().len() >= 1); // Kills publish_record_added mutant
 
-    // Test access grant/revoke event
+    // Test access grant event.
+    // Emits 2 events: publish_access_granted + AUDIT event.
     ctx.client
         .grant_access(&user, &user, &provider, &AccessLevel::Read, &86400);
     // Should have access_granted event and audit log event (at least 1 event)

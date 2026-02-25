@@ -19,6 +19,7 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, String,
     Symbol, Vec,
 };
+use alloc::string::ToString;
 
 use alloc::string::ToString;
 use key_manager::{DerivedKey, KeyManagerContractClient};
@@ -1391,6 +1392,15 @@ impl VisionRecordsContract {
         };
 
         examination::set_examination(&env, &exam);
+
+        audit::AuditManager::log_event(
+            &env,
+            caller.clone(),
+            "examination.add",
+            soroban_sdk::String::from_str(&env, &record_id.to_string()),
+            "ok",
+        );
+
         events::publish_examination_added(&env, record_id);
 
         Ok(())
@@ -1943,266 +1953,6 @@ impl VisionRecordsContract {
         );
         audit::add_audit_entry(&env, &audit_entry);
         events::publish_audit_log_entry(&env, &audit_entry);
-
-        events::publish_access_revoked(&env, patient, grantee);
-
-        Ok(())
-    }
-
-    /// Purge all expired access grants for a given patient.
-    ///
-    /// Only the patient themselves or a SystemAdmin may call this.
-    /// Returns the number of grants removed.
-    pub fn purge_expired_grants(
-        env: Env,
-        caller: Address,
-        patient: Address,
-    ) -> Result<u32, ContractError> {
-        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
-        caller.require_auth();
-
-        let is_patient = caller == patient;
-        let is_admin = rbac::has_permission(&env, &caller, &Permission::SystemAdmin);
-        if !is_patient && !is_admin {
-            return Self::unauthorized(
-                &env,
-                &caller,
-                "purge_expired_grants",
-                "patient_or_permission:SystemAdmin",
-            );
-        }
-
-        let list_key = (symbol_short!("ACC_LST"), patient.clone());
-        let grantees: Vec<Address> = env
-            .storage()
-            .persistent()
-            .get(&list_key)
-            .unwrap_or(Vec::new(&env));
-
-        let now = env.ledger().timestamp();
-        let mut remaining = Vec::new(&env);
-        let mut purged: u32 = 0;
-
-        for i in 0..grantees.len() {
-            if let Some(grantee) = grantees.get(i) {
-                let access_key = (symbol_short!("ACCESS"), patient.clone(), grantee.clone());
-
-                match env
-                    .storage()
-                    .persistent()
-                    .get::<_, AccessGrant>(&access_key)
-                {
-                    Some(grant) if grant.expires_at <= now => {
-                        env.storage().persistent().remove(&access_key);
-                        events::publish_access_expired(
-                            &env,
-                            patient.clone(),
-                            grantee,
-                            grant.expires_at,
-                        );
-                        purged += 1;
-                    }
-                    Some(_) => {
-                        // Grant still active — keep in the list.
-                        remaining.push_back(grantee);
-                    }
-                    None => {
-                        // Already removed — nothing to purge, drop from list.
-                    }
-                }
-            }
-        }
-
-        // Update the grantee list to only keep active entries.
-        if remaining.is_empty() {
-            env.storage().persistent().remove(&list_key);
-        } else {
-            env.storage().persistent().set(&list_key, &remaining);
-        }
-
-        Ok(purged)
-    }
-
-    /// Get the total number of records
-    pub fn get_record_count(env: Env) -> u64 {
-        let counter_key = symbol_short!("REC_CTR");
-        env.storage().instance().get(&counter_key).unwrap_or(0)
-    }
-
-    /// Get multiple records by IDs.
-    pub fn get_records(env: Env, record_ids: Vec<u64>) -> Result<Vec<VisionRecord>, ContractError> {
-        if record_ids.is_empty() {
-            return Err(ContractError::InvalidInput);
-        }
-        let mut records = Vec::new(&env);
-        for record_id in record_ids.iter() {
-            let key = (symbol_short!("RECORD"), record_id);
-            let record = env
-                .storage()
-                .persistent()
-                .get::<_, VisionRecord>(&key)
-                .ok_or(ContractError::RecordNotFound)?;
-            records.push_back(record);
-        }
-        Ok(records)
-    }
-
-    /// Add a new prescription
-    #[allow(clippy::too_many_arguments)]
-    pub fn add_prescription(
-        env: Env,
-        patient: Address,
-        provider: Address,
-        lens_type: LensType,
-        left_eye: PrescriptionData,
-        right_eye: PrescriptionData,
-        contact_data: OptionalContactLensData,
-        duration_seconds: u64,
-        metadata_hash: String,
-    ) -> Result<u64, ContractError> {
-        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
-        provider.require_auth();
-
-        // Check if provider is authorized (role check)
-        let provider_data = VisionRecordsContract::get_user(env.clone(), provider.clone())?;
-        if provider_data.role != Role::Optometrist && provider_data.role != Role::Ophthalmologist {
-            return Self::unauthorized(
-                &env,
-                &provider,
-                "add_prescription",
-                "role:Optometrist_or_Ophthalmologist",
-            );
-        }
-
-        // Generate ID
-        let counter_key = symbol_short!("RX_CTR");
-        let rx_id: u64 = env.storage().instance().get(&counter_key).unwrap_or(0) + 1;
-        env.storage().instance().set(&counter_key, &rx_id);
-
-        let rx = Prescription {
-            id: rx_id,
-            patient,
-            provider,
-            lens_type,
-            left_eye,
-            right_eye,
-            contact_data,
-            issued_at: env.ledger().timestamp(),
-            expires_at: env.ledger().timestamp() + duration_seconds,
-            verified: false,
-            metadata_hash,
-        };
-
-        prescription::save_prescription(&env, &rx);
-
-        Ok(rx_id)
-    }
-
-    /// Get a prescription by ID
-    pub fn get_prescription(env: Env, rx_id: u64) -> Result<Prescription, ContractError> {
-        prescription::get_prescription(&env, rx_id).ok_or(ContractError::RecordNotFound)
-    }
-
-    /// Get all prescription IDs for a patient
-    pub fn get_prescription_history(env: Env, patient: Address) -> Vec<u64> {
-        prescription::get_patient_history(&env, patient)
-    }
-
-    /// Verify a prescription (e.g., by a pharmacy or another provider)
-    pub fn verify_prescription(
-        env: Env,
-        rx_id: u64,
-        verifier: Address,
-    ) -> Result<bool, ContractError> {
-        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
-        // Ensure verifier exists
-        VisionRecordsContract::get_user(env.clone(), verifier.clone())?;
-
-        Ok(prescription::verify_prescription(&env, rx_id, verifier))
-    }
-
-    /// Contract version
-    pub fn version() -> u32 {
-        2 // Updated for patient profile management
-    }
-
-    // ======================== Patient Profile Management ========================
-
-    /// Create a new patient profile
-    pub fn create_profile(
-        env: Env,
-        caller: Address,
-        patient: Address,
-        date_of_birth_hash: String,
-        gender_hash: String,
-        blood_type_hash: String,
-    ) -> Result<(), ContractError> {
-        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
-        caller.require_auth();
-
-        // Only patient or authorized user can create profile
-        if caller != patient && !rbac::has_permission(&env, &caller, &Permission::ManageUsers) {
-            return Self::unauthorized(
-                &env,
-                &caller,
-                "create_profile",
-                "profile_owner_or_permission:ManageUsers",
-            );
-        }
-
-        // Check if profile already exists
-        let profile_key = (symbol_short!("PAT_PROF"), patient.clone());
-        if env.storage().persistent().has(&profile_key) {
-            return Err(ContractError::InvalidInput); // Profile already exists
-        }
-
-        let profile = PatientProfile {
-            patient: patient.clone(),
-            created_at: env.ledger().timestamp(),
-            updated_at: env.ledger().timestamp(),
-            is_active: true,
-            date_of_birth_hash,
-            gender_hash,
-            blood_type_hash,
-            emergency_contact: OptionalEmergencyContact::None,
-            insurance_info: OptionalInsuranceInfo::None,
-            medical_history_refs: Vec::new(&env),
-        };
-
-        env.storage().persistent().set(&profile_key, &profile);
-        events::publish_profile_created(&env, patient);
-
-        Ok(())
-    }
-
-    /// Update patient demographics
-    pub fn update_demographics(
-        env: Env,
-        caller: Address,
-        patient: Address,
-        date_of_birth_hash: String,
-        gender_hash: String,
-        blood_type_hash: String,
-    ) -> Result<(), ContractError> {
-        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
-        caller.require_auth();
-
-        // Only profile owner can update
-        if caller != patient {
-            return Self::unauthorized(&env, &caller, "update_demographics", "profile_owner");
-        }
-
-        let profile_key = (symbol_short!("PAT_PROF"), patient.clone());
-        let mut profile: PatientProfile = env
-            .storage()
-            .persistent()
-            .get(&profile_key)
-            .ok_or(ContractError::UserNotFound)?;
-
-        profile.date_of_birth_hash = date_of_birth_hash;
-        profile.gender_hash = gender_hash;
-        profile.blood_type_hash = blood_type_hash;
-        profile.updated_at = env.ledger().timestamp();
 
         env.storage().persistent().set(&profile_key, &profile);
         events::publish_profile_updated(&env, patient);
