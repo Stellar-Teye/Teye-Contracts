@@ -10,16 +10,12 @@ use crate::migration::{
 // Storage key conventions
 // ─────────────────────────────────────────────────────────────
 
-fn record_key(env: &Env, record_id: u64) -> Symbol {
-    let id_str = record_id.to_string();
-    let full = soroban_sdk::format!(env, "REC_{}", id_str);
-    Symbol::new(env, &full.to_string())
+fn record_key(env: &Env, record_id: u64) -> (Symbol, u64) {
+    (Symbol::new(env, "RECORD"), record_id)
 }
 
-fn version_key(env: &Env, record_id: u64) -> Symbol {
-    let id_str = record_id.to_string();
-    let full = soroban_sdk::format!(env, "VER_{}", id_str);
-    Symbol::new(env, &full.to_string())
+fn version_key(env: &Env, record_id: u64) -> (Symbol, u64) {
+    (Symbol::new(env, "VERSION"), record_id)
 }
 
 // ─────────────────────────────────────────────────────────────

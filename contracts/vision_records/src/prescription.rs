@@ -1,5 +1,6 @@
 use soroban_sdk::{contracttype, Address, Env, String, Vec};
 use teye_common::concurrency::{self, FieldChange, UpdateOutcome, VersionStamp};
+use teye_common::lineage::{self, RelationshipKind};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -51,7 +52,20 @@ pub struct Prescription {
     pub metadata_hash: String,
 }
 
-pub fn save_prescription(env: &Env, prescription: &Prescription) {
+/// Persists a prescription and initialises its lineage node.
+///
+/// If `derived_from_exam_id` is `Some(exam_id)`, a `DerivedFrom` edge is
+/// added linking this prescription back to the source examination.  This is
+/// the canonical exam → prescription provenance link required by the issue.
+///
+/// # Parameters
+/// - `exam_record_id` — optional examination record that this prescription
+///   was derived from.  Pass `None` for standalone prescriptions.
+pub fn save_prescription(
+    env: &Env,
+    prescription: &Prescription,
+    exam_record_id: Option<u64>,
+) {
     let key = (soroban_sdk::symbol_short!("RX"), prescription.id);
     env.storage().persistent().set(&key, prescription);
 
@@ -67,6 +81,37 @@ pub fn save_prescription(env: &Env, prescription: &Prescription) {
         .unwrap_or(Vec::new(env));
     history.push_back(prescription.id);
     env.storage().persistent().set(&history_key, &history);
+
+    // Lineage: create node and edges.
+    lineage::create_node(
+        env,
+        prescription.id,
+        prescription.provider.clone(),
+        "Prescription",
+        None,
+    );
+
+    // Genesis Created edge.
+    lineage::add_edge(
+        env,
+        prescription.id,
+        prescription.id,
+        RelationshipKind::Created,
+        prescription.provider.clone(),
+        None,
+    );
+
+    // If derived from an examination, add a DerivedFrom edge.
+    if let Some(exam_id) = exam_record_id {
+        lineage::add_edge(
+            env,
+            exam_id,          // source: examination
+            prescription.id,  // target: prescription
+            RelationshipKind::DerivedFrom,
+            prescription.provider.clone(),
+            None,
+        );
+    }
 }
 
 pub fn get_prescription(env: &Env, id: u64) -> Option<Prescription> {
@@ -97,6 +142,7 @@ pub fn verify_prescription(env: &Env, id: u64, verifier: Address) -> bool {
 ///
 /// The caller supplies the `expected_version` they read before making edits,
 /// a `node_id` for the vector clock, and a list of field-level changes.
+/// A `ModifiedBy` lineage edge is recorded for every successful update.
 ///
 /// Returns [`UpdateOutcome`] indicating whether the update was applied,
 /// merged, or queued as a conflict.
@@ -122,6 +168,16 @@ pub fn versioned_save_prescription(
             let key = (soroban_sdk::symbol_short!("RX"), prescription.id);
             env.storage().persistent().set(&key, prescription);
             concurrency::save_field_snapshot(env, prescription.id, changed_fields);
+
+            // Lineage: record a ModifiedBy edge for each successful mutation.
+            lineage::add_edge(
+                env,
+                prescription.id,
+                prescription.id,
+                RelationshipKind::ModifiedBy,
+                provider.clone(),
+                None,
+            );
         }
         UpdateOutcome::Conflicted(_) => {
             // Prescription is not updated — conflict must be resolved first.

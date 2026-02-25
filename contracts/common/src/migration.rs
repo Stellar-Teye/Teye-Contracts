@@ -38,25 +38,11 @@ pub const MINIMUM_SUPPORTED_VERSION: SchemaVersion = 1;
 #[contracttype]
 #[derive(Clone, Debug)]
 pub enum FieldTransform {
-    RenameField {
-        old_key: Symbol,
-        new_key: Symbol,
-    },
-    AddField {
-        key:           Symbol,
-        default_value: Bytes,
-    },
-    RemoveField {
-        key: Symbol,
-    },
-    ChangeType {
-        key:            Symbol,
-        transform_name: Symbol,
-    },
-    CopyField {
-        source_key: Symbol,
-        dest_key:   Symbol,
-    },
+    RenameField(Symbol, Symbol), // old_key, new_key
+    AddField(Symbol, Bytes),     // key, default_value
+    RemoveField(Symbol),         // key
+    ChangeType(Symbol, Symbol),  // key, transform_name
+    CopyField(Symbol, Symbol),   // source_key, dest_key
 }
 
 #[contracttype]
@@ -299,32 +285,32 @@ fn find_migration(
 }
 
 fn apply_transforms(
-    env:        &Env,
+    _env:       &Env,
     record:     &mut Map<Symbol, Bytes>,
     transforms: &Vec<FieldTransform>,
 ) -> Result<(), MigrationError> {
     for transform in transforms.iter() {
         match transform {
-            FieldTransform::RenameField { old_key, new_key } => {
+            FieldTransform::RenameField(old_key, new_key) => {
                 if let Some(value) = record.get(old_key.clone()) {
                     record.remove(old_key);
                     record.set(new_key, value);
                 }
             }
-            FieldTransform::AddField { key, default_value } => {
+            FieldTransform::AddField(key, default_value) => {
                 if !record.contains_key(key.clone()) {
                     record.set(key, default_value);
                 }
             }
-            FieldTransform::RemoveField { key } => {
+            FieldTransform::RemoveField(key) => {
                 record.remove(key);
             }
-            FieldTransform::ChangeType { key, transform_name: _ } => {
+            FieldTransform::ChangeType(key, _) => {
                 if !record.contains_key(key.clone()) {
                     return Err(MigrationError::TransformFailed);
                 }
             }
-            FieldTransform::CopyField { source_key, dest_key } => {
+            FieldTransform::CopyField(source_key, dest_key) => {
                 if let Some(value) = record.get(source_key.clone()) {
                     record.set(dest_key, value);
                 }
@@ -366,17 +352,17 @@ pub fn initialize_default_migrations(env: &Env) {
         description:  String::from_str(env, "Add iop_value field for intraocular pressure"),
         forward: {
             let mut v = Vec::new(env);
-            v.push_back(FieldTransform::AddField {
-                key:           Symbol::new(env, "iop_value"),
-                default_value: Bytes::from_slice(env, b"0"),
-            });
+            v.push_back(FieldTransform::AddField(
+                Symbol::new(env, "iop_value"),
+                Bytes::from_slice(env, b"0"),
+            ));
             v
         },
         reverse: {
             let mut v = Vec::new(env);
-            v.push_back(FieldTransform::RemoveField {
-                key: Symbol::new(env, "iop_value"),
-            });
+            v.push_back(FieldTransform::RemoveField(
+                Symbol::new(env, "iop_value"),
+            ));
             v
         },
     };
@@ -387,25 +373,25 @@ pub fn initialize_default_migrations(env: &Env) {
         description:  String::from_str(env, "Rename raw_notes to clinical_notes; add AI flag"),
         forward: {
             let mut v = Vec::new(env);
-            v.push_back(FieldTransform::RenameField {
-                old_key: Symbol::new(env, "raw_notes"),
-                new_key: Symbol::new(env, "clinical_notes"),
-            });
-            v.push_back(FieldTransform::AddField {
-                key:           Symbol::new(env, "ai_flag"),
-                default_value: Bytes::from_slice(env, b"false"),
-            });
+            v.push_back(FieldTransform::RenameField(
+                Symbol::new(env, "raw_notes"),
+                Symbol::new(env, "clinical_notes"),
+            ));
+            v.push_back(FieldTransform::AddField(
+                Symbol::new(env, "ai_flag"),
+                Bytes::from_slice(env, b"false"),
+            ));
             v
         },
         reverse: {
             let mut v = Vec::new(env);
-            v.push_back(FieldTransform::RenameField {
-                old_key: Symbol::new(env, "clinical_notes"),
-                new_key: Symbol::new(env, "raw_notes"),
-            });
-            v.push_back(FieldTransform::RemoveField {
-                key: Symbol::new(env, "ai_flag"),
-            });
+            v.push_back(FieldTransform::RenameField(
+                Symbol::new(env, "clinical_notes"),
+                Symbol::new(env, "raw_notes"),
+            ));
+            v.push_back(FieldTransform::RemoveField(
+                Symbol::new(env, "ai_flag"),
+            ));
             v
         },
     };

@@ -226,7 +226,7 @@ pub fn compare_and_swap(
             }
         }
         ResolutionStrategy::ManualReview => {
-            if ordering == ClockOrdering::Concurrent {
+            if current_version != expected_version || ordering == ClockOrdering::Concurrent {
                 let overlapping = detect_field_conflicts(env, record_id, changed_fields);
                 let fields = if overlapping.is_empty() {
                     // Even without field overlap we queue for review under this strategy.

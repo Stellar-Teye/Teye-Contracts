@@ -28,7 +28,7 @@ fn setup() -> (Env, VisionRecordsContractClient<'static>, Address) {
 fn test_admin_is_super_admin_after_init() {
     let (_env, client, admin) = setup();
     let tier = client.get_admin_tier(&admin);
-    assert_eq!(tier, Some(AdminTier::Super));
+    assert_eq!(tier, Some(AdminTier::SuperAdmin));
 }
 
 // ── SuperAdmin can promote to all tiers ──────────────────────────────────────
@@ -38,8 +38,8 @@ fn test_super_admin_promotes_contract_admin() {
     let (env, client, admin) = setup();
     let target = Address::generate(&env);
 
-    client.promote_admin(&admin, &target, &AdminTier::Contract);
-    assert_eq!(client.get_admin_tier(&target), Some(AdminTier::Contract));
+    client.promote_admin(&admin, &target, &AdminTier::ContractAdmin);
+    assert_eq!(client.get_admin_tier(&target), Some(AdminTier::ContractAdmin));
 }
 
 #[test]
@@ -47,8 +47,8 @@ fn test_super_admin_promotes_operator_admin() {
     let (env, client, admin) = setup();
     let target = Address::generate(&env);
 
-    client.promote_admin(&admin, &target, &AdminTier::Operator);
-    assert_eq!(client.get_admin_tier(&target), Some(AdminTier::Operator));
+    client.promote_admin(&admin, &target, &AdminTier::OperatorAdmin);
+    assert_eq!(client.get_admin_tier(&target), Some(AdminTier::OperatorAdmin));
 }
 
 #[test]
@@ -56,8 +56,8 @@ fn test_super_admin_promotes_another_super_admin() {
     let (env, client, admin) = setup();
     let target = Address::generate(&env);
 
-    client.promote_admin(&admin, &target, &AdminTier::Super);
-    assert_eq!(client.get_admin_tier(&target), Some(AdminTier::Super));
+    client.promote_admin(&admin, &target, &AdminTier::SuperAdmin);
+    assert_eq!(client.get_admin_tier(&target), Some(AdminTier::SuperAdmin));
 }
 
 // ── SuperAdmin can demote ────────────────────────────────────────────────────
@@ -67,8 +67,8 @@ fn test_super_admin_demotes_admin() {
     let (env, client, admin) = setup();
     let target = Address::generate(&env);
 
-    client.promote_admin(&admin, &target, &AdminTier::Contract);
-    assert_eq!(client.get_admin_tier(&target), Some(AdminTier::Contract));
+    client.promote_admin(&admin, &target, &AdminTier::ContractAdmin);
+    assert_eq!(client.get_admin_tier(&target), Some(AdminTier::ContractAdmin));
 
     client.demote_admin(&admin, &target);
     assert_eq!(client.get_admin_tier(&target), None);
@@ -82,9 +82,9 @@ fn test_contract_admin_cannot_promote() {
     let contract_admin = Address::generate(&env);
     let target = Address::generate(&env);
 
-    client.promote_admin(&admin, &contract_admin, &AdminTier::Contract);
+    client.promote_admin(&admin, &contract_admin, &AdminTier::ContractAdmin);
 
-    let result = client.try_promote_admin(&contract_admin, &target, &AdminTier::Operator);
+    let result = client.try_promote_admin(&contract_admin, &target, &AdminTier::OperatorAdmin);
     match result {
         Err(Ok(e)) => assert_eq!(e, ContractError::Unauthorized),
         _ => unreachable!("Expected Unauthorized error"),
@@ -97,9 +97,9 @@ fn test_operator_admin_cannot_promote() {
     let operator = Address::generate(&env);
     let target = Address::generate(&env);
 
-    client.promote_admin(&admin, &operator, &AdminTier::Operator);
+    client.promote_admin(&admin, &operator, &AdminTier::OperatorAdmin);
 
-    let result = client.try_promote_admin(&operator, &target, &AdminTier::Operator);
+    let result = client.try_promote_admin(&operator, &target, &AdminTier::OperatorAdmin);
     match result {
         Err(Ok(e)) => assert_eq!(e, ContractError::Unauthorized),
         _ => unreachable!("Expected Unauthorized error"),
@@ -112,8 +112,8 @@ fn test_contract_admin_cannot_demote() {
     let contract_admin = Address::generate(&env);
     let operator = Address::generate(&env);
 
-    client.promote_admin(&admin, &contract_admin, &AdminTier::Contract);
-    client.promote_admin(&admin, &operator, &AdminTier::Operator);
+    client.promote_admin(&admin, &contract_admin, &AdminTier::ContractAdmin);
+    client.promote_admin(&admin, &operator, &AdminTier::OperatorAdmin);
 
     let result = client.try_demote_admin(&contract_admin, &operator);
     match result {
@@ -141,7 +141,7 @@ fn test_contract_admin_can_set_whitelist_enabled() {
     let (env, client, admin) = setup();
     let contract_admin = Address::generate(&env);
 
-    client.promote_admin(&admin, &contract_admin, &AdminTier::Contract);
+    client.promote_admin(&admin, &contract_admin, &AdminTier::ContractAdmin);
     client.set_whitelist_enabled(&contract_admin, &true);
     assert!(client.is_whitelist_enabled());
 }
@@ -152,7 +152,7 @@ fn test_contract_admin_can_add_to_whitelist() {
     let contract_admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    client.promote_admin(&admin, &contract_admin, &AdminTier::Contract);
+    client.promote_admin(&admin, &contract_admin, &AdminTier::ContractAdmin);
     client.add_to_whitelist(&contract_admin, &user);
     assert!(client.is_whitelisted(&user));
 }
@@ -163,7 +163,7 @@ fn test_contract_admin_can_remove_from_whitelist() {
     let contract_admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    client.promote_admin(&admin, &contract_admin, &AdminTier::Contract);
+    client.promote_admin(&admin, &contract_admin, &AdminTier::ContractAdmin);
     client.add_to_whitelist(&contract_admin, &user);
     assert!(client.is_whitelisted(&user));
 
@@ -189,7 +189,7 @@ fn test_operator_admin_can_pause_contract() {
     let operator = Address::generate(&env);
 
     // Register operator as a user first so they exist, then promote
-    client.promote_admin(&admin, &operator, &AdminTier::Operator);
+    client.promote_admin(&admin, &operator, &AdminTier::OperatorAdmin);
 
     // OperatorAdmin should be able to pause
     client.pause_contract(&operator, &PauseScope::Global);
@@ -200,7 +200,7 @@ fn test_operator_admin_can_resume_contract() {
     let (env, client, admin) = setup();
     let operator = Address::generate(&env);
 
-    client.promote_admin(&admin, &operator, &AdminTier::Operator);
+    client.promote_admin(&admin, &operator, &AdminTier::OperatorAdmin);
     client.pause_contract(&operator, &PauseScope::Global);
     client.resume_contract(&operator, &PauseScope::Global);
 }
@@ -212,7 +212,7 @@ fn test_operator_admin_cannot_set_rate_limit() {
     let (env, client, admin) = setup();
     let operator = Address::generate(&env);
 
-    client.promote_admin(&admin, &operator, &AdminTier::Operator);
+    client.promote_admin(&admin, &operator, &AdminTier::OperatorAdmin);
 
     let result = client.try_set_rate_limit_config(&operator, &100, &3600, &0);
     match result {
@@ -226,7 +226,7 @@ fn test_operator_admin_cannot_set_whitelist_enabled() {
     let (env, client, admin) = setup();
     let operator = Address::generate(&env);
 
-    client.promote_admin(&admin, &operator, &AdminTier::Operator);
+    client.promote_admin(&admin, &operator, &AdminTier::OperatorAdmin);
 
     let result = client.try_set_whitelist_enabled(&operator, &true);
     match result {
@@ -255,7 +255,7 @@ fn test_non_admin_cannot_promote() {
     let intruder = Address::generate(&env);
     let target = Address::generate(&env);
 
-    let result = client.try_promote_admin(&intruder, &target, &AdminTier::Operator);
+    let result = client.try_promote_admin(&intruder, &target, &AdminTier::OperatorAdmin);
     match result {
         Err(Ok(e)) => assert_eq!(e, ContractError::Unauthorized),
         _ => unreachable!("Expected Unauthorized error"),

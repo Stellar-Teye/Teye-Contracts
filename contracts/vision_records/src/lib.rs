@@ -21,8 +21,11 @@ use soroban_sdk::{
 };
 use alloc::string::ToString;
 
-use alloc::string::ToString;
-use teye_common::{multisig, whitelist, KeyManager, StdString, StdVec, admin_tiers, AdminTier};
+use teye_common::{
+    admin_tiers, lineage as lin, multisig, progressive_auth, provenance_graph as pg, risk_engine,
+    session, whitelist, AdminTier, KeyManager, StdString, StdVec,
+};
+use teye_common::lineage::RelationshipKind;
 use teye_common::metering::{MeteringHook, MeteringOpType};
 
 /// Re-export the contract-specific error type at the crate root.
@@ -532,7 +535,7 @@ impl VisionRecordsContract {
         caller: Address,
         max_requests_per_window: u64,
         window_duration_seconds: u64,
-        _proposal_id: u64,
+        proposal_id: u64,
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
@@ -540,7 +543,7 @@ impl VisionRecordsContract {
             return Err(ContractError::InvalidInput);
         }
 
-        if !Self::has_admin_access(&env, &caller, &AdminTier::Contract) {
+        if !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin) {
             return Self::unauthorized(
                 &env,
                 &caller,
@@ -603,7 +606,7 @@ impl VisionRecordsContract {
         caller: Address,
         version: String,
         key: String,
-        _proposal_id: u64,
+        proposal_id: u64,
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
@@ -717,7 +720,7 @@ impl VisionRecordsContract {
         enabled: bool,
     ) -> Result<(), ContractError> {
         caller.require_auth();
-        if !Self::has_admin_access(&env, &caller, &AdminTier::Contract) {
+        if !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin) {
             return Self::unauthorized(
                 &env,
                 &caller,
@@ -734,7 +737,7 @@ impl VisionRecordsContract {
     /// Requires at least `ContractAdmin` tier, or legacy admin/SystemAdmin.
     pub fn add_to_whitelist(env: Env, caller: Address, user: Address) -> Result<(), ContractError> {
         caller.require_auth();
-        if !Self::has_admin_access(&env, &caller, &AdminTier::Contract) {
+        if !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin) {
             return Self::unauthorized(
                 &env,
                 &caller,
@@ -755,7 +758,7 @@ impl VisionRecordsContract {
         user: Address,
     ) -> Result<(), ContractError> {
         caller.require_auth();
-        if !Self::has_admin_access(&env, &caller, &AdminTier::Contract) {
+        if !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin) {
             return Self::unauthorized(
                 &env,
                 &caller,
@@ -994,6 +997,9 @@ impl VisionRecordsContract {
             .persistent()
             .set(&patient_key, &patient_records);
 
+        // Initialize OCC version tracking
+        teye_common::concurrency::init_record_version(&env, record_id, 1);
+
         Ok(record_id)
     }
 
@@ -1091,6 +1097,8 @@ impl VisionRecordsContract {
             );
 
             record_ids.push_back(current_id);
+            // Initialize OCC version tracking
+            teye_common::concurrency::init_record_version(&env, current_id, 1);
         }
 
         env.storage().instance().set(&counter_key, &current_id);
@@ -1285,7 +1293,7 @@ impl VisionRecordsContract {
             clinical_notes,
         };
 
-        examination::set_examination(&env, &exam);
+        examination::set_examination(&env, &exam, &caller);
 
         audit::AuditManager::log_event(
             &env,
@@ -1681,8 +1689,6 @@ impl VisionRecordsContract {
         audit::add_audit_entry(&env, &audit_entry);
         events::publish_audit_log_entry(&env, &audit_entry);
 
-        env.storage().persistent().set(&profile_key, &profile);
-        events::publish_profile_updated(&env, patient);
 
         Ok(())
     }
@@ -2142,6 +2148,315 @@ impl VisionRecordsContract {
         }
         // 3. Fall back to RBAC SystemAdmin
         rbac::has_permission(env, caller, &Permission::SystemAdmin)
+    }
+
+    // ── Lineage & Provenance API ─────────────────────────────────────────────
+
+    /// Returns the lineage node for a given record, or an error if it does not
+    /// exist.
+    pub fn get_lineage_node(
+        env: Env,
+        record_id: u64,
+    ) -> Result<lin::LineageNode, ContractError> {
+        lin::get_node(&env, record_id).ok_or(ContractError::LineageNodeNotFound)
+    }
+
+    /// Returns a lineage edge by its global ID.
+    pub fn get_lineage_edge(
+        env: Env,
+        edge_id: u64,
+    ) -> Result<lin::LineageEdge, ContractError> {
+        lin::get_edge(&env, edge_id).ok_or(ContractError::LineageNodeNotFound)
+    }
+
+    /// Returns all direct parent edges (in-edges) of a record.
+    pub fn get_record_parents(
+        env: Env,
+        record_id: u64,
+    ) -> Vec<lin::LineageEdge> {
+        lin::get_in_edges(&env, record_id)
+    }
+
+    /// Returns all direct child edges (out-edges) of a record.
+    pub fn get_record_children(
+        env: Env,
+        record_id: u64,
+    ) -> Vec<lin::LineageEdge> {
+        lin::get_out_edges(&env, record_id)
+    }
+
+    /// BFS ancestor traversal — returns all ancestor nodes up to `max_depth`
+    /// hops, bounded by [`pg::MAX_BFS_NODES`] (128).  Capped at
+    /// [`pg::MAX_BFS_DEPTH`] (32) to stay within Soroban's instruction budget.
+    pub fn trace_record_ancestors(
+        env: Env,
+        record_id: u64,
+        max_depth: u32,
+    ) -> lin::TraversalResult {
+        pg::trace_ancestors(&env, record_id, max_depth)
+    }
+
+    /// BFS descendant traversal — symmetric to [`Self::trace_record_ancestors`].
+    pub fn trace_record_descendants(
+        env: Env,
+        record_id: u64,
+        max_depth: u32,
+    ) -> lin::TraversalResult {
+        pg::trace_descendants(&env, record_id, max_depth)
+    }
+
+    /// Walks the primary ancestor chain to the genesis (origin) node.
+    ///
+    /// Returns `(genesis_node, hop_count)` or
+    /// [`ContractError::LineageNodeNotFound`] if the starting node has no
+    /// lineage record.
+    pub fn find_record_origin(
+        env: Env,
+        record_id: u64,
+    ) -> Result<(lin::LineageNode, u32), ContractError> {
+        pg::find_origin(&env, record_id).ok_or(ContractError::LineageNodeNotFound)
+    }
+
+    /// Cryptographically verifies the provenance chain of a record.
+    ///
+    /// Returns [`lin::VerificationResult::Valid`] when the chain is intact,
+    /// [`lin::VerificationResult::Tampered`] on a commitment mismatch, or
+    /// [`lin::VerificationResult::MissingAncestor`] when a required node is
+    /// absent from storage.
+    pub fn verify_record_provenance(
+        env: Env,
+        record_id: u64,
+        max_depth: u32,
+    ) -> lin::VerificationResult {
+        pg::verify_provenance(&env, record_id, max_depth)
+    }
+
+    /// Exports the provenance DAG around `record_id` (ancestors + descendants,
+    /// up to `max_depth` hops) as a [`pg::ProvenanceExport`] for the
+    /// `visualize_lineage.sh` script and other off-chain renderers.
+    pub fn export_record_dag(
+        env: Env,
+        record_id: u64,
+        max_depth: u32,
+    ) -> pg::ProvenanceExport {
+        pg::export_dag(&env, record_id, max_depth)
+    }
+
+    /// Returns whether `requester` has lineage-based access to `record_id`.
+    ///
+    /// The rule: access to any *descendant* of `record_id` implies access to
+    /// `record_id` itself.  The contract layer can enforce this decision.
+    pub fn check_lineage_access(
+        env: Env,
+        record_id: u64,
+        requester: Address,
+        max_depth: u32,
+    ) -> pg::LineageAccessResult {
+        let (result, _) = pg::check_lineage_access(&env, record_id, &requester, max_depth);
+        result
+    }
+
+    /// Summarises and prunes the lineage of `record_id` up to `depth` ancestor
+    /// hops.  The detailed edge list is replaced by a Merkle-like commitment,
+    /// preserving verifiability while reducing per-call gas.  Only the record
+    /// owner (patient / provider) or admin may trigger pruning.
+    pub fn prune_record_lineage(
+        env: Env,
+        caller: Address,
+        record_id: u64,
+        depth: u32,
+    ) -> Result<lin::LineageSummary, ContractError> {
+        caller.require_auth();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&ADMIN)
+            .ok_or(ContractError::NotInitialized)?;
+        let record_key = (symbol_short!("RECORD"), record_id);
+        let record: VisionRecord = env
+            .storage()
+            .persistent()
+            .get(&record_key)
+            .ok_or(ContractError::RecordNotFound)?;
+        if caller != record.patient && caller != record.provider && caller != admin {
+            return Err(ContractError::Unauthorized);
+        }
+        lin::prune_summarise(&env, record_id, depth).ok_or(ContractError::LineageNodeNotFound)
+    }
+
+    /// Records a cross-contract provenance edge — asserts that `target_id` in
+    /// this contract was derived from `source_id` in `origin_contract_id`.
+    /// Restricted to SystemAdmin callers.
+    pub fn record_cross_contract_lineage(
+        env: Env,
+        caller: Address,
+        target_id: u64,
+        source_id: u64,
+        origin_contract_id: String,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+        if !rbac::has_permission(&env, &caller, &Permission::SystemAdmin) {
+            return Err(ContractError::Unauthorized);
+        }
+        if lin::get_node(&env, target_id).is_none() {
+            return Err(ContractError::LineageNodeNotFound);
+        }
+        lin::set_origin_contract(&env, source_id, origin_contract_id);
+        lin::add_edge(
+            &env,
+            source_id,
+            target_id,
+            RelationshipKind::CrossContract,
+            caller,
+            None,
+        );
+        Ok(())
+    }
+
+    pub fn get_record_count(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&symbol_short!("REC_CTR"))
+            .unwrap_or(0)
+    }
+
+    pub fn get_records(env: Env, ids: Vec<u64>) -> Result<Vec<VisionRecord>, ContractError> {
+        let mut res = Vec::new(&env);
+        for id in ids.iter() {
+            let key = (symbol_short!("RECORD"), id);
+            let record: VisionRecord = env
+                .storage()
+                .persistent()
+                .get(&key)
+                .ok_or(ContractError::RecordNotFound)?;
+            res.push_back(record);
+        }
+        Ok(res)
+    }
+
+    // ======================== OCC / Concurrency Management ========================
+
+    /// Retrieves the current version stamp (version + vector clock) for a record.
+    pub fn get_record_version_stamp(
+        env: Env,
+        record_id: u64,
+    ) -> teye_common::concurrency::VersionStamp {
+        teye_common::concurrency::get_version_stamp(&env, record_id)
+    }
+
+    /// Sets the conflict resolution strategy for a specific record.
+    /// Caller must be the patient, provider, or an admin.
+    pub fn set_record_resolution_strategy(
+        env: Env,
+        caller: Address,
+        record_id: u64,
+        strategy: teye_common::concurrency::ResolutionStrategy,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+        let key = (symbol_short!("RECORD"), record_id);
+        let record: VisionRecord = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(ContractError::RecordNotFound)?;
+
+        if caller != record.patient
+            && caller != record.provider
+            && !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin)
+        {
+            return Err(ContractError::Unauthorized);
+        }
+
+        teye_common::concurrency::set_resolution_strategy(&env, record_id, &strategy);
+        Ok(())
+    }
+
+    /// Returns all pending conflict entries in the system.
+    pub fn get_pending_conflicts(env: Env) -> Vec<teye_common::concurrency::ConflictEntry> {
+        teye_common::concurrency::get_pending_conflicts(&env)
+    }
+
+    /// Returns all conflict entries associated with a specific record.
+    pub fn get_record_conflicts(
+        env: Env,
+        record_id: u64,
+    ) -> Vec<teye_common::concurrency::ConflictEntry> {
+        teye_common::concurrency::get_record_conflicts(&env, record_id)
+    }
+
+    /// Resolves a pending conflict using manual administrative intervention.
+    pub fn resolve_conflict(
+        env: Env,
+        caller: Address,
+        conflict_id: u64,
+        _record_id: u64,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+        if !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin) {
+            return Err(ContractError::Unauthorized);
+        }
+
+        if teye_common::concurrency::resolve_conflict(&env, conflict_id, &caller) {
+            Ok(())
+        } else {
+            Err(ContractError::RecordNotFound)
+        }
+    }
+
+    /// Performs a versioned update of an eye examination record using OCC.
+    ///
+    /// If the version matches or the conflict resolution strategy permits, the
+    /// update is applied and a new version/clock state is recorded.
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_examination_versioned(
+        env: Env,
+        provider: Address,
+        record_id: u64,
+        expected_version: u64,
+        node_id: u32,
+        visual_acuity: examination::VisualAcuity,
+        iop: examination::IntraocularPressure,
+        slit_lamp: examination::SlitLampFindings,
+        visual_field: examination::OptVisualField,
+        retina_imaging: examination::OptRetinalImaging,
+        fundus_photo: examination::OptFundusPhotography,
+        clinical_notes: String,
+        changed_fields: Vec<teye_common::concurrency::FieldChange>,
+    ) -> Result<teye_common::concurrency::UpdateOutcome, ContractError> {
+        provider.require_auth();
+
+        let key = (symbol_short!("RECORD"), record_id);
+        let record: VisionRecord = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(ContractError::RecordNotFound)?;
+
+        if provider != record.provider {
+            return Err(ContractError::Unauthorized);
+        }
+
+        let exam = examination::EyeExamination {
+            record_id,
+            visual_acuity,
+            iop,
+            slit_lamp,
+            visual_field,
+            retina_imaging,
+            fundus_photo,
+            clinical_notes,
+        };
+
+        let outcome = examination::versioned_set_examination(
+            &env,
+            &exam,
+            expected_version,
+            node_id,
+            &provider,
+            &changed_fields,
+        );
+
+        Ok(outcome)
     }
 }
 

@@ -116,6 +116,16 @@ pub enum ContractError {
     VersionConflict = 37,
     ConflictQueued = 38,
     ConflictNotFound = 39,
+    /// Lineage node for the given record does not exist in the DAG.
+    LineageNodeNotFound = 40,
+    /// A required ancestor is missing — the chain has a gap.
+    LineageAncestorMissing = 41,
+    /// Commitment mismatch — provenance chain has been tampered with.
+    LineageTampered = 42,
+    /// Lineage-based access denied (no path granting access found).
+    LineageAccessDenied = 43,
+    /// The operation would create a cycle in the provenance DAG.
+    LineageCycleDetected = 44,
 }
 
 impl ContractError {
@@ -147,16 +157,21 @@ impl ContractError {
             | ContractError::InsufficientPermissions
             | ContractError::ExpiredAccess
             | ContractError::ConsentRequired
-            | ContractError::ConsentExpired => ErrorCategory::Authorization,
+            | ContractError::ConsentExpired
+            | ContractError::LineageAccessDenied => ErrorCategory::Authorization,
             ContractError::UserNotFound
             | ContractError::RecordNotFound
             | ContractError::ProviderNotFound
             | ContractError::EmergencyAccessNotFound
-            | ContractError::AppointmentNotFound => ErrorCategory::NotFound,
+            | ContractError::AppointmentNotFound
+            | ContractError::LineageNodeNotFound
+            | ContractError::LineageAncestorMissing => ErrorCategory::NotFound,
             ContractError::ProviderAlreadyRegistered
             | ContractError::DuplicateRecord
             | ContractError::DelegationExpired
-            | ContractError::NonceAlreadyUsed => ErrorCategory::StateConflict,
+            | ContractError::NonceAlreadyUsed
+            | ContractError::LineageCycleDetected => ErrorCategory::StateConflict,
+            ContractError::LineageTampered => ErrorCategory::StateConflict,
             ContractError::ConflictNotFound => ErrorCategory::NotFound,
             ContractError::StorageError => ErrorCategory::Storage,
             ContractError::TransientFailure | ContractError::RateLimitExceeded => {
@@ -206,6 +221,10 @@ impl ContractError {
             ContractError::ConflictNotFound => ErrorSeverity::Low,
             ContractError::StorageError | ContractError::TransientFailure => ErrorSeverity::High,
             ContractError::Paused | ContractError::ContractPaused => ErrorSeverity::Critical,
+            ContractError::LineageNodeNotFound | ContractError::LineageAncestorMissing => ErrorSeverity::Low,
+            ContractError::LineageTampered => ErrorSeverity::Critical,
+            ContractError::LineageAccessDenied => ErrorSeverity::Medium,
+            ContractError::LineageCycleDetected => ErrorSeverity::High,
         }
     }
 
@@ -261,11 +280,15 @@ impl ContractError {
             ContractError::InvalidAttestation => "Invalid emergency attestation provided",
             ContractError::InvalidAppointmentTime => "Invalid appointment time provided",
             ContractError::InvalidAppointmentStatus => "Invalid appointment status provided",
-            ContractError::VersionConflict => {
-                "Record version conflict detected, retry with current version"
-            }
+            ContractError::VersionConflict =>
+                "Record version conflict detected, retry with current version",
             ContractError::ConflictQueued => "Concurrent modification conflict queued for review",
             ContractError::ConflictNotFound => "Conflict entry not found",
+            ContractError::LineageNodeNotFound => "Lineage node does not exist for this record",
+            ContractError::LineageAncestorMissing => "A required ancestor is missing from the provenance chain",
+            ContractError::LineageTampered => "Provenance commitment mismatch — history may have been tampered with",
+            ContractError::LineageAccessDenied => "Lineage-based access denied: no access path found",
+            ContractError::LineageCycleDetected => "Operation would create a cycle in the provenance DAG",
         }
     }
 }
