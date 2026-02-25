@@ -299,3 +299,53 @@ impl AuditLog {
         &self.entries
     }
 }
+
+// ── Compliance verdict logging ──────────────────────────────────────────────
+
+/// Bridges the rules-engine verdicts into the compliance audit log.
+///
+/// Each evaluated operation is recorded with its compliance score, verdict,
+/// and any violations — providing a tamper-evident evidence trail for audits.
+pub struct ComplianceVerdictLogger;
+
+impl ComplianceVerdictLogger {
+    /// Log a compliance verdict to the audit log.
+    ///
+    /// Records the operation context and verdict as a structured audit entry
+    /// with extra keywords for searchability (score, violation IDs, jurisdiction).
+    pub fn log_verdict(
+        log: &mut ComplianceAuditLog,
+        ctx: &crate::rules_engine::OperationContext,
+        verdict: &crate::rules_engine::ComplianceVerdict,
+    ) -> u64 {
+        let result = if verdict.allowed { "allowed" } else { "blocked" };
+        let score_tag = format!("score:{:.0}", verdict.score);
+        let jurisdiction_tag = format!("jurisdiction:{:?}", ctx.jurisdiction);
+
+        let mut extra_keywords: Vec<&str> = Vec::new();
+
+        // We need to hold the strings in a vec so references remain valid.
+        let score_str = score_tag.as_str();
+        let jurisdiction_str = jurisdiction_tag.as_str();
+        extra_keywords.push(score_str);
+        extra_keywords.push(jurisdiction_str);
+
+        // Collect violation IDs as keywords for searching.
+        let violation_tags: Vec<String> = verdict
+            .violations
+            .iter()
+            .map(|v| format!("violation:{}", v.rule_id))
+            .collect();
+        let violation_refs: Vec<&str> = violation_tags.iter().map(|s| s.as_str()).collect();
+        extra_keywords.extend(violation_refs);
+
+        log.record_with_keywords(
+            ctx.timestamp,
+            &ctx.actor,
+            &ctx.action,
+            &ctx.target,
+            result,
+            &extra_keywords,
+        )
+    }
+}
