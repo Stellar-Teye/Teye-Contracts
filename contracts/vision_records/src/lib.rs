@@ -18,7 +18,8 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol, Vec,
 };
 
-use teye_common::whitelist;
+use teye_common as common;
+use common::{whitelist, KeyManager, AdminTier, admin_tiers};
 
 /// Re-export the contract-specific error type at the crate root.
 pub use errors::ContractError;
@@ -662,15 +663,14 @@ impl VisionRecordsContract {
 
         // Determine current encryption key version (if any) and load master bytes
         let current_version: Option<String> = env.storage().instance().get(&ENC_CUR);
-        let mut master_bytes: StdVec<u8> = StdVec::new();
+        let mut master_bytes = soroban_sdk::Bytes::new(&env);
         if let Some(ver) = current_version.clone() {
             if let Some(sv) = env
                 .storage()
                 .persistent()
                 .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
             {
-                let hex = sv.to_string();
-                if let Some(bytes) = common::hex_to_bytes(&hex) {
+                if let Some(bytes) = common::hex_to_bytes(&env, sv) {
                     master_bytes = bytes;
                 }
             }
@@ -678,9 +678,8 @@ impl VisionRecordsContract {
 
         // Build KeyManager and encrypt the provided data_hash
         let km = KeyManager::new(master_bytes);
-        let plaintext: StdString = data_hash.to_string();
-        let ciphertext = km.encrypt(None, &plaintext);
-        let stored_hash = String::from_str(&env, &ciphertext);
+        let ciphertext = km.encrypt(&env, data_hash.clone());
+        let stored_hash = ciphertext;
 
         let record = VisionRecord {
             id: record_id,
@@ -743,15 +742,14 @@ impl VisionRecordsContract {
 
         // Load current encryption key/version once for the batch
         let current_version: Option<String> = env.storage().instance().get(&ENC_CUR);
-        let mut master_bytes_batch: StdVec<u8> = StdVec::new();
+        let mut master_bytes_batch = soroban_sdk::Bytes::new(&env);
         if let Some(ver) = current_version.clone() {
             if let Some(sv) = env
                 .storage()
                 .persistent()
                 .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
             {
-                let hex = sv.to_string();
-                if let Some(bytes) = common::hex_to_bytes(&hex) {
+                if let Some(bytes) = common::hex_to_bytes(&env, sv) {
                     master_bytes_batch = bytes;
                 }
             }
@@ -762,9 +760,8 @@ impl VisionRecordsContract {
 
             // Encrypt input.data_hash with batch master
             let km = KeyManager::new(master_bytes_batch.clone());
-            let plaintext: StdString = input.data_hash.to_string();
-            let ciphertext = km.encrypt(None, &plaintext);
-            let stored_hash = String::from_str(&env, &ciphertext);
+            let ciphertext = km.encrypt(&env, input.data_hash.clone());
+            let stored_hash = ciphertext;
 
             let record = VisionRecord {
                 id: current_id,
@@ -878,15 +875,14 @@ impl VisionRecordsContract {
                     .key_version
                     .clone()
                     .or_else(|| env.storage().instance().get(&ENC_CUR));
-                let mut master_bytes: StdVec<u8> = StdVec::new();
+                let mut master_bytes = soroban_sdk::Bytes::new(&env);
                 if let Some(ver) = key_ver {
                     if let Some(sv) = env
                         .storage()
                         .persistent()
                         .get::<(Symbol, String), String>(&(ENC_KEY, ver.clone()))
                     {
-                        let hex = sv.to_string();
-                        if let Some(bytes) = common::hex_to_bytes(&hex) {
+                        if let Some(bytes) = common::hex_to_bytes(&env, sv) {
                             master_bytes = bytes;
                         }
                     }
@@ -894,9 +890,8 @@ impl VisionRecordsContract {
 
                 if !master_bytes.is_empty() || out_record.key_version.is_none() {
                     let km = KeyManager::new(master_bytes);
-                    let ciphertext_std: StdString = out_record.data_hash.to_string();
-                    if let Some(plain) = km.decrypt(None, &ciphertext_std) {
-                        out_record.data_hash = String::from_str(&env, &plain);
+                    if let Some(plain) = km.decrypt(&env, out_record.data_hash.clone()) {
+                        out_record.data_hash = plain;
                     }
                 }
 

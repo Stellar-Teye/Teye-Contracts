@@ -23,6 +23,17 @@ pub struct Proof {
     pub c: G1Point,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum ProofValidationError {
+    ZeroedComponent,
+    OversizedComponent,
+    MalformedG1PointA,
+    MalformedG1PointC,
+    MalformedG2Point,
+    EmptyPublicInputs,
+    ZeroedPublicInput,
+}
+
 /// Verifier implementation for the BN254 curve.
 pub struct Bn254Verifier;
 

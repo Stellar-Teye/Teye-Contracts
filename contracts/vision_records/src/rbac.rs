@@ -192,10 +192,6 @@ pub fn user_groups_key(user: &Address) -> (Symbol, Address) {
     (symbol_short!("USR_GRPS"), user.clone())
 }
 
-pub fn delegatee_index_key(delegatee: &Address) -> (Symbol, Address) {
-    (symbol_short!("DEL_IDX"), delegatee.clone())
-}
-
 pub fn access_policy_key(id: &String) -> (Symbol, String) {
     (symbol_short!("ACC_POL"), id.clone())
 }

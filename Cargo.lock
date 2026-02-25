@@ -1827,6 +1827,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "teye-state-channel"
+version = "1.2.2"
+dependencies = [
+ "common",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"

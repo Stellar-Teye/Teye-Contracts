@@ -1,23 +1,24 @@
 [package]
-name = "common"
+name = "teye-state-channel"
 version.workspace = true
 authors.workspace = true
 license.workspace = true
 edition.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+autotests = false
 
 [lib]
-crate-type = ["rlib"]
+crate-type = ["cdylib", "rlib"]
 doctest = false
-
-[features]
-default = []
-std = []
-testutils = ["soroban-sdk/testutils"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
+teye-common = { path = "../common", package = "common" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+teye-common = { path = "../common", package = "common" }
+
+[features]
+testutils = ["soroban-sdk/testutils"]
