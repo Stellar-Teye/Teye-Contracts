@@ -19,7 +19,6 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, String, Symbol, Vec,
 };
 
-extern crate alloc;
 use alloc::string::ToString;
 use teye_common::{multisig, whitelist, KeyManager, StdString, StdVec, admin_tiers, AdminTier};
 
@@ -860,6 +859,7 @@ impl VisionRecordsContract {
         provider: Address,
         records: Vec<BatchRecordInput>,
     ) -> Result<Vec<u64>, ContractError> {
+        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
         provider.require_auth();
 
         if records.is_empty() {
@@ -1096,6 +1096,7 @@ impl VisionRecordsContract {
         fundus_photo: OptFundusPhotography,
         clinical_notes: String,
     ) -> Result<(), ContractError> {
+        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
         caller.require_auth();
 
         let record = Self::get_record(env.clone(), caller.clone(), record_id)?;
@@ -1275,6 +1276,7 @@ impl VisionRecordsContract {
         patient: Address,
         grants: Vec<BatchGrantInput>,
     ) -> Result<(), ContractError> {
+        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
         patient.require_auth();
 
         if grants.is_empty() {
@@ -1346,6 +1348,7 @@ impl VisionRecordsContract {
         level: AccessLevel,
         duration_seconds: u64,
     ) -> Result<(), ContractError> {
+        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
         patient.require_auth();
         validation::validate_duration(duration_seconds)?;
 
@@ -1403,6 +1406,7 @@ impl VisionRecordsContract {
         grantee: Address,
         record_id: u64,
     ) -> Result<(), ContractError> {
+        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
         patient.require_auth();
         let record_key = (symbol_short!("RECORD"), record_id);
         let record: VisionRecord = env
@@ -1427,6 +1431,7 @@ impl VisionRecordsContract {
         consent_type: ConsentType,
         duration_seconds: u64,
     ) -> Result<(), ContractError> {
+        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
         patient.require_auth();
         if duration_seconds == 0 {
             return Err(ContractError::InvalidInput);
@@ -1453,6 +1458,7 @@ impl VisionRecordsContract {
         patient: Address,
         grantee: Address,
     ) -> Result<(), ContractError> {
+        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
         patient.require_auth();
         let key = consent_key(&patient, &grantee);
         if let Some(mut consent) = env.storage().persistent().get::<_, ConsentGrant>(&key) {
@@ -1469,6 +1475,10 @@ impl VisionRecordsContract {
         patient: Address,
         grantee: Address,
     ) -> Result<(), ContractError> {
+        circuit_breaker::require_not_paused(
+            &env,
+            &circuit_breaker::PauseScope::Function(symbol_short!("RVK_ACC")),
+        )?;
         patient.require_auth();
 
         let key = (symbol_short!("ACCESS"), patient.clone(), grantee.clone());
@@ -1501,6 +1511,7 @@ impl VisionRecordsContract {
         caller: Address,
         patient: Address,
     ) -> Result<u32, ContractError> {
+        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
         caller.require_auth();
 
         let is_patient = caller == patient;
@@ -1602,6 +1613,7 @@ impl VisionRecordsContract {
         duration_seconds: u64,
         metadata_hash: String,
     ) -> Result<u64, ContractError> {
+        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
         provider.require_auth();
 
         // Check if provider is authorized (role check)
@@ -1655,6 +1667,7 @@ impl VisionRecordsContract {
         rx_id: u64,
         verifier: Address,
     ) -> Result<bool, ContractError> {
+        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
         // Ensure verifier exists
         VisionRecordsContract::get_user(env.clone(), verifier.clone())?;
 
@@ -1677,6 +1690,7 @@ impl VisionRecordsContract {
         gender_hash: String,
         blood_type_hash: String,
     ) -> Result<(), ContractError> {
+        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
         caller.require_auth();
 
         // Only patient or authorized user can create profile
@@ -1723,6 +1737,7 @@ impl VisionRecordsContract {
         gender_hash: String,
         blood_type_hash: String,
     ) -> Result<(), ContractError> {
+        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
         caller.require_auth();
 
         // Only profile owner can update
@@ -1755,6 +1770,7 @@ impl VisionRecordsContract {
         patient: Address,
         contact: Option<EmergencyContact>,
     ) -> Result<(), ContractError> {
+        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
         caller.require_auth();
 
         // Only profile owner can update
@@ -1788,6 +1804,7 @@ impl VisionRecordsContract {
         patient: Address,
         insurance_info: Option<InsuranceInfo>,
     ) -> Result<(), ContractError> {
+        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
         caller.require_auth();
 
         // Only profile owner can update
@@ -1821,6 +1838,7 @@ impl VisionRecordsContract {
         patient: Address,
         reference: String,
     ) -> Result<(), ContractError> {
+        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
         caller.require_auth();
 
         // Only profile owner can update
@@ -1872,6 +1890,7 @@ impl VisionRecordsContract {
         user: Address,
         permission: Permission,
     ) -> Result<(), ContractError> {
+        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
         caller.require_auth();
         // Unified check: covers direct role, custom grants, and delegated roles
         if !rbac::has_permission(&env, &caller, &Permission::ManageUsers) {
@@ -1895,6 +1914,7 @@ impl VisionRecordsContract {
         user: Address,
         permission: Permission,
     ) -> Result<(), ContractError> {
+        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
         caller.require_auth();
         // Unified check: covers direct role, custom grants, and delegated roles
         if !rbac::has_permission(&env, &caller, &Permission::ManageUsers) {
@@ -1919,6 +1939,7 @@ impl VisionRecordsContract {
         role: Role,
         expires_at: u64,
     ) -> Result<(), ContractError> {
+        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
         delegator.require_auth();
         rbac::delegate_role(&env, delegator, delegatee, role, expires_at);
         Ok(())
@@ -1951,6 +1972,7 @@ impl VisionRecordsContract {
         group_name: String,
         permissions: Vec<Permission>,
     ) -> Result<(), ContractError> {
+        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
         caller.require_auth();
         if !rbac::has_permission(&env, &caller, &Permission::ManageUsers) {
             return Self::unauthorized(&env, &caller, "create_acl_group", "permission:ManageUsers");
@@ -1966,6 +1988,7 @@ impl VisionRecordsContract {
         user: Address,
         group_name: String,
     ) -> Result<(), ContractError> {
+        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
         caller.require_auth();
         if !rbac::has_permission(&env, &caller, &Permission::ManageUsers) {
             return Self::unauthorized(
@@ -1985,6 +2008,7 @@ impl VisionRecordsContract {
         user: Address,
         group_name: String,
     ) -> Result<(), ContractError> {
+        circuit_breaker::require_not_paused(&env, &circuit_breaker::PauseScope::Global)?;
         caller.require_auth();
         if !rbac::has_permission(&env, &caller, &Permission::ManageUsers) {
             return Self::unauthorized(

@@ -79,6 +79,8 @@ pub enum ContractError {
     ZeroedPublicInput = 10,
     /// Cross-contract proof deserialization produced structurally invalid data.
     MalformedProofData = 11,
+    /// The contract is paused and cannot process verification requests.
+    Paused = 12,
 }
 
 /// Map low-level proof validation errors into contract-level errors.
@@ -330,6 +332,27 @@ impl ZkVerifierContract {
         whitelist::is_whitelisted(&env, &user)
     }
 
+    // ── Pause management ──────────────────────────────────────────────────
+
+    /// Pause all state-mutating operations. Only the admin can call this.
+    pub fn pause(env: Env, caller: Address) -> Result<(), ContractError> {
+        Self::require_admin(&env, &caller, "pause")?;
+        common::pausable::pause(&env, &caller);
+        Ok(())
+    }
+
+    /// Resume all state-mutating operations. Only the admin can call this.
+    pub fn unpause(env: Env, caller: Address) -> Result<(), ContractError> {
+        Self::require_admin(&env, &caller, "unpause")?;
+        common::pausable::unpause(&env, &caller);
+        Ok(())
+    }
+
+    /// Returns whether the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        common::pausable::is_paused(&env)
+    }
+
     fn check_and_update_rate_limit(env: &Env, user: &Address) -> Result<(), ContractError> {
         let cfg: Option<(u64, u64)> = env.storage().instance().get(&RATE_CFG);
         let (max_requests_per_window, window_duration_seconds) = match cfg {
@@ -375,6 +398,7 @@ impl ZkVerifierContract {
     ///
     /// Returns `true` if the proof is valid and all checks pass, otherwise returns an error or `false`.
     pub fn verify_access(env: Env, request: AccessRequest) -> Result<bool, ContractError> {
+        common::pausable::require_not_paused(&env).map_err(|_| ContractError::Paused)?;
         request.user.require_auth();
 
         validate_request(&request).map_err(|err| {
