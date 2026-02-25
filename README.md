@@ -325,6 +325,7 @@ make deploy-mainnet
 - [API Reference](docs/api.md)
 - [Architecture Overview](docs/architecture.md)
 - [Security Model](docs/security.md)
+- [Production Runbook](docs/runbook/README.md)
 
 ### Repository Resources
 
