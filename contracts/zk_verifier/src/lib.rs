@@ -56,6 +56,8 @@ pub struct AccessRequest {
     pub proof: Proof,
     /// Public inputs associated with the proof.
     pub public_inputs: Vec<BytesN<32>>,
+    /// Timestamp after which this proof is no longer valid.
+    pub expires_at: u64,
 }
 
 /// Contract errors for the ZK verifier.
@@ -79,6 +81,8 @@ pub enum ContractError {
     ZeroedPublicInput = 10,
     /// Cross-contract proof deserialization produced structurally invalid data.
     MalformedProofData = 11,
+    /// The proof has expired (current timestamp exceeds `expires_at`).
+    ExpiredProof = 12,
 }
 
 /// Map low-level proof validation errors into contract-level errors.
@@ -387,6 +391,17 @@ impl ZkVerifierContract {
             err
         })?;
 
+        if env.ledger().timestamp() > request.expires_at {
+            let err = ContractError::ExpiredProof;
+            events::publish_access_rejected(
+                &env,
+                request.user.clone(),
+                request.resource_id.clone(),
+                err,
+            );
+            return Err(err);
+        }
+
         if !whitelist::check_whitelist_access(&env, &request.user) {
             events::publish_access_rejected(
                 &env,
@@ -426,7 +441,7 @@ impl ZkVerifierContract {
         let is_valid = Bn254Verifier::verify_proof(&env, &vk, &request.proof, &request.public_inputs);
         if is_valid {
             let proof_hash = PoseidonHasher::hash(&env, &request.public_inputs);
-            AuditTrail::log_access(&env, request.user, request.resource_id, proof_hash);
+            AuditTrail::log_access(&env, request.user, request.resource_id, proof_hash, request.expires_at);
         } else {
             Self::emit_access_violation(
                 &env,

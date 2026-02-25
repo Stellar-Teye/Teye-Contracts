@@ -21,6 +21,7 @@ pub fn generate_proof(
     resource_id: [u8; 32],
     witness: AccessWitness,
     public_inputs: &[&[u8; 32]],
+    expires_at: u64,
 ) -> AccessRequest {
     // Check if the circuit logic dictates this is a valid proof formulation.
     let is_valid = ZkAccessCircuit::validate(&witness, public_inputs);
@@ -63,5 +64,6 @@ pub fn generate_proof(
         proof_b,
         proof_c,
         public_inputs,
+        expires_at,
     )
 }

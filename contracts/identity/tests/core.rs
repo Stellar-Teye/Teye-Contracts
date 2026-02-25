@@ -274,6 +274,7 @@ fn test_zk_credential_verification_happy_path() {
         &proof_b,
         &proof_c,
         &public_inputs,
+        &(env.ledger().timestamp() + 1000),
     );
 
     // The cross-contract flow completed — we expect ZkVerificationFailed
@@ -309,6 +310,7 @@ fn test_zk_credential_invalid_proof_rejected() {
         &proof_b,
         &proof_c,
         &public_inputs,
+        &(env.ledger().timestamp() + 1000),
     );
 
     assert!(
@@ -333,6 +335,7 @@ fn test_zk_credential_verifier_not_set() {
         &proof_b,
         &proof_c,
         &public_inputs,
+        &(env.ledger().timestamp() + 1000),
     );
 
     assert!(result.is_err(), "Should fail when verifier is not set");
