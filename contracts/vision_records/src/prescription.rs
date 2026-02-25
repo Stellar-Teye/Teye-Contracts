@@ -1,4 +1,5 @@
 use soroban_sdk::{contracttype, Address, Env, String, Vec};
+use teye_common::concurrency::{self, FieldChange, UpdateOutcome, VersionStamp};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -25,8 +26,10 @@ pub struct ContactLensData {
     pub brand: String,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum OptionalContactLensData {
     None,
     Some(ContactLensData),
@@ -88,4 +91,47 @@ pub fn verify_prescription(env: &Env, id: u64, verifier: Address) -> bool {
         return true;
     }
     false
+}
+
+/// Performs a versioned (OCC) update of a prescription record.
+///
+/// The caller supplies the `expected_version` they read before making edits,
+/// a `node_id` for the vector clock, and a list of field-level changes.
+///
+/// Returns [`UpdateOutcome`] indicating whether the update was applied,
+/// merged, or queued as a conflict.
+pub fn versioned_save_prescription(
+    env: &Env,
+    prescription: &Prescription,
+    expected_version: u64,
+    node_id: u32,
+    provider: &Address,
+    changed_fields: &Vec<FieldChange>,
+) -> UpdateOutcome {
+    let outcome = concurrency::compare_and_swap(
+        env,
+        prescription.id,
+        expected_version,
+        node_id,
+        provider,
+        changed_fields,
+    );
+
+    match &outcome {
+        UpdateOutcome::Applied(_) | UpdateOutcome::Merged(_) => {
+            let key = (soroban_sdk::symbol_short!("RX"), prescription.id);
+            env.storage().persistent().set(&key, prescription);
+            concurrency::save_field_snapshot(env, prescription.id, changed_fields);
+        }
+        UpdateOutcome::Conflicted(_) => {
+            // Prescription is not updated — conflict must be resolved first.
+        }
+    }
+
+    outcome
+}
+
+/// Retrieves the current OCC version stamp for a prescription.
+pub fn get_prescription_version(env: &Env, id: u64) -> VersionStamp {
+    concurrency::get_version_stamp(env, id)
 }

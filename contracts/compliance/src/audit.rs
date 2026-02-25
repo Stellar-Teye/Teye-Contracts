@@ -1,5 +1,3 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
 #[derive(Debug, Clone)]
 pub struct AuditEntry {
     pub actor: String,
@@ -15,11 +13,7 @@ pub struct AuditLog {
 
 impl AuditLog {
     /// Records an audit entry. For key rotation, use action="rotate_master_secure" and target="master_key".
-    pub fn record(&mut self, actor: &str, action: &str, target: &str) {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+    pub fn record(&mut self, actor: &str, action: &str, target: &str, now: u64) {
         self.entries.push(AuditEntry {
             actor: actor.to_string(),
             action: action.to_string(),

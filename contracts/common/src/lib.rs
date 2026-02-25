@@ -14,24 +14,33 @@ use soroban_sdk::contracterror;
 
 // ── Modules ──────────────────────────────────────────────────────────────────
 
+#[allow(clippy::enum_variant_names)]
 pub mod admin_tiers;
+pub mod conflict_resolver;
 #[cfg(feature = "std")]
 pub mod consent;
 pub mod keys;
 pub mod meta_tx;
+pub mod metering;
 pub mod multisig;
+pub mod pausable;
 pub mod rate_limit;
 pub mod reentrancy_guard;
+pub mod vector_clock;
 pub mod whitelist;
 
 pub use admin_tiers::*;
+pub use concurrency::*;
 #[cfg(feature = "std")]
 pub use consent::*;
 pub use keys::*;
 pub use meta_tx::*;
+pub use metering::*;
 pub use multisig::*;
+pub use pausable::*;
 pub use rate_limit::*;
 pub use reentrancy_guard::*;
+pub use vector_clock::*;
 pub use whitelist::*;
 
 // ── Shared error enum ────────────────────────────────────────────────────────

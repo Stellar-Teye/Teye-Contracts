@@ -82,11 +82,7 @@ fn extend_proposal_ttl(env: &Env, key: &(Symbol, u64)) {
 /// # Errors
 /// Returns `MultisigError::InvalidConfig` if `threshold` is zero or exceeds
 /// the number of signers.
-pub fn configure(
-    env: &Env,
-    signers: Vec<Address>,
-    threshold: u32,
-) -> Result<(), MultisigError> {
+pub fn configure(env: &Env, signers: Vec<Address>, threshold: u32) -> Result<(), MultisigError> {
     if threshold == 0 || threshold > signers.len() {
         return Err(MultisigError::InvalidConfig);
     }
@@ -152,11 +148,7 @@ pub fn propose(
 /// - `ProposalNotFound` if the proposal ID doesn't exist.
 /// - `AlreadyApproved` if this address has already approved.
 /// - `AlreadyExecuted` if the proposal was already executed.
-pub fn approve(
-    env: &Env,
-    approver: &Address,
-    proposal_id: u64,
-) -> Result<(), MultisigError> {
+pub fn approve(env: &Env, approver: &Address, proposal_id: u64) -> Result<(), MultisigError> {
     let cfg = get_config(env).ok_or(MultisigError::InvalidConfig)?;
     if !is_signer(&cfg, approver) {
         return Err(MultisigError::NotASigner);

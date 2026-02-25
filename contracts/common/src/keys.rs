@@ -23,9 +23,7 @@ pub struct AuditLog {
 }
 
 impl AuditLog {
-    pub fn record(&mut self, actor: &str, action: &str, target: &str) {
-        // Deterministic for host-side and contract-side execution.
-        let now = 0u64;
+    pub fn record(&mut self, actor: &str, action: &str, target: &str, now: u64) {
         self.entries.push(AuditEntry {
             actor: String::from(actor),
             action: String::from(action),
@@ -63,8 +61,7 @@ impl KeyManager {
         }
     }
 
-    pub fn create_data_key(&mut self, id: &str, key: Vec<u8>, ttl: Option<u64>) {
-        let now = 0u64;
+    pub fn create_data_key(&mut self, id: &str, key: Vec<u8>, ttl: Option<u64>, now: u64) {
         self.data_keys.insert(
             String::from(id),
             DataKey {
@@ -80,7 +77,7 @@ impl KeyManager {
         self.master = new_master;
     }
 
-    pub fn rotate_master_secure(&mut self, new_master: Vec<u8>, audit: &mut AuditLog, actor: &str) {
+    pub fn rotate_master_secure(&mut self, new_master: Vec<u8>, audit: &mut AuditLog, actor: &str, now: u64) {
         self.old_master = Some(self.master.clone());
 
         for dk in self.data_keys.values_mut() {
@@ -96,7 +93,7 @@ impl KeyManager {
             *b = 0;
         }
         self.master = new_master;
-        audit.record(actor, "rotate_master_secure", "master_key");
+        audit.record(actor, "rotate_master_secure", "master_key", now);
     }
 
     pub fn get_key(&self, id: &str) -> Option<&DataKey> {

@@ -1,6 +1,7 @@
 #![no_std]
 
 pub mod credential;
+pub mod events;
 pub mod recovery;
 
 use credential::CredentialError;
@@ -40,7 +41,11 @@ impl IdentityContract {
     pub fn add_guardian(env: Env, caller: Address, guardian: Address) -> Result<(), RecoveryError> {
         caller.require_auth();
         Self::require_active_owner(&env, &caller)?;
-        recovery::add_guardian(&env, &caller, guardian)
+        let result = recovery::add_guardian(&env, &caller, guardian.clone());
+        if result.is_ok() {
+            events::emit_guardian_changed(&env, caller, guardian, true);
+        }
+        result
     }
 
     /// Remove a guardian address.
@@ -51,7 +56,11 @@ impl IdentityContract {
     ) -> Result<(), RecoveryError> {
         caller.require_auth();
         Self::require_active_owner(&env, &caller)?;
-        recovery::remove_guardian(&env, &caller, &guardian)
+        let result = recovery::remove_guardian(&env, &caller, &guardian);
+        if result.is_ok() {
+            events::emit_guardian_changed(&env, caller, guardian, false);
+        }
+        result
     }
 
     /// Set the M-of-N approval threshold for recovery.
@@ -74,7 +83,11 @@ impl IdentityContract {
         new_address: Address,
     ) -> Result<(), RecoveryError> {
         guardian.require_auth();
-        recovery::initiate_recovery(&env, &guardian, &owner, new_address)
+        let result = recovery::initiate_recovery(&env, &guardian, &owner, new_address.clone());
+        if result.is_ok() {
+            events::emit_recovery_initiated(&env, owner, new_address, guardian);
+        }
+        result
     }
 
     /// A guardian approves an active recovery request.
@@ -95,14 +108,22 @@ impl IdentityContract {
         owner: Address,
     ) -> Result<Address, RecoveryError> {
         caller.require_auth();
-        recovery::execute_recovery(&env, &owner)
+        let result = recovery::execute_recovery(&env, &owner);
+        if let Ok(ref new_addr) = result {
+            events::emit_recovery_executed(&env, owner, new_addr.clone());
+        }
+        result
     }
 
     /// Owner cancels an active recovery request.
     pub fn cancel_recovery(env: Env, caller: Address) -> Result<(), RecoveryError> {
         caller.require_auth();
         Self::require_active_owner(&env, &caller)?;
-        recovery::cancel_recovery(&env, &caller)
+        let result = recovery::cancel_recovery(&env, &caller);
+        if result.is_ok() {
+            events::emit_recovery_cancelled(&env, caller);
+        }
+        result
     }
 
     /// Check if an address is an active identity owner.
@@ -160,7 +181,7 @@ impl IdentityContract {
         public_inputs: Vec<BytesN<32>>,
     ) -> Result<bool, CredentialError> {
         user.require_auth();
-        credential::verify_zk_credential(
+        let result = credential::verify_zk_credential(
             &env,
             &user,
             resource_id,
@@ -168,7 +189,11 @@ impl IdentityContract {
             proof_b,
             proof_c,
             public_inputs,
-        )
+        );
+        if let Ok(verified) = &result {
+            events::emit_zk_credential_verified(&env, user, *verified);
+        }
+        result
     }
 
     // ── Internal helpers ─────────────────────────────────────────────────────

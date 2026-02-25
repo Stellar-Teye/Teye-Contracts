@@ -7,7 +7,7 @@ pub mod timelock;
 use common::admin_tiers::{self, AdminTier};
 use common::multisig;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, token, Address, Env, String, Symbol,
+    contract, contractimpl, contracttype, symbol_short, token, Address, BytesN, Env, String, Symbol,
 };
 
 use timelock::{RateChangeProposal, UnstakeRequest};
@@ -53,6 +53,7 @@ pub enum ContractError {
     NoPendingRateChange = 11,
     MultisigRequired = 12,
     MultisigError = 13,
+    Paused = 14,
 }
 
 // ── Public-facing types (re-exported for test consumers) ─────────────────────
@@ -156,6 +157,7 @@ impl StakingContract {
     /// `USER_SINCE` so the Governor DAO can later compute their loyalty age.
     pub fn stake(env: Env, staker: Address, amount: i128) -> Result<(), ContractError> {
         let _guard = common::ReentrancyGuard::new(&env);
+        Self::require_not_paused(&env)?;
         Self::require_initialized(&env)?;
         staker.require_auth();
 
@@ -174,7 +176,7 @@ impl StakingContract {
             .ok_or(ContractError::NotInitialized)?;
         token::Client::new(&env, &stake_token).transfer(
             &staker,
-            &env.current_contract_address(),
+            env.current_contract_address(),
             &amount,
         );
 
@@ -213,6 +215,7 @@ impl StakingContract {
     /// on the queued amount) but tokens are only returned after the lock
     /// period via `withdraw`.
     pub fn request_unstake(env: Env, staker: Address, amount: i128) -> Result<u64, ContractError> {
+        Self::require_not_paused(&env)?;
         Self::require_initialized(&env)?;
         staker.require_auth();
 
@@ -310,6 +313,7 @@ impl StakingContract {
     /// The contract must hold sufficient reward tokens (funded by the admin).
     pub fn claim_rewards(env: Env, staker: Address) -> Result<i128, ContractError> {
         let _guard = common::ReentrancyGuard::new(&env);
+        Self::require_not_paused(&env)?;
         Self::require_initialized(&env)?;
         staker.require_auth();
 
@@ -578,10 +582,9 @@ impl StakingContract {
     ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
-        Self::require_admin(&env, &caller)?;
+        Self::require_admin(&env, &caller, "configure_multisig")?;
 
-        multisig::configure(&env, signers, threshold)
-            .map_err(|_| ContractError::InvalidInput)
+        multisig::configure(&env, signers, threshold).map_err(|_| ContractError::InvalidInput)
     }
 
     /// Create a multisig proposal for an admin action.
@@ -611,8 +614,7 @@ impl StakingContract {
         Self::require_initialized(&env)?;
         approver.require_auth();
 
-        multisig::approve(&env, &approver, proposal_id)
-            .map_err(|_| ContractError::MultisigError)
+        multisig::approve(&env, &approver, proposal_id).map_err(|_| ContractError::MultisigError)
     }
 
     /// Return the current multisig configuration, if any.
@@ -640,11 +642,11 @@ impl StakingContract {
         env: Env,
         caller: Address,
         new_rate: i128,
-        proposal_id: u64,
+        _proposal_id: u64,
     ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
-        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin, "set_reward_rate")?;
+        Self::require_admin_tier(&env, &caller, &AdminTier::Contract, "set_reward_rate")?;
 
         if new_rate < 0 {
             return Err(ContractError::InvalidInput);
@@ -720,11 +722,11 @@ impl StakingContract {
         env: Env,
         caller: Address,
         new_period: u64,
-        proposal_id: u64,
+        _proposal_id: u64,
     ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
-        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin, "set_lock_period")?;
+        Self::require_admin_tier(&env, &caller, &AdminTier::Contract, "set_lock_period")?;
 
         env.storage().instance().set(&LOCK_PERIOD, &new_period);
 
@@ -771,7 +773,41 @@ impl StakingContract {
         admin_tiers::get_admin_tier(&env, &admin)
     }
 
+    // ── Pause management ──────────────────────────────────────────────────
+
+    /// Pause all state-mutating operations.
+    ///
+    /// Requires at least `ContractAdmin` tier, or legacy admin.
+    pub fn pause(env: Env, caller: Address) -> Result<(), ContractError> {
+        Self::require_initialized(&env)?;
+        caller.require_auth();
+        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin, "pause")?;
+        common::pausable::pause(&env, &caller);
+        Ok(())
+    }
+
+    /// Resume all state-mutating operations.
+    ///
+    /// Requires at least `ContractAdmin` tier, or legacy admin.
+    pub fn unpause(env: Env, caller: Address) -> Result<(), ContractError> {
+        Self::require_initialized(&env)?;
+        caller.require_auth();
+        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin, "unpause")?;
+        common::pausable::unpause(&env, &caller);
+        Ok(())
+    }
+
+    /// Returns whether the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        common::pausable::is_paused(&env)
+    }
+
     // ── Internal helpers ─────────────────────────────────────────────────────
+
+    /// Guard: revert if the contract is paused.
+    fn require_not_paused(env: &Env) -> Result<(), ContractError> {
+        common::pausable::require_not_paused(env).map_err(|_| ContractError::Paused)
+    }
 
     /// Guard: revert if the contract is not yet initialized.
     fn require_initialized(env: &Env) -> Result<(), ContractError> {

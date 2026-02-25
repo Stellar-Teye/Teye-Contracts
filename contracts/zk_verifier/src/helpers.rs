@@ -1,4 +1,7 @@
-use crate::{AccessRequest, verifier::{Proof, G1Point, G2Point}};
+use crate::{
+    verifier::{G1Point, G2Point, Proof},
+    AccessRequest,
+};
 use soroban_sdk::{BytesN, Env, Vec};
 
 /// Helper utility for creating ZK access requests.
