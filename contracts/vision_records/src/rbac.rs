@@ -1,9 +1,126 @@
+//! # Role-Based Access Control (RBAC) and Attribute-Based Access Control (ABAC) Engine
+//!
+//! This module provides a comprehensive access control system combining RBAC (for role-based permissions),
+//! delegation (for trust delegation and role inheritance), ACL groups (for bulk permission management),
+//! and ABAC (for policy-driven, context-aware access control).
+//!
+//! ## Architecture Overview
+//!
+//! The access control architecture is built on multiple layers, each handling different aspects:
+//!
+//! 1. **Role-Based Access Control (RBAC)**
+//!    - Users are assigned a single `Role` (Patient, Staff, Optometrist, Ophthalmologist, Admin)
+//!    - Each role carries a set of base permissions defined by `get_base_permissions()`
+//!    - Custom grants and revokes can override base permissions
+//!    - Permissions are checked via `has_permission()`
+//!
+//! 2. **Delegation**
+//!    - **Full Role Delegation**: A user (delegator) delegates their entire role to another (delegatee)
+//!    - **Scoped Delegation**: A user delegates only specific permissions to another
+//!    - Delegations respect TTL and expiration timestamps
+//!    - Permissions can be checked via `has_delegated_permission()` or unified via `has_permission()`
+//!
+//! 3. **ACL Groups**
+//!    - Named groups of permissions can be created and assigned to users
+//!    - Users can belong to multiple groups
+//!    - Group membership is checked in `has_permission()` via `get_group_permissions()`
+//!
+//! 4. **Attribute-Based Access Control (ABAC)**
+//!    - Policies define conditions (time, credentials, sensitivity, consent)
+//!    - Policies are evaluated against a context (user, resource, time, etc.)
+//!    - Integrates with the policy DSL engine for composable policies
+//!
+//! ## Role Hierarchy
+//!
+//! ```text
+//! Admin (5)
+//! ├── SystemAdmin, ManageUsers, WriteRecord, ManageAccess, ReadAnyRecord
+//! │
+//! ├── Ophthalmologist (4)
+//! │   ├── ManageUsers, WriteRecord, ManageAccess, ReadAnyRecord
+//! │   │
+//! │   └── Optometrist (3)
+//! │       ├── ManageUsers, WriteRecord, ManageAccess, ReadAnyRecord
+//! │
+//! ├── Staff (2)
+//! │   ├── ManageUsers
+//! │
+//! └── Patient (1)
+//!     ├── No global permissions (manages own records implicitly)
+//! ```
+//!
+//! ## Permission Hierarchy
+//!
+//! | Permission       | Roles                                              | Use Case                     |
+//! |------------------|----------------------------------------------------|------------------------------|
+//! | ReadAnyRecord    | Ophthalmologist, Optometrist                      | View patient records         |
+//! | WriteRecord      | Ophthalmologist, Optometrist                      | Create/update examinations   |
+//! | ManageAccess     | Ophthalmologist, Optometrist                      | Grant/revoke access          |
+//! | ManageUsers      | Admin, Ophthalmologist, Optometrist, Staff        | Manage user roles            |
+//! | SystemAdmin      | Admin                                              | Upgrade/config contracts     |
+//!
+//! ## Access Evaluation Flow
+//!
+//! When `has_permission(env, user, permission)` is called:
+//!
+//! ```text
+//! 1. Check if user has active assignment
+//!    ├─ If custom_revokes contains permission → return false (explicit deny)
+//!    ├─ If custom_grants contains permission → return true (explicit grant)
+//!    └─ If base role permissions contain permission → return true
+//!
+//! 2. Check ACL group memberships
+//!    ├─ For each group user belongs to
+//!    └─ If group permissions contain permission → return true
+//!
+//! 3. Check delegated roles (future enhancement)
+//!    └─ For each active delegation from delegators
+//!       └─ Check delegated role's base permissions
+//!
+//! 4. All checks failed → return false
+//! ```
+//!
+//! ## Delegation Flows
+//!
+//! ### Full Role Delegation
+//! ```text
+//! Ophthalmologist delegates to Staff:
+//! 1. Ophthalmologist calls delegate_role(staff, Ophthalmologist)
+//! 2. Staff immediately inherits all Ophthalmologist base permissions
+//! 3. If delegator's role changes, delegation may need to be updated
+//! ```
+//!
+//! ### Scoped Delegation
+//! ```text
+//! Ophthalmologist delegates specific permission to Staff:
+//! 1. Ophthalmologist calls delegate_permissions(staff, [WriteRecord])
+//! 2. Staff gains WriteRecord permission ONLY (from this delegator)
+//! 3. Staff retains their own base permissions + delegations
+//! ```
+//!
+//! ## Storage Keys
+//!
+//! - `("ROLE_ASN", user)` → RoleAssignment
+//! - `("DELEGATE", delegator, delegatee)` → Delegation (full role)
+//! - `("DLG_SCOPE", delegator, delegatee)` → ScopedDelegation
+//! - `("DEL_IDX", delegatee)` → Vec<Address> (index of delegators)
+//! - `("DLGTR_IDX", delegator)` → Vec<Address> (index of delegatees)
+//! - `("ACL_GRP", group_name)` → AclGroup
+//! - `("USR_GRPS", user)` → Vec<String> (groups user belongs to)
+//! - `("ACC_POL", policy_id)` → AccessPolicy
+//! - `("USER_CRED", user)` → CredentialType
+//! - `("REC_SENS", record_id)` → SensitivityLevel
+
 use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol, Vec};
 
 const TTL_THRESHOLD: u32 = 5184000;
 const TTL_EXTEND_TO: u32 = 10368000;
 
-/// Time-based access restrictions
+/// Time-based access restrictions for contextual access control.
+///
+/// Allows policies to enforce time-of-day restrictions, day-of-week restrictions,
+/// and business hours enforcement. Useful for controlling access to sensitive
+/// operations during specific times.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq, Copy)]
 pub enum TimeRestriction {
@@ -17,7 +134,11 @@ pub enum TimeRestriction {
     DaysOfWeek(u32),
 }
 
-/// Credential types for attribute-based access
+/// Credential types for verified professional credentials.
+///
+/// Associates users with cryptographically verified credentials that can be
+/// checked during access evaluation. Used to ensure only credentialed professionals
+/// can perform certain operations.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq, Copy)]
 pub enum CredentialType {
@@ -28,7 +149,10 @@ pub enum CredentialType {
     AdminCredentials,
 }
 
-/// Record sensitivity levels
+/// Record sensitivity levels for data classification.
+///
+/// Classifies records by sensitivity, enabling fine-grained access control
+/// where certain roles can only access records up to a specific sensitivity level.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq, Copy)]
 pub enum SensitivityLevel {
@@ -38,7 +162,10 @@ pub enum SensitivityLevel {
     Restricted,
 }
 
-/// Attribute-based access policy conditions
+/// Attribute-based access policy conditions.
+///
+/// Combines multiple conditions that must all be satisfied for access to be granted.
+/// Policies operate independently and any single matching policy can grant access.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PolicyConditions {
@@ -49,7 +176,10 @@ pub struct PolicyConditions {
     pub consent_required: bool,
 }
 
-/// Access policy combining RBAC with attribute-based conditions
+/// Access policy combining RBAC with attribute-based conditions.
+///
+/// Policies define sets of conditions that must be satisfied before access is granted.
+/// Policies are evaluated independently; if any policy permits access, the request is allowed.
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct AccessPolicy {
@@ -71,26 +201,47 @@ fn extend_ttl_delegation_key(env: &Env, key: &(soroban_sdk::Symbol, Address, Add
         .extend_ttl(key, TTL_THRESHOLD, TTL_EXTEND_TO);
 }
 
+/// Core permissions in the Teye system.
+///
+/// These represent the fundamental operations users can perform. Permissions are granted
+/// through roles, custom grants, delegations, or group membership.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum Permission {
+    /// Read any patient record (requires ReadAnyRecord permission)
     ReadAnyRecord = 1,
+    /// Create, update, or modify vision records
     WriteRecord = 2,
+    /// Grant, revoke, or modify access to records
     ManageAccess = 3,
+    /// Create, update, or remove user roles and assignments
     ManageUsers = 4,
+    /// System-level administrative access (contract upgrades, configuration)
     SystemAdmin = 5,
 }
 
+/// User roles in the Teye system.
+///
+/// Roles form a hierarchy where higher roles typically inherit permissions from lower roles.
+/// Each role carries a set of base permissions that users in that role automatically receive.
+/// 
+/// Hierarchy: Patient → Staff → Optometrist/Ophthalmologist → Admin
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum Role {
+    /// No role assigned
     None = 0,
+    /// Patient: owns their own medical records, manages access through consent grants
     Patient = 1,
+    /// Clinical staff: can read records, assist with data entry
     Staff = 2,
+    /// Eye care specialist (optometrist level): can prescribe and manage patient care
     Optometrist = 3,
+    /// Senior eye care specialist: extended permissions for complex cases
     Ophthalmologist = 4,
+    /// System administrator: full access and configuration rights
     Admin = 5,
 }
 
@@ -120,7 +271,11 @@ pub fn get_base_permissions(env: &Env, role: &Role) -> Vec<Permission> {
     perms
 }
 
-/// Represents an ACL Group with a set of permissions
+/// An ACL (Access Control List) group: a named collection of permissions.
+///
+/// Groups allow bundling permissions together for easier management. Users can belong
+/// to multiple groups, inheriting permissions from all of them. Useful for defining
+/// role archetypes outside of the role hierarchy (e.g., "Researchers", "Oncall", "Auditors").
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct AclGroup {
@@ -128,7 +283,19 @@ pub struct AclGroup {
     pub permissions: Vec<Permission>,
 }
 
-/// Represents an assigned role with specific custom grants or revocations
+/// A user's role assignment with optional custom grants and revokes.
+///
+/// Represents a user's primary role and any custom modifications to their permissions.
+/// - `role`: The base role (inherited permissions from `get_base_permissions`)
+/// - `custom_grants`: Permissions explicitly granted beyond the role
+/// - `custom_revokes`: Permissions explicitly removed (takes precedence over grants and base)
+/// - `expires_at`: Timestamp when the assignment becomes inactive (0 = never expires)
+///
+/// When evaluating permissions, the order of precedence is:
+/// 1. Explicit revoke → always deny
+/// 2. Explicit grant → always allow
+/// 3. Base role permissions → allow if present
+/// 4. Otherwise → deny
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct RoleAssignment {
@@ -138,7 +305,14 @@ pub struct RoleAssignment {
     pub expires_at: u64, // 0 means never expires
 }
 
-/// Represents the delegation of a role to someone else
+/// A full role delegation: delegator grants their entire role to delegatee.
+///
+/// When a user delegates their role, the delegatee inherits all base permissions of that role.
+/// Delegations can be revoked and expire automatically. Useful for covering absences or
+/// delegating authority during specific periods.
+///
+/// The delegatee receives the ROLE's permissions at the time of check, not a snapshot.
+/// If the role definition changes, delegated permissions may also change.
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct Delegation {
@@ -148,7 +322,16 @@ pub struct Delegation {
     pub expires_at: u64, // 0 means never expires
 }
 
-/// Represents a scoped delegation: only specific permissions (not a full role) are delegated.
+/// A scoped delegation: delegator grants specific permissions (not a full role) to delegatee.
+///
+/// Unlike full role delegations, scoped delegations grant only a subset of permissions.
+/// This is useful for giving temporary access to specific operations (e.g., allow a 
+/// contractor to write records but not manage access).
+///
+/// The delegatee's permission set includes:
+/// 1. Their own role's base permissions
+/// 2. All scoped delegations from other users
+/// 3. All full role delegations
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct ScopedDelegation {
@@ -219,6 +402,21 @@ pub fn record_sensitivity_key(record_id: &u64) -> (Symbol, u64) {
 
 // ======================== Core RBAC Engine ========================
 
+/// Assign a role to a user.
+///
+/// Creates or updates a RoleAssignment for the user with the specified role.
+/// If the user already has an assignment, it is replaced. The expires_at timestamp
+/// determines when this assignment becomes inactive.
+///
+/// # Arguments
+/// * `user` - The address to assign the role to
+/// * `role` - The role to assign (determines base permissions)
+/// * `expires_at` - Timestamp when assignment expires (0 = never expires)
+///
+/// # Example
+/// ```ignore
+/// assign_role(&env, dr_alice, Role::Ophthalmologist, 0); // Never expires
+/// ```
 pub fn assign_role(env: &Env, user: Address, role: Role, expires_at: u64) {
     let assignment = RoleAssignment {
         role,
@@ -232,7 +430,18 @@ pub fn assign_role(env: &Env, user: Address, role: Role, expires_at: u64) {
     extend_ttl_address_key(env, &key);
 }
 
-/// Retrieve the active assignment for a user, or None if it doesn't exist or is expired
+/// Retrieve the active role assignment for a user.
+///
+/// Returns the `RoleAssignment` if one exists and hasn't expired. Returns `None` if:
+/// - No assignment exists for the user
+/// - The assignment has expired (expires_at < current_timestamp AND expires_at != 0)
+///
+/// # Example
+/// ```ignore
+/// if let Some(assignment) = get_active_assignment(&env, &user) {
+///     println!("User has role: {:?}", assignment.role);
+/// }
+/// ```
 pub fn get_active_assignment(env: &Env, user: &Address) -> Option<RoleAssignment> {
     if let Some(assignment) = env
         .storage()
@@ -246,7 +455,23 @@ pub fn get_active_assignment(env: &Env, user: &Address) -> Option<RoleAssignment
     None
 }
 
-/// Set custom permissions for an existing assignment
+/// Grant a custom permission to a user.
+///
+/// Adds a permission to the user's custom_grants, which overrides their base role.
+/// If the same permission is in custom_revokes, it is removed from revokes.
+/// This is useful for temporarily elevating a user's permissions beyond their role.
+///
+/// Returns `Err(())` if the user has no active assignment.
+///
+/// # Precedence
+/// If a permission is in both custom_grants and custom_revokes, grants take precedence
+/// over revokes (revokes are removed when granting).
+///
+/// # Example
+/// ```ignore
+/// grant_custom_permission(&env, staff_member, Permission::WriteRecord)?;
+/// // Staff member can now write records despite not having it in their base role
+/// ```
 pub fn grant_custom_permission(env: &Env, user: Address, permission: Permission) -> Result<(), ()> {
     let mut assignment = get_active_assignment(env, &user).ok_or(())?;
 
@@ -270,7 +495,25 @@ pub fn grant_custom_permission(env: &Env, user: Address, permission: Permission)
     Ok(())
 }
 
-/// Revoke a permission for a specific user specifically
+/// Revoke a custom permission from a user.
+///
+/// Adds a permission to the user's custom_revokes, which explicitly denies access
+/// to that permission. Custom revokes take highest priority and override:
+/// - Base role permissions
+/// - Custom grants
+/// - Delegated permissions
+///
+/// Returns `Err(())` if the user has no active assignment.
+///
+/// # Precedence
+/// Custom revokes are the highest priority. Even if the user's role would grant
+/// a permission, an explicit revoke will deny it.
+///
+/// # Example
+/// ```ignore
+/// revoke_custom_permission(&env, contractor, Permission::ManageAccess)?;
+/// // Contractor can no longer manage access, even if a delegation grants it
+/// ```
 pub fn revoke_custom_permission(
     env: &Env,
     user: Address,
@@ -298,10 +541,27 @@ pub fn revoke_custom_permission(
     Ok(())
 }
 
-/// Create a delegation from `delegator` to `delegatee`.
+/// Create a full role delegation from delegator to delegatee.
 ///
-/// Also updates the delegatee's delegation index so that `has_permission`
-/// can discover all active delegations when evaluating permissions.
+/// The delegatee immediately receives all base permissions of the specified role.
+/// Maintains internal indices for fast lookup of active delegations when checking permissions.
+///
+/// # Arguments
+/// * `delegator` - The user delegating their role
+/// * `delegatee` - The user receiving delegated permissions
+/// * `role` - The role being delegated (delegatee gets all its permissions)
+/// * `expires_at` - Timestamp when delegation expires (0 = never expires)
+///
+/// # Indices Updated
+/// - Delegatee's index: who can delegate to them (for permission lookups)
+/// - Delegator's index: who they delegate to (for cascade cleanup)
+///
+/// # Example: Covering for a colleague
+/// ```ignore
+/// // Dr. Alice is on vacation, delegate her role to Dr. Bob
+/// delegate_role(&env, dr_alice, dr_bob, Role::Ophthalmologist, next_month_timestamp);
+/// // Dr. Bob now has Ophthalmologist permissions through delegation
+/// ```
 pub fn delegate_role(
     env: &Env,
     delegator: Address,
@@ -350,7 +610,17 @@ pub fn delegate_role(
     extend_ttl_address_key(env, &delegator_idx_key);
 }
 
-/// Retrieve the active delegations for a particular `delegatee` representing `delegator`
+/// Retrieve a full role delegation between two users.
+///
+/// Returns the `Delegation` if one exists and hasn't expired. Only checks for
+/// full role delegations, not scoped delegations.
+///
+/// # Arguments
+/// * `delegator` - The user who delegated their role
+/// * `delegatee` - The user who received the delegation
+///
+/// # Returns
+/// `Some(Delegation)` if found and active, `None` if expired or doesn't exist
 pub fn get_active_delegation(
     env: &Env,
     delegator: &Address,
@@ -368,9 +638,31 @@ pub fn get_active_delegation(
     None
 }
 
-/// Create a scoped delegation: grant only specific permissions (not a full role) to the delegatee.
-/// The delegatee will have only these permissions in the context of this delegator→delegatee link.
-/// Respects `expires_at` (0 = never expires).
+/// Create a scoped permission delegation from delegator to delegatee.
+///
+/// Unlike full role delegations, this grants only specific permissions.
+/// The delegatee receives ONLY those permissions from this delegation,
+/// independent of their role or other delegations.
+///
+/// If the permission list is empty, no delegation is created.
+///
+/// # Arguments
+/// * `delegator` - The user granting permissions
+/// * `delegatee` - The user receiving permissions
+/// * `permissions` - The specific permissions being delegated
+/// * `expires_at` - Timestamp when delegation expires (0 = never expires)
+///
+/// # Example: Temporary contractor access
+/// ```ignore
+/// // Allow contractor to write records but not manage access
+/// delegate_permissions(
+///     &env,
+///     hospital_admin,
+///     contractor,
+///     vec![Permission::WriteRecord],
+///     next_quarter_timestamp
+/// );
+/// ```
 pub fn delegate_permissions(
     env: &Env,
     delegator: Address,
@@ -422,7 +714,17 @@ pub fn delegate_permissions(
     extend_ttl_address_key(env, &delegator_idx_key);
 }
 
-/// Retrieve the active scoped delegation for a particular delegator→delegatee pair.
+/// Retrieve a scoped permission delegation between two users.
+///
+/// Returns the `ScopedDelegation` if one exists and hasn't expired.
+/// Only checks for scoped (permission-specific) delegations, not full role delegations.
+///
+/// # Arguments
+/// * `delegator` - The user who granted the permissions
+/// * `delegatee` - The user who received the scoped permissions
+///
+/// # Returns
+/// `Some(ScopedDelegation)` if found and active, `None` if expired or doesn't exist
 pub fn get_active_scoped_delegation(
     env: &Env,
     delegator: &Address,
@@ -442,6 +744,20 @@ pub fn get_active_scoped_delegation(
 
 // ======================== ACL Group Management ========================
 
+/// Create a new ACL group with the specified permissions.
+///
+/// Groups allow bundling related permissions for easier management. Users can belong
+/// to multiple groups, gaining permissions from all of them.
+///
+/// # Arguments
+/// * `name` - Unique name for the group
+/// * `permissions` - Vector of permissions this group grants
+///
+/// # Example
+/// ```ignore
+/// create_group(&env, "researchers", vec![Permission::ReadAnyRecord]);
+/// add_to_group(&env, researcher1, "researchers")?;
+/// ```
 pub fn create_group(env: &Env, name: String, permissions: Vec<Permission>) {
     let group = AclGroup {
         name: name.clone(),
@@ -452,10 +768,22 @@ pub fn create_group(env: &Env, name: String, permissions: Vec<Permission>) {
         .set(&acl_group_key(&name), &group);
 }
 
+/// Delete an ACL group.
+///
+/// Removes the group from storage. Users already in the group retain it in their
+/// membership list, but the group's permissions will no longer be accessible.
+/// A subsequent call to `get_group_permissions` will return an empty vector.
 pub fn delete_group(env: &Env, name: String) {
     env.storage().persistent().remove(&acl_group_key(&name));
 }
 
+/// Add a user to an ACL group.
+///
+/// The user will immediately inherit all permissions from the group.
+/// If the group doesn't exist, returns `Err(())`.
+/// If the user is already in the group, no action is taken (idempotent).
+///
+/// Returns `Ok(())` on success or group doesn't exist, `Err(())` otherwise.
 pub fn add_to_group(env: &Env, user: Address, group_name: String) -> Result<(), ()> {
     // Verify group exists
     if !env.storage().persistent().has(&acl_group_key(&group_name)) {
@@ -477,6 +805,10 @@ pub fn add_to_group(env: &Env, user: Address, group_name: String) -> Result<(), 
     Ok(())
 }
 
+/// Remove a user from an ACL group.
+///
+/// The user will no longer inherit permissions from the group after this call.
+/// If the user isn't in the group, no action is taken (idempotent).
 pub fn remove_from_group(env: &Env, user: Address, group_name: String) {
     let groups: Vec<String> = env
         .storage()
@@ -495,6 +827,10 @@ pub fn remove_from_group(env: &Env, user: Address, group_name: String) {
         .set(&user_groups_key(&user), &new_groups);
 }
 
+/// Get all permissions granted by a group.
+///
+/// Returns the permission vector for the named group, or an empty vector if
+/// the group doesn't exist.
 pub fn get_group_permissions(env: &Env, name: &String) -> Vec<Permission> {
     if let Some(group) = env
         .storage()
@@ -507,9 +843,35 @@ pub fn get_group_permissions(env: &Env, name: &String) -> Vec<Permission> {
     }
 }
 
-/// Evaluates if a specified `user` holds a `permission`.
-/// This function merges Base Role inherited permissions, Custom Grants, Custom Revokes,
-/// and currently active delegated Roles.
+/// Evaluate if a user holds a specific permission (unified permission check).
+///
+/// This is the primary access control function that checks all sources of permissions:
+/// 1. Direct role assignment (with custom grants and revokes)
+/// 2. ACL group membership
+/// 3. Full role delegations
+/// 4. Scoped delegations (future enhancement)
+///
+/// # Evaluation Order
+/// 1. **Explicit Deny**: If user has custom_revoke for this permission → return false
+/// 2. **Explicit Grant**: If user has custom_grant for this permission → return true
+/// 3. **Base Role**: If user's assigned role includes this permission → return true
+/// 4. **ACL Groups**: If any of user's groups include this permission → return true
+/// 5. **Default**: return false
+///
+/// # Important Notes
+/// - Delegations are NOT checked by this function. Use `has_delegated_permission` for delegation-specific checks.
+/// - Custom revokes take absolute highest priority
+/// - Performance: O(n) where n is group membership count
+///
+/// # Example
+/// ```ignore
+/// // Check if user can read records
+/// if has_permission(&env, &user_addr, &Permission::ReadAnyRecord) {
+///     // Grant access
+/// } else {
+///     // Deny access
+/// }
+/// ```
 pub fn has_permission(env: &Env, user: &Address, permission: &Permission) -> bool {
     // Step 1: Check direct role assignment
     if let Some(assignment) = get_active_assignment(env, user) {
