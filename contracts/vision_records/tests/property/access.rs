@@ -204,7 +204,7 @@ proptest! {
         };
 
         let access_result = client.check_record_access(&researcher, &record_id).unwrap();
-        
+
         if should_allow {
             prop_assert_ne!(access_result, vision_records::AccessLevel::None);
         } else {
@@ -267,7 +267,7 @@ proptest! {
 
         // Test access
         let access_result = client.check_record_access(&researcher, &record_id).unwrap();
-        
+
         let should_allow = consent_granted && !consent_expired;
         if should_allow {
             prop_assert_ne!(access_result, vision_records::AccessLevel::None);
@@ -347,11 +347,11 @@ proptest! {
         // Test access - all conditions must be met
         let current_hour = (env.ledger().timestamp() / 3600) % 24;
         let is_business_hours = current_hour >= 9 && current_hour <= 17;
-        
+
         let should_allow = role_match && credential_match && sensitivity_match && consent_match && is_business_hours;
-        
+
         let access_result = client.check_record_access(&user, &record_id).unwrap();
-        
+
         if should_allow {
             prop_assert_ne!(access_result, vision_records::AccessLevel::None);
         } else {

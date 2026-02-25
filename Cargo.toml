@@ -2,6 +2,7 @@
 resolver = "2"
 
 members = [
+    "contracts/key_manager",
     "contracts/vision_records",
     "contracts/ai_integration",
     "contracts/staking",
@@ -9,12 +10,17 @@ members = [
     "contracts/common",
     "contracts/identity",
     "contracts/zk_verifier",
+    "contracts/zk_voting",
     "contracts/fhir",
     "contracts/cross_chain",
     "contracts/analytics",
     "contracts/treasury",
+    "contracts/audit",
     "contracts/emr_bridge",
     "contracts/orchestrator",
+    "contracts/state_channel",
+    "contracts/metering",
+    "sdk/zk_prover",
 ]
 
 [workspace.package]
@@ -26,7 +32,7 @@ repository = "https://github.com/Stellar-Teye/Teye-Contracts"
 rust-version = "1.78"
 
 [workspace.dependencies]
-soroban-sdk = "22.0.0"
+soroban-sdk = "25.0.0"
 proptest = "1"
 proptest-derive = "0.4"
 

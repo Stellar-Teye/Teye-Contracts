@@ -1,10 +1,11 @@
 use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol, Vec};
 
 // ── Storage keys ──────────────────────────────────────────────
-const RATE_LIMIT_CONFIG: Symbol = symbol_short!("RL_CFG");
-const RATE_LIMIT_WINDOW: Symbol = symbol_short!("RL_WIN");
-const RATE_LIMIT_COUNT: Symbol = symbol_short!("RL_CNT");
-const RATE_LIMIT_BYPASS: Symbol = symbol_short!("RL_BYP");
+pub(crate) const RATE_LIMIT_CONFIG: Symbol = symbol_short!("RL_CFG");
+pub(crate) const RATE_LIMIT_WINDOW: Symbol = symbol_short!("RL_WIN");
+pub(crate) const RATE_LIMIT_COUNT: Symbol = symbol_short!("RL_CNT");
+pub(crate) const RATE_LIMIT_BYPASS: Symbol = symbol_short!("RL_BYP");
+
 
 const TTL_THRESHOLD: u32 = 5184000;
 const TTL_EXTEND_TO: u32 = 10368000;

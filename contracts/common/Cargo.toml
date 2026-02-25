@@ -12,8 +12,12 @@ crate-type = ["rlib"]
 doctest = false
 
 [features]
-default = ["std"]
+default = []
 std = []
+testutils = ["soroban-sdk/testutils"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }

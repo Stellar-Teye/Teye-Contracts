@@ -85,6 +85,7 @@ pub enum Permission {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Role {
+    None = 0,
     Patient = 1,
     Staff = 2,
     Optometrist = 3,
@@ -146,6 +147,16 @@ pub struct Delegation {
     pub expires_at: u64, // 0 means never expires
 }
 
+/// Represents a scoped delegation: only specific permissions (not a full role) are delegated.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct ScopedDelegation {
+    pub delegator: Address,
+    pub delegatee: Address,
+    pub permissions: Vec<Permission>,
+    pub expires_at: u64, // 0 means never expires
+}
+
 /// Internal store schema helpers
 pub fn user_assignment_key(user: &Address) -> (soroban_sdk::Symbol, Address) {
     (symbol_short!("ROLE_ASN"), user.clone())
@@ -159,6 +170,25 @@ pub fn delegation_key(delegator: &Address, delegatee: &Address) -> (Symbol, Addr
     )
 }
 
+pub fn scoped_delegation_key(
+    delegator: &Address,
+    delegatee: &Address,
+) -> (Symbol, Address, Address) {
+    (
+        symbol_short!("DLG_SCOPE"),
+        delegator.clone(),
+        delegatee.clone(),
+    )
+}
+
+pub fn delegatee_index_key(delegatee: &Address) -> (Symbol, Address) {
+    (symbol_short!("DEL_IDX"), delegatee.clone())
+}
+
+pub fn delegator_index_key(delegator: &Address) -> (Symbol, Address) {
+    (symbol_short!("DLGTR_IDX"), delegator.clone())
+}
+
 pub fn acl_group_key(name: &String) -> (Symbol, String) {
     (symbol_short!("ACL_GRP"), name.clone())
 }
@@ -167,8 +197,27 @@ pub fn user_groups_key(user: &Address) -> (Symbol, Address) {
     (symbol_short!("USR_GRPS"), user.clone())
 }
 
-pub fn delegatee_index_key(delegatee: &Address) -> (Symbol, Address) {
-    (symbol_short!("DEL_IDX"), delegatee.clone())
+// pub fn delegatee_index_key(delegatee: &Address) -> (Symbol, Address) {
+//     (symbol_short!("DEL_IDX"), delegatee.clone())
+// }
+
+pub fn access_policy_key(id: &String) -> (Symbol, String) {
+    (symbol_short!("ACC_POL"), id.clone())
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RevokedDelegation {
+    pub delegatee: Address,
+    pub is_scoped: bool,
+}
+
+pub fn user_credential_key(user: &Address) -> (Symbol, Address) {
+    (symbol_short!("USER_CRED"), user.clone())
+}
+
+pub fn record_sensitivity_key(record_id: &u64) -> (Symbol, u64) {
+    (symbol_short!("REC_SENS"), *record_id)
 }
 
 pub fn access_policy_key(id: &String) -> (Symbol, String) {
@@ -295,10 +344,25 @@ pub fn delegate_role(
         .unwrap_or(Vec::new(env));
 
     if !delegators.contains(&delegator) {
-        delegators.push_back(delegator);
+        delegators.push_back(delegator.clone());
     }
     env.storage().persistent().set(&idx_key, &delegators);
     extend_ttl_address_key(env, &idx_key);
+
+    // Maintain the delegator's index of delegatees for cascade cleanup.
+    let delegator_idx_key = delegator_index_key(&delegator);
+    let mut delegatees: Vec<Address> = env
+        .storage()
+        .persistent()
+        .get(&delegator_idx_key)
+        .unwrap_or(Vec::new(env));
+    if !delegatees.contains(&delegatee) {
+        delegatees.push_back(delegatee);
+    }
+    env.storage()
+        .persistent()
+        .set(&delegator_idx_key, &delegatees);
+    extend_ttl_address_key(env, &delegator_idx_key);
 }
 
 /// Retrieve the active delegations for a particular `delegatee` representing `delegator`
@@ -311,6 +375,78 @@ pub fn get_active_delegation(
         .storage()
         .persistent()
         .get::<_, Delegation>(&delegation_key(delegator, delegatee))
+    {
+        if del.expires_at == 0 || del.expires_at > env.ledger().timestamp() {
+            return Some(del);
+        }
+    }
+    None
+}
+
+/// Create a scoped delegation: grant only specific permissions (not a full role) to the delegatee.
+/// The delegatee will have only these permissions in the context of this delegator→delegatee link.
+/// Respects `expires_at` (0 = never expires).
+pub fn delegate_permissions(
+    env: &Env,
+    delegator: Address,
+    delegatee: Address,
+    permissions: Vec<Permission>,
+    expires_at: u64,
+) {
+    if permissions.is_empty() {
+        return;
+    }
+
+    let del = ScopedDelegation {
+        delegator: delegator.clone(),
+        delegatee: delegatee.clone(),
+        permissions: permissions.clone(),
+        expires_at,
+    };
+
+    let key = scoped_delegation_key(&delegator, &delegatee);
+    env.storage().persistent().set(&key, &del);
+    extend_ttl_delegation_key(env, &key);
+
+    let idx_key = delegatee_index_key(&delegatee);
+    let mut delegators: Vec<Address> = env
+        .storage()
+        .persistent()
+        .get(&idx_key)
+        .unwrap_or(Vec::new(env));
+
+    if !delegators.contains(&delegator) {
+        delegators.push_back(delegator.clone());
+    }
+    env.storage().persistent().set(&idx_key, &delegators);
+    extend_ttl_address_key(env, &idx_key);
+
+    // Maintain the delegator's index of delegatees for cascade cleanup.
+    let delegator_idx_key = delegator_index_key(&delegator);
+    let mut delegatees: Vec<Address> = env
+        .storage()
+        .persistent()
+        .get(&delegator_idx_key)
+        .unwrap_or(Vec::new(env));
+    if !delegatees.contains(&delegatee) {
+        delegatees.push_back(delegatee);
+    }
+    env.storage()
+        .persistent()
+        .set(&delegator_idx_key, &delegatees);
+    extend_ttl_address_key(env, &delegator_idx_key);
+}
+
+/// Retrieve the active scoped delegation for a particular delegator→delegatee pair.
+pub fn get_active_scoped_delegation(
+    env: &Env,
+    delegator: &Address,
+    delegatee: &Address,
+) -> Option<ScopedDelegation> {
+    if let Some(del) = env
+        .storage()
+        .persistent()
+        .get::<_, ScopedDelegation>(&scoped_delegation_key(delegator, delegatee))
     {
         if del.expires_at == 0 || del.expires_at > env.ledger().timestamp() {
             return Some(del);
@@ -428,6 +564,10 @@ pub fn has_permission(env: &Env, user: &Address, permission: &Permission) -> boo
 /// Checks if `delegatee` holds `permission` through a specific delegation
 /// from `delegator`.
 ///
+/// Returns true if either:
+/// - There is an active full role delegation and the role's base permissions include `permission`, or
+/// - There is an active scoped delegation whose permission list includes `permission`.
+///
 /// Unlike `has_permission` which checks ALL delegation paths, this function
 /// verifies a specific delegator→delegatee relationship. Use this when the
 /// caller must be acting on behalf of a particular entity (e.g., a provider
@@ -439,8 +579,15 @@ pub fn has_delegated_permission(
     delegatee: &Address,
     permission: &Permission,
 ) -> bool {
+    // Full role delegation: delegatee gets all permissions of the role
     if let Some(delegation) = get_active_delegation(env, delegator, delegatee) {
         if get_base_permissions(env, &delegation.role).contains(permission) {
+            return true;
+        }
+    }
+    // Scoped delegation: delegatee gets only the listed permissions
+    if let Some(scoped) = get_active_scoped_delegation(env, delegator, delegatee) {
+        if scoped.permissions.contains(permission) {
             return true;
         }
     }
@@ -505,11 +652,7 @@ pub struct PolicyContext {
 }
 
 /// Evaluate an access policy against the given context
-pub fn evaluate_policy(
-    env: &Env,
-    policy: &AccessPolicy,
-    context: &PolicyContext,
-) -> bool {
+pub fn evaluate_policy(env: &Env, policy: &AccessPolicy, context: &PolicyContext) -> bool {
     if !policy.enabled {
         return false;
     }
@@ -517,9 +660,9 @@ pub fn evaluate_policy(
     let conditions = &policy.conditions;
 
     // Check role requirement
-    if let Some(required_role) = &conditions.required_role {
+    if let OptionalRole::Some(required_role) = &conditions.required_role {
         if let Some(assignment) = get_active_assignment(env, &context.user) {
-            if assignment.role != *required_role {
+            if assignment.role != conditions.required_role {
                 return false;
             }
         } else {
@@ -553,8 +696,16 @@ pub fn evaluate_policy(
     if conditions.consent_required {
         if let (Some(patient), Some(_record_id)) = (&context.patient, &context.resource_id) {
             // Check if there's active consent for this user to access this patient's records
-            let consent_key = (symbol_short!("CONSENT"), patient.clone(), context.user.clone());
-            if let Some(consent) = env.storage().persistent().get::<_, ConsentGrant>(&consent_key) {
+            let consent_key = (
+                symbol_short!("CONSENT"),
+                patient.clone(),
+                context.user.clone(),
+            );
+            if let Some(consent) = env
+                .storage()
+                .persistent()
+                .get::<_, ConsentGrant>(&consent_key)
+            {
                 if consent.revoked || consent.expires_at <= context.current_time {
                     return false;
                 }
@@ -578,10 +729,10 @@ pub fn evaluate_access_policies(
 ) -> bool {
     // Get all policies (in a real implementation, you might want to index policies by user/resource)
     // For now, we'll check a few default policy IDs
-    let mut default_policy_ids = Vec::new(&env);
-    default_policy_ids.push_back(String::from_str(&env, "default_medical_access"));
-    default_policy_ids.push_back(String::from_str(&env, "emergency_access"));
-    default_policy_ids.push_back(String::from_str(&env, "research_access"));
+    let mut default_policy_ids = Vec::new(env);
+    default_policy_ids.push_back(String::from_str(env, "default_medical_access"));
+    default_policy_ids.push_back(String::from_str(env, "emergency_access"));
+    default_policy_ids.push_back(String::from_str(env, "research_access"));
 
     let context = PolicyContext {
         user: user.clone(),
@@ -589,16 +740,24 @@ pub fn evaluate_access_policies(
         patient,
         current_time: env.ledger().timestamp(),
     };
+    let mut found_policy = false;
 
     for i in 0..default_policy_ids.len() {
         if let Some(policy_id) = default_policy_ids.get(i) {
             let key = access_policy_key(&policy_id);
             if let Some(policy) = env.storage().persistent().get::<_, AccessPolicy>(&key) {
+                found_policy = true;
                 if evaluate_policy(env, &policy, &context) {
                     return true;
                 }
             }
         }
+    }
+
+    // Backward-compatible default: if no ABAC policies are configured,
+    // don't block otherwise valid consent/access grants.
+    if !found_policy {
+        return true;
     }
 
     false
@@ -640,4 +799,157 @@ pub struct ConsentGrant {
     pub granted_at: u64,
     pub expires_at: u64,
     pub revoked: bool,
+}
+
+// ======================== Policy Engine Integration ========================
+
+/// Builds an [`teye_common::policy_dsl::EvalContext`] from the existing RBAC
+/// context, populating subject attributes (role, credential) automatically.
+pub fn build_eval_context(
+    env: &Env,
+    user: &Address,
+    action: &str,
+    resource_id: Option<u64>,
+) -> teye_common::policy_dsl::EvalContext {
+    let mut attr_keys = Vec::new(env);
+    let mut attr_vals = Vec::new(env);
+
+    // Populate role attribute from the active assignment
+    if let Some(assignment) = get_active_assignment(env, user) {
+        attr_keys.push_back(String::from_str(env, "role"));
+        let role_str = match assignment.role {
+            Role::None => "none",
+            Role::Patient => "patient",
+            Role::Staff => "staff",
+            Role::Optometrist => "optometrist",
+            Role::Ophthalmologist => "ophthalmologist",
+            Role::Admin => "admin",
+        };
+        attr_vals.push_back(String::from_str(env, role_str));
+    }
+
+    // Populate credential attribute
+    let cred = get_user_credential(env, user);
+    if cred != CredentialType::None {
+        attr_keys.push_back(String::from_str(env, "credential"));
+        let cred_str = match cred {
+            CredentialType::None => "none",
+            CredentialType::MedicalLicense => "medical_license",
+            CredentialType::ResearchCredentials => "research",
+            CredentialType::EmergencyCredentials => "emergency",
+            CredentialType::AdminCredentials => "admin",
+        };
+        attr_vals.push_back(String::from_str(env, cred_str));
+    }
+
+    // Populate sensitivity attribute if a resource is specified
+    if let Some(rid) = resource_id {
+        let sensitivity = get_record_sensitivity(env, &rid);
+        attr_keys.push_back(String::from_str(env, "sensitivity"));
+        let sens_str = match sensitivity {
+            SensitivityLevel::Public => "public",
+            SensitivityLevel::Standard => "standard",
+            SensitivityLevel::Confidential => "confidential",
+            SensitivityLevel::Restricted => "restricted",
+        };
+        attr_vals.push_back(String::from_str(env, sens_str));
+    }
+
+    let res_id_str = match resource_id {
+        Some(id) => {
+            let mut buf = String::from_str(env, "record_");
+            // Simple numeric-to-string for on-chain use
+            let id_str = id_to_string(env, id);
+            buf = concat_strings(env, &buf, &id_str);
+            buf
+        }
+        None => String::from_str(env, "global"),
+    };
+
+    teye_common::policy_dsl::EvalContext {
+        subject: user.clone(),
+        resource_id: res_id_str,
+        action: String::from_str(env, action),
+        timestamp: env.ledger().timestamp(),
+        attr_keys,
+        attr_vals,
+    }
+}
+
+/// Evaluates the composable policy engine for a given user and action.
+///
+/// This function complements the existing `has_permission` / ABAC checks by
+/// delegating to the common crate's policy engine. Returns `true` if the
+/// policy engine permits the action, `false` otherwise.
+pub fn check_policy_engine(
+    env: &Env,
+    user: &Address,
+    action: &str,
+    resource_id: Option<u64>,
+) -> bool {
+    let ctx = build_eval_context(env, user, action, resource_id);
+    let result = teye_common::policy_engine::evaluate(env, &ctx);
+    result.effect == teye_common::policy_dsl::PolicyEffect::Permit
+}
+
+/// Runs a policy simulation without side-effects, useful for what-if analysis.
+pub fn simulate_policy_check(
+    env: &Env,
+    user: &Address,
+    action: &str,
+    resource_id: Option<u64>,
+) -> teye_common::policy_dsl::SimulationResult {
+    let ctx = build_eval_context(env, user, action, resource_id);
+    teye_common::policy_engine::simulate(env, &ctx)
+}
+
+// ── Numeric helpers for on-chain string building ────────────────────────────
+
+fn id_to_string(env: &Env, mut id: u64) -> String {
+    if id == 0 {
+        return String::from_str(env, "0");
+    }
+    let mut digits: soroban_sdk::Vec<u32> = Vec::new(env);
+    while id > 0 {
+        digits.push_back((id % 10) as u32);
+        id /= 10;
+    }
+    let mut result = String::from_str(env, "");
+    let len = digits.len();
+    for i in 0..len {
+        let d = digits.get(len - 1 - i).unwrap();
+        let ch = match d {
+            0 => "0",
+            1 => "1",
+            2 => "2",
+            3 => "3",
+            4 => "4",
+            5 => "5",
+            6 => "6",
+            7 => "7",
+            8 => "8",
+            9 => "9",
+            _ => "0",
+        };
+        result = concat_strings(env, &result, &String::from_str(env, ch));
+    }
+    result
+}
+
+fn concat_strings(env: &Env, a: &String, b: &String) -> String {
+    let a_bytes = a.to_bytes();
+    let b_bytes = b.to_bytes();
+    let mut combined = soroban_sdk::Bytes::new(env);
+    for i in 0..a_bytes.len() {
+        combined.push_back(a_bytes.get(i).unwrap());
+    }
+    for i in 0..b_bytes.len() {
+        combined.push_back(b_bytes.get(i).unwrap());
+    }
+    let mut buf = [0u8; 256];
+    let len = combined.len() as usize;
+    for (i, slot) in buf.iter_mut().enumerate().take(len) {
+        *slot = combined.get(i as u32).unwrap();
+    }
+    String::from_bytes(env, &buf[..len])
 }

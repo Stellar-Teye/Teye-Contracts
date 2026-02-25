@@ -7,7 +7,7 @@ mod common;
 
 use common::{create_test_user, setup_test_env};
 use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::Address;
+use soroban_sdk::{Address, Vec};
 use vision_records::{AccessLevel, Permission, Role};
 
 #[test]
@@ -237,4 +237,131 @@ fn test_access_control_with_generated_addresses() {
         ctx.client.check_access(&patient, &grantee),
         AccessLevel::None
     );
+}
+
+// --- Scoped delegation (delegate_permissions) vs full role delegation ---
+
+/// Delegatee with scoped [ManageAccess] can grant_access on behalf of patient but only has that permission.
+#[test]
+fn test_scoped_delegation_only_grants_specified_permissions() {
+    let ctx = setup_test_env();
+
+    let patient = create_test_user(&ctx, Role::Patient, "Patient");
+    let delegatee = create_test_user(&ctx, Role::Patient, "Delegatee");
+    let doctor = create_test_user(&ctx, Role::Optometrist, "Doctor");
+
+    let mut perms = Vec::new(&ctx.env);
+    perms.push_back(Permission::ManageAccess);
+    let expires_at = ctx.env.ledger().timestamp() + 86400;
+    ctx.client
+        .delegate_permissions(&patient, &delegatee, &perms, &expires_at);
+
+    // Delegatee can grant access (ManageAccess) on behalf of patient
+    ctx.client
+        .grant_access(&delegatee, &patient, &doctor, &AccessLevel::Read, &3600);
+    assert_eq!(
+        ctx.client.check_access(&patient, &doctor),
+        AccessLevel::Read
+    );
+
+    // Same patient delegates only ReadAnyRecord to another delegatee — that one must NOT grant access
+    let delegatee2 = create_test_user(&ctx, Role::Patient, "Delegatee2");
+    let mut perms_read_only = Vec::new(&ctx.env);
+    perms_read_only.push_back(Permission::ReadAnyRecord);
+    ctx.client
+        .delegate_permissions(&patient, &delegatee2, &perms_read_only, &expires_at);
+
+    let doctor2 = create_test_user(&ctx, Role::Optometrist, "Doctor2");
+    let result =
+        ctx.client
+            .try_grant_access(&delegatee2, &patient, &doctor2, &AccessLevel::Read, &3600);
+    assert!(result.is_err());
+}
+
+/// Full role delegation still works: delegatee gets all permissions of the role.
+#[test]
+fn test_full_role_delegation_still_works() {
+    let ctx = setup_test_env();
+
+    let pt1 = create_test_user(&ctx, Role::Patient, "Pt1");
+    let pt2 = create_test_user(&ctx, Role::Patient, "Pt2");
+    let future_time = ctx.env.ledger().timestamp() + 86400;
+    ctx.client
+        .delegate_role(&pt1, &pt2, &Role::Optometrist, &future_time);
+
+    let doctor = create_test_user(&ctx, Role::Optometrist, "Doc");
+    ctx.client
+        .grant_access(&pt2, &pt1, &doctor, &AccessLevel::Read, &3600);
+
+    assert_eq!(ctx.client.check_access(&pt1, &doctor), AccessLevel::Read);
+}
+
+/// Scoped delegations respect expiry: after expires_at, delegatee loses delegated permissions.
+#[test]
+fn test_scoped_delegation_expiry() {
+    let ctx = setup_test_env();
+
+    let patient = create_test_user(&ctx, Role::Patient, "Patient");
+    let delegatee = create_test_user(&ctx, Role::Patient, "Delegatee");
+    let doctor = create_test_user(&ctx, Role::Optometrist, "Doctor");
+
+    ctx.env.ledger().set_timestamp(100);
+    let mut perms = Vec::new(&ctx.env);
+    perms.push_back(Permission::ManageAccess);
+    let expire_at = 100u64;
+    ctx.client
+        .delegate_permissions(&patient, &delegatee, &perms, &expire_at);
+
+    // At timestamp 100 or later, scoped delegation is expired
+    let result =
+        ctx.client
+            .try_grant_access(&delegatee, &patient, &doctor, &AccessLevel::Read, &3600);
+    assert!(result.is_err());
+
+    // Before expiry it works
+    ctx.env.ledger().set_timestamp(99);
+    ctx.client
+        .grant_access(&delegatee, &patient, &doctor, &AccessLevel::Read, &3600);
+    assert_eq!(
+        ctx.client.check_access(&patient, &doctor),
+        AccessLevel::Read
+    );
+}
+
+#[test]
+fn test_revoke_access_cascades_delegations_and_emits_event() {
+    use soroban_sdk::testutils::Events;
+
+    let ctx = setup_test_env();
+
+    let patient = create_test_user(&ctx, Role::Patient, "Patient");
+    let grantee = create_test_user(&ctx, Role::Patient, "Grantee");
+    let delegatee = create_test_user(&ctx, Role::Patient, "Delegatee");
+    let doctor = create_test_user(&ctx, Role::Optometrist, "Doctor");
+    let doctor2 = create_test_user(&ctx, Role::Optometrist, "Doctor2");
+
+    ctx.client
+        .grant_access(&patient, &patient, &grantee, &AccessLevel::Read, &3600);
+
+    let future_time = ctx.env.ledger().timestamp() + 86400;
+    ctx.client
+        .delegate_role(&grantee, &delegatee, &Role::Optometrist, &future_time);
+
+    // Delegation is active: delegatee can manage grantee's access.
+    ctx.client
+        .grant_access(&delegatee, &grantee, &doctor, &AccessLevel::Read, &3600);
+    assert_eq!(ctx.client.check_access(&grantee, &doctor), AccessLevel::Read);
+
+    let events_before = ctx.env.events().all().len();
+    ctx.client.revoke_access(&patient, &patient, &grantee);
+    let events_after = ctx.env.events().all().len();
+
+    // Revoke emits: cascade event + audit event + access_revoked event.
+    assert_eq!(events_after - events_before, 3);
+
+    // Cascaded cleanup removed grantee->delegatee delegation.
+    let res = ctx
+        .client
+        .try_grant_access(&delegatee, &grantee, &doctor2, &AccessLevel::Read, &3600);
+    assert!(res.is_err());
 }

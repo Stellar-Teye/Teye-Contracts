@@ -3,7 +3,9 @@ use crate::{
     rbac::{self, Permission},
     ContractError,
 };
+use teye_common::admin_tiers::{self, AdminTier};
 use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol};
+use teye_common::admin_tiers::{self, AdminTier};
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -56,9 +58,12 @@ pub fn require_not_paused(env: &Env, scope: &PauseScope) -> Result<(), ContractE
     Ok(())
 }
 
-/// Engages a circuit breaker for the specified scope. Must hold SystemAdmin.
+/// Engages a circuit breaker for the specified scope.
+/// Requires at least `OperatorAdmin` tier, or the existing SystemAdmin RBAC permission.
 pub fn pause_contract(env: &Env, caller: &Address, scope: PauseScope) -> Result<(), ContractError> {
-    if !rbac::has_permission(env, caller, &Permission::SystemAdmin) {
+    let has_tier = admin_tiers::require_tier(env, caller, &AdminTier::OperatorAdmin);
+    let has_rbac = rbac::has_permission(env, caller, &Permission::SystemAdmin);
+    if !has_tier && !has_rbac {
         return Err(ContractError::Unauthorized);
     }
 
@@ -78,13 +83,16 @@ pub fn pause_contract(env: &Env, caller: &Address, scope: PauseScope) -> Result<
     Ok(())
 }
 
-/// Resumes operation of a circuit breaker for the specified scope. Must hold SystemAdmin.
+/// Resumes operation of a circuit breaker for the specified scope.
+/// Requires at least `OperatorAdmin` tier, or the existing SystemAdmin RBAC permission.
 pub fn resume_contract(
     env: &Env,
     caller: &Address,
     scope: PauseScope,
 ) -> Result<(), ContractError> {
-    if !rbac::has_permission(env, caller, &Permission::SystemAdmin) {
+    let has_tier = admin_tiers::require_tier(env, caller, &AdminTier::OperatorAdmin);
+    let has_rbac = rbac::has_permission(env, caller, &Permission::SystemAdmin);
+    if !has_tier && !has_rbac {
         return Err(ContractError::Unauthorized);
     }
 
