@@ -55,11 +55,11 @@ pub enum ContractError {
     RequestNotFound = 8,
     TokensIdentical = 9,
     SlashingUnauthorized = 10,
-    RateChangeNotReady = 10,
-    NoPendingRateChange = 11,
-    MultisigRequired = 12,
-    MultisigError = 13,
-    Paused = 14,
+    RateChangeNotReady = 11,
+    NoPendingRateChange = 12,
+    MultisigRequired = 13,
+    MultisigError = 14,
+    Paused = 15,
 }
 
 // ── Public-facing types (re-exported for test consumers) ─────────────────────
@@ -212,7 +212,7 @@ impl StakingContract {
 
         audit::AuditManager::log_event(
             &env,
-            staker,
+            staker.clone(),
             "staking.stake",
             soroban_sdk::String::from_str(&env, &amount.to_string()),
             "ok",
@@ -705,13 +705,6 @@ impl StakingContract {
             if proposal_id == 0 {
                 return Err(ContractError::MultisigRequired);
             }
-            multisig::mark_executed(&env, proposal_id).map_err(|_| ContractError::MultisigError)?;
-        } else {
-            Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin)?;
-        }
-
-        if new_rate < 0 {
-            return Err(ContractError::InvalidInput);
             let proposal =
                 multisig::get_proposal(&env, proposal_id).ok_or(ContractError::MultisigRequired)?;
             if proposal.action != symbol_short!("RWD_RATE")
@@ -720,6 +713,8 @@ impl StakingContract {
                 return Err(ContractError::MultisigRequired);
             }
             multisig::mark_executed(&env, proposal_id).map_err(|_| ContractError::MultisigError)?;
+        } else {
+            Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin, "set_reward_rate")?;
         }
 
         let delay: u64 = env.storage().instance().get(&RATE_DELAY).unwrap_or(0);
@@ -802,9 +797,6 @@ impl StakingContract {
             if proposal_id == 0 {
                 return Err(ContractError::MultisigRequired);
             }
-            multisig::mark_executed(&env, proposal_id).map_err(|_| ContractError::MultisigError)?;
-        } else {
-            Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin)?;
             let proposal =
                 multisig::get_proposal(&env, proposal_id).ok_or(ContractError::MultisigRequired)?;
             if proposal.action != symbol_short!("SET_LOCK")
@@ -813,6 +805,8 @@ impl StakingContract {
                 return Err(ContractError::MultisigRequired);
             }
             multisig::mark_executed(&env, proposal_id).map_err(|_| ContractError::MultisigError)?;
+        } else {
+            Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin, "set_lock_period")?;
         }
 
         env.storage().instance().set(&LOCK_PERIOD, &new_period);
@@ -998,7 +992,7 @@ impl StakingContract {
         
         // Ensure the caller has permission to slash. 
         // In a production system, this might also check against an authorized delegation contract address.
-        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin)?;
+        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin, "slash")?;
 
         if amount <= 0 {
             return Err(ContractError::InvalidInput);

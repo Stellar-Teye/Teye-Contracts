@@ -20,7 +20,6 @@ use soroban_sdk::contracterror;
 
 // ── Modules ──────────────────────────────────────────────────────────────────
 
-pub mod admin_tiers;
 #[allow(clippy::enum_variant_names)]
 pub mod admin_tiers;
 pub mod concurrency;
@@ -32,6 +31,9 @@ pub mod meta_tx;
 pub mod metering;
 pub mod multisig;
 pub mod nonce;
+pub mod pausable;
+pub mod policy_dsl;
+pub mod progressive_auth;
 pub mod rate_limit;
 pub mod reentrancy_guard;
 pub mod session;
@@ -106,6 +108,8 @@ pub enum ChannelStatus {
     Closed = 2,
     Settled = 3,
     Disputed = 4,
+}
+
 #[cfg(test)]
 mod tests {
     use super::CommonError;
