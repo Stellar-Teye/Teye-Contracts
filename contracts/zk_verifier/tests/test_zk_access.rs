@@ -8,7 +8,7 @@ use soroban_sdk::{
     Address, BytesN, Env, IntoVal, TryFromVal, Vec,
 };
 use zk_verifier::vk::{G1Point, G2Point, VerificationKey};
-use zk_verifier::ZkAccessHelper;
+use zk_verifier::{MerkleVerifier, ZkAccessHelper};
 use zk_verifier::{AccessRejectedEvent, ContractError, ZkVerifierContract, ZkVerifierContractClient};
 
 fn setup_vk(env: &Env) -> VerificationKey {
@@ -1273,4 +1273,402 @@ fn test_plonk_multiple_public_inputs() {
         client.verify_access_plonk(&request),
         "PLONK should handle multiple public inputs"
     );
+}
+
+// ================================
+// Merkle Tree Verification Tests
+// ================================
+
+#[test]
+fn test_merkle_proof_simple_tree() {
+    // Test a simple 4-leaf tree:
+    //       root
+    //      /    \
+    //     h01   h23
+    //    / \    / \
+    //   L0 L1  L2 L3
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    // Create 4 leaves
+    let leaf0 = BytesN::from_array(&env, &[1u8; 32]);
+    let leaf1 = BytesN::from_array(&env, &[2u8; 32]);
+    let leaf2 = BytesN::from_array(&env, &[3u8; 32]);
+    let leaf3 = BytesN::from_array(&env, &[4u8; 32]);
+
+    // Build the tree using helper
+    let mut leaves = Vec::new(&env);
+    leaves.push_back(leaf0.clone());
+    leaves.push_back(leaf1.clone());
+    leaves.push_back(leaf2.clone());
+    leaves.push_back(leaf3.clone());
+
+    let root = MerkleVerifier::compute_merkle_root(&env, &leaves);
+
+    // Compute intermediate hashes manually for proof path
+    let mut h01_inputs = Vec::new(&env);
+    h01_inputs.push_back(leaf0.clone());
+    h01_inputs.push_back(leaf1.clone());
+    let h01 = zk_verifier::PoseidonHasher::hash(&env, &h01_inputs);
+
+    let mut h23_inputs = Vec::new(&env);
+    h23_inputs.push_back(leaf2.clone());
+    h23_inputs.push_back(leaf3.clone());
+    let h23 = zk_verifier::PoseidonHasher::hash(&env, &h23_inputs);
+
+    // Prove leaf0 exists:
+    // Path: [(leaf1, false), (h23, false)]
+    // Step 1: hash(leaf0, leaf1) = h01 (leaf1 is on right)
+    // Step 2: hash(h01, h23) = root (h23 is on right)
+    let mut proof = Vec::new(&env);
+    proof.push_back((leaf1.clone(), false)); // leaf1 on right
+    proof.push_back((h23.clone(), false));   // h23 on right
+
+    assert!(
+        client.verify_data_inclusion(&root, &leaf0, &proof),
+        "Valid Merkle proof for leaf0 should verify"
+    );
+
+    // Prove leaf2 exists:
+    // Path: [(leaf3, false), (h01, true)]
+    // Step 1: hash(leaf2, leaf3) = h23
+    // Step 2: hash(h01, h23) = root (h01 is on left)
+    let mut proof2 = Vec::new(&env);
+    proof2.push_back((leaf3.clone(), false)); // leaf3 on right
+    proof2.push_back((h01.clone(), true));    // h01 on left
+
+    assert!(
+        client.verify_data_inclusion(&root, &leaf2, &proof2),
+        "Valid Merkle proof for leaf2 should verify"
+    );
+}
+
+#[test]
+fn test_merkle_proof_tampered_sibling() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let leaf0 = BytesN::from_array(&env, &[1u8; 32]);
+    let leaf1 = BytesN::from_array(&env, &[2u8; 32]);
+    let leaf2 = BytesN::from_array(&env, &[3u8; 32]);
+    let leaf3 = BytesN::from_array(&env, &[4u8; 32]);
+
+    let mut leaves = Vec::new(&env);
+    leaves.push_back(leaf0.clone());
+    leaves.push_back(leaf1.clone());
+    leaves.push_back(leaf2.clone());
+    leaves.push_back(leaf3.clone());
+
+    let root = MerkleVerifier::compute_merkle_root(&env, &leaves);
+
+    // Create a tampered sibling hash
+    let tampered_sibling = BytesN::from_array(&env, &[99u8; 32]);
+
+    let mut proof = Vec::new(&env);
+    proof.push_back((tampered_sibling, false)); // Tampered!
+    proof.push_back((leaf2.clone(), false));
+
+    assert!(
+        !client.verify_data_inclusion(&root, &leaf0, &proof),
+        "Tampered Merkle proof should fail"
+    );
+}
+
+#[test]
+fn test_merkle_proof_wrong_leaf() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let leaf0 = BytesN::from_array(&env, &[1u8; 32]);
+    let leaf1 = BytesN::from_array(&env, &[2u8; 32]);
+    let leaf2 = BytesN::from_array(&env, &[3u8; 32]);
+    let leaf3 = BytesN::from_array(&env, &[4u8; 32]);
+
+    let mut leaves = Vec::new(&env);
+    leaves.push_back(leaf0.clone());
+    leaves.push_back(leaf1.clone());
+    leaves.push_back(leaf2.clone());
+    leaves.push_back(leaf3.clone());
+
+    let root = MerkleVerifier::compute_merkle_root(&env, &leaves);
+
+    // Compute h23
+    let mut h23_inputs = Vec::new(&env);
+    h23_inputs.push_back(leaf2.clone());
+    h23_inputs.push_back(leaf3.clone());
+    let h23 = zk_verifier::PoseidonHasher::hash(&env, &h23_inputs);
+
+    // Try to prove a non-existent leaf
+    let fake_leaf = BytesN::from_array(&env, &[99u8; 32]);
+    
+    let mut proof = Vec::new(&env);
+    proof.push_back((leaf1.clone(), false));
+    proof.push_back((h23.clone(), false));
+
+    assert!(
+        !client.verify_data_inclusion(&root, &fake_leaf, &proof),
+        "Proof with wrong leaf should fail"
+    );
+}
+
+#[test]
+fn test_merkle_proof_single_leaf() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let leaf = BytesN::from_array(&env, &[1u8; 32]);
+    
+    let mut leaves = Vec::new(&env);
+    leaves.push_back(leaf.clone());
+
+    let root = MerkleVerifier::compute_merkle_root(&env, &leaves);
+
+    // Single leaf means root = leaf, empty proof
+    let proof = Vec::new(&env);
+
+    assert!(
+        client.verify_data_inclusion(&root, &leaf, &proof),
+        "Single leaf tree should verify with empty proof"
+    );
+}
+
+#[test]
+fn test_merkle_proof_larger_tree() {
+    // Test with 8 leaves (depth 3)
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let mut leaves = Vec::new(&env);
+    for i in 1u8..=8u8 {
+        let mut leaf_data = [0u8; 32];
+        leaf_data[0] = i;
+        leaves.push_back(BytesN::from_array(&env, &leaf_data));
+    }
+
+    let root = MerkleVerifier::compute_merkle_root(&env, &leaves);
+
+    // Manually compute proof for leaf 0 (index 0)
+    // We need siblings at each level
+    let leaf0 = leaves.get_unchecked(0);
+    let leaf1 = leaves.get_unchecked(1);
+    let leaf2 = leaves.get_unchecked(2);
+    let leaf3 = leaves.get_unchecked(3);
+    let leaf4 = leaves.get_unchecked(4);
+    let leaf5 = leaves.get_unchecked(5);
+    let leaf6 = leaves.get_unchecked(6);
+    let leaf7 = leaves.get_unchecked(7);
+
+    // Level 1: hash pairs
+    let mut h01_inputs = Vec::new(&env);
+    h01_inputs.push_back(leaf0.clone());
+    h01_inputs.push_back(leaf1.clone());
+    let h01 = zk_verifier::PoseidonHasher::hash(&env, &h01_inputs);
+
+    let mut h23_inputs = Vec::new(&env);
+    h23_inputs.push_back(leaf2.clone());
+    h23_inputs.push_back(leaf3.clone());
+    let h23 = zk_verifier::PoseidonHasher::hash(&env, &h23_inputs);
+
+    let mut h45_inputs = Vec::new(&env);
+    h45_inputs.push_back(leaf4.clone());
+    h45_inputs.push_back(leaf5.clone());
+    let h45 = zk_verifier::PoseidonHasher::hash(&env, &h45_inputs);
+
+    let mut h67_inputs = Vec::new(&env);
+    h67_inputs.push_back(leaf6.clone());
+    h67_inputs.push_back(leaf7.clone());
+    let h67 = zk_verifier::PoseidonHasher::hash(&env, &h67_inputs);
+
+    // Level 2: hash pairs of pairs
+    let mut h0123_inputs = Vec::new(&env);
+    h0123_inputs.push_back(h01.clone());
+    h0123_inputs.push_back(h23.clone());
+    let h0123 = zk_verifier::PoseidonHasher::hash(&env, &h0123_inputs);
+
+    let mut h4567_inputs = Vec::new(&env);
+    h4567_inputs.push_back(h45.clone());
+    h4567_inputs.push_back(h67.clone());
+    let h4567 = zk_verifier::PoseidonHasher::hash(&env, &h4567_inputs);
+
+    // Proof for leaf0: [leaf1, h23, h4567]
+    let mut proof = Vec::new(&env);
+    proof.push_back((leaf1.clone(), false)); // leaf1 on right
+    proof.push_back((h23.clone(), false));   // h23 on right
+    proof.push_back((h4567.clone(), false)); // h4567 on right
+
+    assert!(
+        client.verify_data_inclusion(&root, &leaf0, &proof),
+        "Valid proof for 8-leaf tree should verify"
+    );
+}
+
+#[test]
+fn test_merkle_proof_max_depth() {
+    // Test with maximum depth (32)
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let leaf = BytesN::from_array(&env, &[1u8; 32]);
+    let sibling = BytesN::from_array(&env, &[2u8; 32]);
+
+    // Build a proof path with 32 siblings (max depth)
+    let mut proof = Vec::new(&env);
+    for _ in 0..32 {
+        proof.push_back((sibling.clone(), false));
+    }
+
+    // Compute what the root should be
+    let mut current = leaf.clone();
+    for _ in 0..32 {
+        let mut inputs = Vec::new(&env);
+        inputs.push_back(current);
+        inputs.push_back(sibling.clone());
+        current = zk_verifier::PoseidonHasher::hash(&env, &inputs);
+    }
+    let root = current;
+
+    assert!(
+        client.verify_data_inclusion(&root, &leaf, &proof),
+        "Max depth proof should verify"
+    );
+}
+
+#[test]
+fn test_merkle_proof_exceeds_max_depth() {
+    // Test that proofs exceeding max depth (32) are rejected
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let leaf = BytesN::from_array(&env, &[1u8; 32]);
+    let sibling = BytesN::from_array(&env, &[2u8; 32]);
+    let root = BytesN::from_array(&env, &[99u8; 32]);
+
+    // Build a proof path with 33 siblings (exceeds max)
+    let mut proof = Vec::new(&env);
+    for _ in 0..33 {
+        proof.push_back((sibling.clone(), false));
+    }
+
+    assert!(
+        !client.verify_data_inclusion(&root, &leaf, &proof),
+        "Proof exceeding max depth should fail"
+    );
+}
+
+#[test]
+fn test_merkle_proof_privacy_preservation() {
+    // Demonstrate that Merkle proofs preserve privacy
+    // A client can prove leaf0 exists without revealing leaf1, leaf2, or leaf3
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    // Sensitive vision records (only hashes are used)
+    let vision_record_0 = BytesN::from_array(&env, &[10u8; 32]); // My record
+    let vision_record_1 = BytesN::from_array(&env, &[20u8; 32]); // Private
+    let vision_record_2 = BytesN::from_array(&env, &[30u8; 32]); // Private
+    let vision_record_3 = BytesN::from_array(&env, &[40u8; 32]); // Private
+
+    let mut leaves = Vec::new(&env);
+    leaves.push_back(vision_record_0.clone());
+    leaves.push_back(vision_record_1.clone());
+    leaves.push_back(vision_record_2.clone());
+    leaves.push_back(vision_record_3.clone());
+
+    let committed_root = MerkleVerifier::compute_merkle_root(&env, &leaves);
+
+    // Compute siblings for proof (only reveals hashes, not actual data)
+    let mut h01_inputs = Vec::new(&env);
+    h01_inputs.push_back(vision_record_0.clone());
+    h01_inputs.push_back(vision_record_1.clone());
+
+    let mut h23_inputs = Vec::new(&env);
+    h23_inputs.push_back(vision_record_2.clone());
+    h23_inputs.push_back(vision_record_3.clone());
+    let h23 = zk_verifier::PoseidonHasher::hash(&env, &h23_inputs);
+
+    // Prove vision_record_0 is in the committed dataset
+    // Only reveals vision_record_1's hash and h23 (hash of 2&3)
+    // Does NOT reveal the actual content of records 1, 2, or 3
+    let mut proof = Vec::new(&env);
+    proof.push_back((vision_record_1.clone(), false));
+    proof.push_back((h23.clone(), false));
+
+    assert!(
+        client.verify_data_inclusion(&committed_root, &vision_record_0, &proof),
+        "Should prove record inclusion while preserving privacy"
+    );
+}
+
+#[test]
+fn test_merkle_compute_root_empty() {
+    let env = Env::default();
+    
+    let leaves = Vec::new(&env);
+    let root = MerkleVerifier::compute_merkle_root(&env, &leaves);
+    
+    assert_eq!(
+        root,
+        BytesN::from_array(&env, &[0u8; 32]),
+        "Empty tree should have zero root"
+    );
+}
+
+#[test]
+fn test_merkle_compute_root_odd_leaves() {
+    // Test that odd number of leaves are handled correctly (duplicates last leaf)
+    let env = Env::default();
+    
+    let leaf0 = BytesN::from_array(&env, &[1u8; 32]);
+    let leaf1 = BytesN::from_array(&env, &[2u8; 32]);
+    let leaf2 = BytesN::from_array(&env, &[3u8; 32]);
+    
+    let mut leaves = Vec::new(&env);
+    leaves.push_back(leaf0.clone());
+    leaves.push_back(leaf1.clone());
+    leaves.push_back(leaf2.clone());
+    
+    // Should compute: hash(hash(L0, L1), hash(L2, L2))
+    let root = MerkleVerifier::compute_merkle_root(&env, &leaves);
+    
+    // Manually compute expected root
+    let mut h01_inputs = Vec::new(&env);
+    h01_inputs.push_back(leaf0.clone());
+    h01_inputs.push_back(leaf1.clone());
+    let h01 = zk_verifier::PoseidonHasher::hash(&env, &h01_inputs);
+    
+    let mut h22_inputs = Vec::new(&env);
+    h22_inputs.push_back(leaf2.clone());
+    h22_inputs.push_back(leaf2.clone()); // Duplicated
+    let h22 = zk_verifier::PoseidonHasher::hash(&env, &h22_inputs);
+    
+    let mut root_inputs = Vec::new(&env);
+    root_inputs.push_back(h01);
+    root_inputs.push_back(h22);
+    let expected_root = zk_verifier::PoseidonHasher::hash(&env, &root_inputs);
+    
+    assert_eq!(root, expected_root, "Odd leaves should duplicate last leaf");
 }

@@ -24,7 +24,7 @@ pub mod vk;
 
 pub use crate::audit::{AuditRecord, AuditTrail};
 pub use crate::events::AccessRejectedEvent;
-pub use crate::helpers::ZkAccessHelper;
+pub use crate::helpers::{MerkleVerifier, ZkAccessHelper};
 pub use crate::plonk::PlonkVerifier;
 pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof, ProofValidationError, ZkVerifier};
 pub use crate::vk::VerificationKey;
@@ -585,4 +585,37 @@ impl ZkVerifierContract {
     pub fn verify_audit_chain(env: Env, user: Address, resource_id: BytesN<32>) -> bool {
         AuditTrail::verify_chain(&env, user, resource_id)
     }
-}
+
+    /// Verifies that a specific data record exists in a committed Merkle tree.
+    ///
+    /// This enables privacy-preserving data inclusion proofs where a client can prove
+    /// a vision record exists in a dataset without revealing other records.
+    ///
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    /// * `root` - The committed Merkle tree root hash
+    /// * `leaf_hash` - The hash of the data record to verify
+    /// * `proof` - Vector of (sibling_hash, is_left) tuples forming the Merkle proof path
+    ///   - Each tuple contains the sibling node hash and a boolean indicating if it's on the left
+    ///
+    /// # Returns
+    /// `true` if the proof is valid and the leaf exists in the tree, `false` otherwise
+    ///
+    /// # Example
+    /// A client can prove their vision record is part of a committed dataset without
+    /// revealing the entire dataset or other records in it.
+    ///
+    /// # Gas Considerations
+    /// Gas cost scales linearly with tree depth (proof length):
+    /// - Depth 4: ~4-5k gas
+    /// - Depth 8: ~8-10k gas
+    /// - Depth 16: ~16-20k gas
+    /// - Depth 32 (max): ~32-40k gas
+    pub fn verify_data_inclusion(
+        env: Env,
+        root: BytesN<32>,
+        leaf_hash: BytesN<32>,
+        proof: Vec<(BytesN<32>, bool)>,
+    ) -> bool {
+        helpers::MerkleVerifier::verify_merkle_proof(&env, &root, &leaf_hash, &proof)
+    }
