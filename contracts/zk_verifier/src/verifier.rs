@@ -92,7 +92,13 @@ fn g2_to_bytes(point: &G2Point) -> [u8; 128] {
 pub struct Bn254Verifier;
 
 impl Bn254Verifier {
-    /// Validate individual proof components for known-bad byte patterns.
+    /// Validate individual proof components for known-bad byte patterns that
+    /// would cause undefined behaviour or nonsensical results in a real pairing
+    /// check. This runs *before* the (mock) verification arithmetic.
+    ///
+    /// Note: empty `public_inputs` are rejected here as a safety guard, and the
+    /// contract entrypoint also rejects empty inputs to provide a clear error
+    /// and event at the contract boundary.
     pub fn validate_proof_components(
         proof: &Proof,
         public_inputs: &Vec<BytesN<32>>,

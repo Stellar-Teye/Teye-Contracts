@@ -82,6 +82,10 @@ pub enum ContractError {
     MalformedProofData = 11,
     /// The contract is paused and cannot process verification requests.
     Paused = 12,
+    /// Invalid authentication level supplied to the verifier.
+    InvalidAuthLevel = 13,
+    /// Public inputs are insufficient for the required authentication level.
+    ProofRequiredForAuthLevel = 14,
 }
 
 /// Map low-level proof validation errors into contract-level errors.
@@ -454,16 +458,7 @@ impl ZkVerifierContract {
         })?;
 
         Bn254Verifier::validate_proof_components(&request.proof, &request.public_inputs)
-            .map_err(map_proof_validation_error)
-            .map_err(|err| {
-                events::publish_access_rejected(
-                    &env,
-                    request.user.clone(),
-                    request.resource_id.clone(),
-                    err,
-                );
-                err
-            })?;
+            .map_err(map_proof_validation_error)?;
 
         // TODO: post-quantum migration - The verification branch below is hardcoded for BN254 Groth16.
         // During migration, checking `request.proof_type` should branch to `PostQuantumVerifier::verify_proof`

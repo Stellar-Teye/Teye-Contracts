@@ -689,11 +689,11 @@ impl StakingContract {
         env: Env,
         caller: Address,
         new_rate: i128,
-        _proposal_id: u64,
+        proposal_id: u64,
     ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
-        Self::require_admin_tier(&env, &caller, &AdminTier::Contract, "set_reward_rate")?;
+        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin, "set_reward_rate")?;
 
         if new_rate < 0 {
             return Err(ContractError::InvalidInput);
@@ -784,11 +784,11 @@ impl StakingContract {
         env: Env,
         caller: Address,
         new_period: u64,
-        _proposal_id: u64,
+        proposal_id: u64,
     ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
-        Self::require_admin_tier(&env, &caller, &AdminTier::Contract, "set_lock_period")?;
+        Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin, "set_lock_period")?;
 
         if !multisig::is_legacy_admin_allowed(&env) {
             if proposal_id == 0 {

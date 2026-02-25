@@ -2,12 +2,14 @@
 #![cfg(test)]
 
 use soroban_sdk::{
+    symbol_short,
     testutils::{Address as _, Events, Ledger},
-    Address, BytesN, Env, Vec,
+    xdr::{ContractEventBody, ScVal},
+    Address, BytesN, Env, IntoVal, TryFromVal, Vec,
 };
 use zk_verifier::vk::{G1Point, G2Point, VerificationKey};
 use zk_verifier::ZkAccessHelper;
-use zk_verifier::{ContractError, ZkVerifierContract, ZkVerifierContractClient};
+use zk_verifier::{AccessRejectedEvent, ContractError, ZkVerifierContract, ZkVerifierContractClient};
 
 fn setup_vk(env: &Env) -> VerificationKey {
     // Valid BN254 G1 point: (1, 2) is on y^2 = x^3 + 3
@@ -520,7 +522,31 @@ fn test_empty_public_inputs_rejected() {
         Ok(ContractError::EmptyPublicInputs)
     ));
 
-    let _events = env.events().all();
+    let events = env.events().all();
+    let event = events.events().last().unwrap();
+    let ContractEventBody::V0(body) = &event.body;
+
+    let expected_topics: soroban_sdk::Vec<soroban_sdk::Val> = (
+        symbol_short!("REJECT"),
+        user.clone(),
+        BytesN::from_array(&env, &[10u8; 32]),
+    )
+        .into_val(&env);
+    let mut expected_scvals = std::vec::Vec::new();
+    for topic in expected_topics.iter() {
+        expected_scvals.push(ScVal::try_from_val(&env, &topic).unwrap());
+    }
+    assert_eq!(body.topics.as_slice(), expected_scvals.as_slice());
+
+    let expected_payload = AccessRejectedEvent {
+        user: user.clone(),
+        resource_id: BytesN::from_array(&env, &[10u8; 32]),
+        error: ContractError::EmptyPublicInputs as u32,
+        timestamp: env.ledger().timestamp(),
+    };
+    let expected_val: soroban_sdk::Val = expected_payload.into_val(&env);
+    let expected_data = ScVal::try_from_val(&env, &expected_val).unwrap();
+    assert_eq!(body.data, expected_data);
 }
 
 #[test]

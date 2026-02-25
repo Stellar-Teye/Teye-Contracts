@@ -682,13 +682,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca81e6b4777c89fd810c25a4be2b1bd93ea034fbe58e6a75216a34c6b82c539b"
 
 [[package]]
-name = "events"
-version = "1.2.2"
-dependencies = [
- "soroban-sdk",
-]
-
-[[package]]
 name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -782,14 +775,6 @@ dependencies = [
  "r-efi",
  "wasip2",
  "wasip3",
-]
-
-[[package]]
-name = "governor"
-version = "1.2.2"
-dependencies = [
- "common",
- "soroban-sdk",
 ]
 
 [[package]]
@@ -1002,6 +987,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "key_manager"
+version = "1.2.2"
+dependencies = [
+ "identity",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "leb128fmt"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1047,6 +1040,14 @@ name = "memchr"
 version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
+
+[[package]]
+name = "metering"
+version = "1.2.2"
+dependencies = [
+ "common",
+ "soroban-sdk",
+]
 
 [[package]]
 name = "num-bigint"
@@ -1963,7 +1964,7 @@ dependencies = [
 
  "common",
  "ed25519-dalek",
-
+ "key_manager",
  "proptest",
  "proptest-derive",
  "soroban-sdk",

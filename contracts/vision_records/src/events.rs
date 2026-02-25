@@ -6,8 +6,7 @@ use crate::circuit_breaker::PauseScope;
 use crate::emergency::EmergencyCondition;
 use crate::errors::{ErrorCategory, ErrorContext, ErrorSeverity};
 use crate::{AccessLevel, RecordType, Role, VerificationStatus};
-use soroban_sdk::{symbol_short, Address, Env, String, Vec};
-use teye_common::concurrency::ResolutionStrategy;
+use soroban_sdk::{symbol_short, Address, Env, String};
 
 /// Event published when the contract is initialized.
 #[soroban_sdk::contracttype]

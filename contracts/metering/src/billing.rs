@@ -72,7 +72,7 @@ pub struct TenantUsageRecord {
 
 /// A billing report for a closed cycle, covering all registered tenants.
 #[contracttype]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BillingReport {
     pub cycle_id: u64,
     pub closed_at: u64,

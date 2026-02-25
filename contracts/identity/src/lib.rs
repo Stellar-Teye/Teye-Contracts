@@ -136,6 +136,11 @@ impl IdentityContract {
         recovery::get_guardians(&env, &owner)
     }
 
+    /// Check if a guardian is registered for an owner.
+    pub fn is_guardian(env: Env, owner: Address, guardian: Address) -> bool {
+        recovery::get_guardians(&env, &owner).contains(&guardian)
+    }
+
     /// Get the recovery threshold for an owner.
     pub fn get_recovery_threshold(env: Env, owner: Address) -> u32 {
         recovery::get_threshold(&env, &owner)

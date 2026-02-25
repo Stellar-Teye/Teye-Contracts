@@ -73,6 +73,14 @@ pub struct RewardRateProposedEvent {
     pub timestamp: u64,
 }
 
+/// Fired when a delayed reward-rate update is applied.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RewardRateAppliedEvent {
+    pub new_rate: i128,
+    pub timestamp: u64,
+}
+
 /// Fired when the rate-change delay is updated.
 #[soroban_sdk::contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -86,31 +94,6 @@ pub struct RateChangeDelaySetEvent {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LockPeriodSetEvent {
     pub new_period: u64,
-    pub timestamp: u64,
-}
-
-/// Fired when a delayed reward-rate update is proposed.
-#[soroban_sdk::contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RewardRateProposedEvent {
-    pub new_rate: i128,
-    pub effective_at: u64,
-    pub timestamp: u64,
-}
-
-/// Fired when a delayed reward-rate update is applied.
-#[soroban_sdk::contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RewardRateAppliedEvent {
-    pub new_rate: i128,
-    pub timestamp: u64,
-}
-
-/// Fired when the reward-rate delay configuration changes.
-#[soroban_sdk::contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RateChangeDelaySetEvent {
-    pub delay: u64,
     pub timestamp: u64,
 }
 
@@ -148,23 +131,6 @@ pub struct AccessViolationEvent {
     pub caller: Address,
     pub action: String,
     pub required_permission: String,
-    pub timestamp: u64,
-}
-
-/// Fired when a reward-rate change is proposed with a delay.
-#[soroban_sdk::contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RewardRateProposedEvent {
-    pub new_rate: i128,
-    pub effective_at: u64,
-    pub timestamp: u64,
-}
-
-/// Fired when the rate-change delay is updated.
-#[soroban_sdk::contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RateChangeDelaySetEvent {
-    pub delay: u64,
     pub timestamp: u64,
 }
 
@@ -257,37 +223,6 @@ pub fn publish_reward_rate_set(env: &Env, new_rate: i128) {
 
 pub fn publish_reward_rate_proposed(env: &Env, new_rate: i128, effective_at: u64) {
     env.events().publish(
-        (symbol_short!("RWD_PROP"),),
-        (new_rate, effective_at, env.ledger().timestamp()),
-    );
-}
-
-pub fn publish_reward_rate_applied(env: &Env, new_rate: i128) {
-    env.events().publish(
-        (symbol_short!("RWD_APLD"),),
-        (new_rate, env.ledger().timestamp()),
-    );
-}
-
-pub fn publish_rate_change_delay_set(env: &Env, delay: u64) {
-    env.events().publish(
-        (symbol_short!("DLY_SET"),),
-        (delay, env.ledger().timestamp()),
-    );
-}
-
-pub fn publish_lock_period_set(env: &Env, new_period: u64) {
-    env.events().publish(
-        (symbol_short!("LOCK_SET"),),
-        LockPeriodSetEvent {
-            new_period,
-            timestamp: env.ledger().timestamp(),
-        },
-    );
-}
-
-pub fn publish_reward_rate_proposed(env: &Env, new_rate: i128, effective_at: u64) {
-    env.events().publish(
         (symbol_short!("RATE_PROP"),),
         RewardRateProposedEvent {
             new_rate,
@@ -312,6 +247,16 @@ pub fn publish_rate_change_delay_set(env: &Env, delay: u64) {
         (symbol_short!("RATE_DLY"),),
         RateChangeDelaySetEvent {
             delay,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
+}
+
+pub fn publish_lock_period_set(env: &Env, new_period: u64) {
+    env.events().publish(
+        (symbol_short!("LOCK_SET"),),
+        LockPeriodSetEvent {
+            new_period,
             timestamp: env.ledger().timestamp(),
         },
     );
@@ -362,37 +307,6 @@ pub fn publish_access_violation(
             caller,
             action,
             required_permission,
-            timestamp: env.ledger().timestamp(),
-        },
-    );
-}
-
-pub fn publish_reward_rate_proposed(env: &Env, new_rate: i128, effective_at: u64) {
-    env.events().publish(
-        (symbol_short!("RWD_PROP"),),
-        RewardRateProposedEvent {
-            new_rate,
-            effective_at,
-            timestamp: env.ledger().timestamp(),
-        },
-    );
-}
-
-pub fn publish_reward_rate_applied(env: &Env, new_rate: i128) {
-    env.events().publish(
-        (symbol_short!("RWD_APPL"),),
-        RewardRateSetEvent {
-            new_rate,
-            timestamp: env.ledger().timestamp(),
-        },
-    );
-}
-
-pub fn publish_rate_change_delay_set(env: &Env, delay: u64) {
-    env.events().publish(
-        (symbol_short!("DLY_SET"),),
-        RateChangeDelaySetEvent {
-            delay,
             timestamp: env.ledger().timestamp(),
         },
     );

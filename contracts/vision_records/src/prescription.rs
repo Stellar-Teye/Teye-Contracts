@@ -26,7 +26,6 @@ pub struct ContactLensData {
     pub brand: String,
 }
 
-#[allow(clippy::large_enum_variant)]
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[allow(clippy::large_enum_variant)]

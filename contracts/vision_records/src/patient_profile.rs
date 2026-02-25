@@ -20,7 +20,6 @@ pub struct InsuranceInfo {
     pub verified_at: u64,       // Timestamp of last verification
 }
 
-#[allow(clippy::large_enum_variant)]
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[allow(clippy::large_enum_variant)]
@@ -29,7 +28,6 @@ pub enum OptionalEmergencyContact {
     Some(EmergencyContact),
 }
 
-#[allow(clippy::large_enum_variant)]
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[allow(clippy::large_enum_variant)]

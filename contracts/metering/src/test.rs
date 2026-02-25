@@ -12,12 +12,13 @@
 //! - Alert threshold events
 //! - Edge cases: zero usage, exact quota boundary, multiple cycles
 
+#![allow(unused_variables, unused_imports)]
+
 use soroban_sdk::{testutils::Address as _, Address, Env};
 
 use crate::{
     billing::{BillingModel, CycleStatus},
-    gas_token,
-    quota::{TenantQuota, QuotaUsage},
+    quota::TenantQuota,
     GasCosts, MeteringContract, MeteringContractClient, MeteringError, OperationType, TenantLevel,
 };
 
@@ -27,7 +28,7 @@ use crate::{
 fn setup() -> (Env, MeteringContractClient<'static>, Address) {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, MeteringContract);
+    let contract_id = env.register(MeteringContract, ());
     let client = MeteringContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     client.initialize(&admin);
