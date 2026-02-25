@@ -22,6 +22,7 @@ use soroban_sdk::contracterror;
 
 #[allow(clippy::enum_variant_names)]
 pub mod admin_tiers;
+pub mod concurrency;
 pub mod conflict_resolver;
 #[cfg(feature = "std")]
 pub mod consent;
@@ -29,6 +30,7 @@ pub mod keys;
 pub mod meta_tx;
 pub mod metering;
 pub mod multisig;
+pub mod policy_dsl;
 pub mod pausable;
 pub mod rate_limit;
 pub mod reentrancy_guard;

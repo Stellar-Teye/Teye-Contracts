@@ -82,6 +82,10 @@ pub enum ContractError {
     MalformedProofData = 11,
     /// The contract is paused and cannot process verification requests.
     Paused = 12,
+    /// Invalid authentication level supplied to the verifier.
+    InvalidAuthLevel = 13,
+    /// Public inputs are insufficient for the required authentication level.
+    ProofRequiredForAuthLevel = 14,
 }
 
 /// Map low-level proof validation errors into contract-level errors.
