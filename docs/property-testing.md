@@ -2,6 +2,8 @@
 
 Property-based testing (PBT) automatically generates hundreds of random inputs to verify that contract invariants always hold — going far beyond hand-crafted examples. The Stellar Teye contracts use [`proptest`](https://docs.rs/proptest) for this.
 
+For comprehensive testing strategy including property testing patterns, see the [Testing Strategy Guide](testing-strategy.md#testing-taxonomy).
+
 ## Why Property-Based Tests for Smart Contracts?
 
 Smart contracts handle real assets and sensitive healthcare data. A bug that triggers only on specific input combinations can be catastrophic. Property-based tests uncover these edge cases by:
