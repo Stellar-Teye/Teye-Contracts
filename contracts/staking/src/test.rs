@@ -6,7 +6,7 @@ use soroban_sdk::{
     Address, Env,
 };
 
-use crate::{ContractError, StakingContract, StakingContractClient};
+use crate::{rewards, ContractError, StakingContract, StakingContractClient};
 
 // ── Test helpers ─────────────────────────────────────────────────────────────
 
@@ -402,6 +402,15 @@ fn test_rewards_after_rate_set_to_zero() {
     // Advance time — no further rewards should accrue.
     env.ledger().set_timestamp(1_000);
     assert_eq!(client.get_pending_rewards(&staker), 500);
+}
+
+#[test]
+fn test_reward_math_extreme_values_no_overflow() {
+    let rpt = rewards::compute_reward_per_token(0, i128::MAX, u64::MAX, 1);
+    assert_eq!(rpt, i128::MAX);
+
+    let earned = rewards::earned(1, rpt, 0, 0);
+    assert!(earned > 0);
 }
 
 // Input Validation Tests

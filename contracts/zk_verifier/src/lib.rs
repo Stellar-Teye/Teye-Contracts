@@ -16,12 +16,16 @@
 //! - `ZkAccessHelper`: A utility for formatting binary proof data into interoperable requests.
 
 mod audit;
+pub mod credentials;
 pub mod events;
 mod helpers;
+pub mod revocation;
+pub mod selective_disclosure;
 pub mod verifier;
 pub mod vk;
 
 pub use crate::audit::{AuditRecord, AuditTrail};
+pub use crate::credentials::CredentialManager;
 pub use crate::events::AccessRejectedEvent;
 pub use crate::helpers::ZkAccessHelper;
 pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof, ProofValidationError, VerificationKey};
@@ -626,5 +630,252 @@ impl ZkVerifierContract {
     /// Returns `true` if all hash links are valid, or if the chain is empty.
     pub fn verify_audit_chain(env: Env, user: Address, resource_id: BytesN<32>) -> bool {
         AuditTrail::verify_chain(&env, user, resource_id)
+    }
+
+    // ── Credential schema management ─────────────────────────────────────────
+
+    /// Register a new credential schema. Only admin can register schemas.
+    pub fn register_schema(
+        env: Env,
+        caller: Address,
+        schema: CredentialSchema,
+    ) -> Result<(), CredentialContractError> {
+        Self::require_admin(&env, &caller, "register_schema")
+            .map_err(|_| CredentialContractError::NotIssuer)?;
+
+        CredentialManager::register_schema(&env, &schema)?;
+
+        #[allow(deprecated)]
+        env.events().publish(
+            (symbol_short!("SCH_REG"), schema.issuer.clone()),
+            schema.schema_id.clone(),
+        );
+
+        Ok(())
+    }
+
+    /// Retrieve a credential schema by ID.
+    pub fn get_schema(
+        env: Env,
+        schema_id: BytesN<32>,
+    ) -> Result<CredentialSchema, CredentialContractError> {
+        CredentialManager::get_schema(&env, &schema_id)
+    }
+
+    /// List all schema IDs registered by a given issuer.
+    pub fn get_issuer_schemas(env: Env, issuer: Address) -> Vec<BytesN<32>> {
+        CredentialManager::get_issuer_schemas(&env, &issuer)
+    }
+
+    // ── Credential issuance ──────────────────────────────────────────────────
+
+    /// Issue a new verifiable credential to a holder.
+    ///
+    /// The issuer provides a ZK commitment to all claim values. Actual values
+    /// are never stored on-chain.
+    pub fn issue_credential(
+        env: Env,
+        caller: Address,
+        credential: Credential,
+    ) -> Result<(), CredentialContractError> {
+        caller.require_auth();
+
+        // Only the issuer listed in the credential can issue it.
+        if caller != credential.issuer {
+            return Err(CredentialContractError::NotIssuer);
+        }
+
+        CredentialManager::issue_credential(&env, &credential)?;
+
+        #[allow(deprecated)]
+        env.events().publish(
+            (symbol_short!("CRD_ISS"), credential.holder.clone()),
+            credential.credential_id.clone(),
+        );
+
+        Ok(())
+    }
+
+    /// Issue a credential based on proof of an existing credential (chaining).
+    ///
+    /// The parent presentation is verified before the child is issued.
+    pub fn issue_chained_credential(
+        env: Env,
+        caller: Address,
+        request: ChainedIssuanceRequest,
+        new_credential_id: BytesN<32>,
+        holder: Address,
+        revocation_index: u64,
+    ) -> Result<Credential, CredentialContractError> {
+        caller.require_auth();
+
+        let child = CredentialManager::issue_chained_credential(
+            &env,
+            &caller,
+            &request,
+            new_credential_id,
+            &holder,
+            revocation_index,
+        )?;
+
+        #[allow(deprecated)]
+        env.events().publish(
+            (symbol_short!("CRD_CHN"), holder),
+            child.credential_id.clone(),
+        );
+
+        Ok(child)
+    }
+
+    // ── Credential queries ───────────────────────────────────────────────────
+
+    /// Retrieve a credential by its ID.
+    pub fn get_credential(
+        env: Env,
+        credential_id: BytesN<32>,
+    ) -> Result<Credential, CredentialContractError> {
+        CredentialManager::get_credential(&env, &credential_id)
+    }
+
+    /// List all credential IDs held by a given address.
+    pub fn get_holder_credentials(env: Env, holder: Address) -> Vec<BytesN<32>> {
+        CredentialManager::get_holder_credentials(&env, &holder)
+    }
+
+    // ── Credential presentation & verification ───────────────────────────────
+
+    /// Verify a credential presentation with selective disclosure.
+    ///
+    /// This is the primary entry point for verifiers. It checks:
+    /// 1. Credential existence and active status
+    /// 2. Schema binding
+    /// 3. Holder binding
+    /// 4. Selective disclosure proofs
+    /// 5. Predicate proofs
+    /// 6. Non-revocation proof
+    pub fn verify_presentation(
+        env: Env,
+        presentation: CredentialPresentation,
+    ) -> Result<bool, CredentialContractError> {
+        let result = CredentialManager::verify_presentation(&env, &presentation)?;
+
+        #[allow(deprecated)]
+        env.events().publish(
+            (symbol_short!("CRD_VER"), presentation.holder.clone()),
+            presentation.credential_id.clone(),
+        );
+
+        Ok(result)
+    }
+
+    /// Verify multiple credential presentations in a batch.
+    ///
+    /// More efficient than individual verification because shared state
+    /// lookups (schemas, registries) are amortized across the batch.
+    pub fn batch_verify_presentations(
+        env: Env,
+        presentations: Vec<CredentialPresentation>,
+    ) -> Result<BatchVerificationResult, CredentialContractError> {
+        let result = CredentialManager::batch_verify_presentations(&env, &presentations)?;
+
+        #[allow(deprecated)]
+        env.events().publish(
+            (symbol_short!("CRD_BAT"),),
+            (result.total, result.verified, result.failed),
+        );
+
+        Ok(result)
+    }
+
+    // ── Revocation registry ──────────────────────────────────────────────────
+
+    /// Create a new revocation registry. Only admin can create registries.
+    pub fn create_revocation_registry(
+        env: Env,
+        caller: Address,
+        registry_id: BytesN<32>,
+    ) -> Result<RevocationRegistry, CredentialContractError> {
+        Self::require_admin(&env, &caller, "create_revocation_registry")
+            .map_err(|_| CredentialContractError::NotIssuer)?;
+
+        let registry =
+            RevocationRegistryManager::create_registry(&env, registry_id.clone(), &caller)?;
+
+        #[allow(deprecated)]
+        env.events().publish(
+            (symbol_short!("REG_NEW"), caller),
+            registry_id,
+        );
+
+        Ok(registry)
+    }
+
+    /// Get a revocation registry by ID.
+    pub fn get_revocation_registry(
+        env: Env,
+        registry_id: BytesN<32>,
+    ) -> Result<RevocationRegistry, CredentialContractError> {
+        RevocationRegistryManager::get_registry(&env, &registry_id)
+    }
+
+    /// Generate a non-revocation witness for a credential.
+    pub fn generate_revocation_witness(
+        env: Env,
+        caller: Address,
+        registry_id: BytesN<32>,
+        credential_id: BytesN<32>,
+        index: u64,
+    ) -> Result<RevocationWitness, CredentialContractError> {
+        Self::require_admin(&env, &caller, "generate_revocation_witness")
+            .map_err(|_| CredentialContractError::NotIssuer)?;
+
+        RevocationRegistryManager::generate_witness(&env, &registry_id, &credential_id, index)
+    }
+
+    /// Revoke a credential by updating the revocation registry accumulator.
+    ///
+    /// After revocation, the credential's non-revocation witness will no longer
+    /// verify against the updated accumulator.
+    pub fn revoke_credential(
+        env: Env,
+        caller: Address,
+        registry_id: BytesN<32>,
+        credential_id: BytesN<32>,
+        index: u64,
+    ) -> Result<(), CredentialContractError> {
+        Self::require_admin(&env, &caller, "revoke_credential")
+            .map_err(|_| CredentialContractError::NotIssuer)?;
+
+        // Update credential status.
+        CredentialManager::update_status(
+            &env,
+            &credential_id,
+            CredentialStatus::Revoked,
+        )?;
+
+        // Update revocation registry.
+        RevocationRegistryManager::revoke_credential(
+            &env,
+            &registry_id,
+            &credential_id,
+            index,
+        )?;
+
+        #[allow(deprecated)]
+        env.events().publish(
+            (symbol_short!("CRD_REV"), credential_id.clone()),
+            index,
+        );
+
+        Ok(())
+    }
+
+    /// Check if a credential is revoked in a registry.
+    pub fn is_credential_revoked(
+        env: Env,
+        registry_id: BytesN<32>,
+        index: u64,
+    ) -> bool {
+        RevocationRegistryManager::is_revoked(&env, &registry_id, index)
     }
 }

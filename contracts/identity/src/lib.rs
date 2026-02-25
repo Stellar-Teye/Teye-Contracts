@@ -39,6 +39,7 @@ pub struct PrepareThresholdChange {
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
 const INITIALIZED: Symbol = symbol_short!("INIT");
+const HOLDER_BIND_PREFIX: &str = "HLD_BIND";
 
 /// Re-export credential error for downstream consumers.
 pub use credential::CredentialError as CredentialVerificationError;
@@ -427,6 +428,100 @@ impl IdentityContract {
             public_inputs,
             0, // Default nonce; caller should set appropriately for replay protection
         )
+    }
+
+    // ── Credential holder binding ────────────────────────────────────────────
+
+    /// Bind a credential to this identity. Only the identity owner can bind.
+    ///
+    /// This establishes an on-chain link between the holder's DID and a
+    /// credential ID issued by the ZK verifier contract. The binding ensures
+    /// only the rightful identity owner can present the credential.
+    pub fn bind_credential(
+        env: Env,
+        caller: Address,
+        credential_id: BytesN<32>,
+    ) -> Result<(), RecoveryError> {
+        caller.require_auth();
+        Self::require_active_owner(&env, &caller)?;
+
+        let key = (Symbol::new(&env, HOLDER_BIND_PREFIX), caller.clone());
+        let mut creds: Vec<BytesN<32>> = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_else(|| Vec::new(&env));
+
+        // Prevent duplicate bindings.
+        if !creds.contains(&credential_id) {
+            creds.push_back(credential_id.clone());
+            env.storage().persistent().set(&key, &creds);
+        }
+
+        #[allow(deprecated)]
+        env.events().publish(
+            (symbol_short!("CRD_BIND"), caller),
+            credential_id,
+        );
+
+        Ok(())
+    }
+
+    /// Unbind a credential from this identity. Only the identity owner can unbind.
+    pub fn unbind_credential(
+        env: Env,
+        caller: Address,
+        credential_id: BytesN<32>,
+    ) -> Result<(), RecoveryError> {
+        caller.require_auth();
+        Self::require_active_owner(&env, &caller)?;
+
+        let key = (Symbol::new(&env, HOLDER_BIND_PREFIX), caller.clone());
+        let creds: Vec<BytesN<32>> = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_else(|| Vec::new(&env));
+
+        let mut new_creds = Vec::new(&env);
+        for c in creds.iter() {
+            if c != credential_id {
+                new_creds.push_back(c);
+            }
+        }
+        env.storage().persistent().set(&key, &new_creds);
+
+        #[allow(deprecated)]
+        env.events().publish(
+            (symbol_short!("CRD_UBND"), caller),
+            credential_id,
+        );
+
+        Ok(())
+    }
+
+    /// Get all credential IDs bound to an identity.
+    pub fn get_bound_credentials(env: Env, holder: Address) -> Vec<BytesN<32>> {
+        let key = (Symbol::new(&env, HOLDER_BIND_PREFIX), holder);
+        env.storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_else(|| Vec::new(&env))
+    }
+
+    /// Check if a specific credential is bound to an identity.
+    pub fn is_credential_bound(
+        env: Env,
+        holder: Address,
+        credential_id: BytesN<32>,
+    ) -> bool {
+        let key = (Symbol::new(&env, HOLDER_BIND_PREFIX), holder);
+        let creds: Vec<BytesN<32>> = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_else(|| Vec::new(&env));
+        creds.contains(&credential_id)
     }
 
     // ── Internal helpers ─────────────────────────────────────────────────────
