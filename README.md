@@ -324,6 +324,7 @@ make deploy-mainnet
 
 - [API Reference](docs/api.md)
 - [Architecture Overview](docs/architecture.md)
+- [Data Flow Diagrams](docs/data-flows.md)
 - [Security Model](docs/security.md)
 - [Production Runbook](docs/runbook/README.md)
 
