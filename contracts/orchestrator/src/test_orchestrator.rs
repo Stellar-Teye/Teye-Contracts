@@ -3,7 +3,7 @@ mod tests {
     use super::*;
     use soroban_sdk::{Address, Env, String, Vec};
     use common::{
-        transaction::{TransactionOperation, TransactionPhase, TransactionStatus, TransactionError, 
+        transaction::{TransactionOperation, TransactionPhase, TransactionStatus, TransactionError,
                       ContractType, TransactionTimeoutConfig, get_default_timeout_config},
     };
 
@@ -379,7 +379,7 @@ mod tests {
             OrchestratorContract::update_timeout_config(
                 env.clone(),
                 non_admin.clone(),
-                get_default_timeout_config()
+                get_default_timeout_config(&env)
             ),
             Err(TransactionError::Unauthorized)
         );
@@ -404,7 +404,7 @@ mod tests {
             OrchestratorContract::update_timeout_config(
                 env.clone(),
                 non_admin.clone(),
-                get_default_timeout_config()
+                get_default_timeout_config(&env)
             ),
             Err(TransactionError::Unauthorized)
         );

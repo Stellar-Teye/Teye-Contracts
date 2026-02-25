@@ -1,5 +1,3 @@
-#![cfg_attr(not(feature = "std"), no_std)]
-
 use soroban_sdk::{contracttype, Address, Symbol, String, Vec, Env, symbol_short};
 
 /// Transaction phases for two-phase commit protocol
@@ -185,50 +183,32 @@ pub const MAX_TRANSACTION_TIMEOUT: u64 = 3600; // 1 hour
 pub const DEADLOCK_CHECK_INTERVAL: u64 = 30; // 30 seconds
 
 /// Error codes for transaction operations
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[soroban_sdk::contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u32)]
 pub enum TransactionError {
     /// Transaction not found
-    TransactionNotFound,
+    TransactionNotFound = 1001,
     /// Invalid transaction phase
-    InvalidPhase,
+    InvalidPhase = 1002,
     /// Transaction already exists
-    TransactionExists,
+    TransactionExists = 1003,
     /// Operation not found
-    OperationNotFound,
+    OperationNotFound = 1004,
     /// Insufficient permissions
-    Unauthorized,
+    Unauthorized = 1005,
     /// Transaction timed out
-    TransactionTimeout,
+    TransactionTimeout = 1006,
     /// Deadlock detected
-    DeadlockDetected,
+    DeadlockDetected = 1007,
     /// Rollback failed
-    RollbackFailed,
+    RollbackFailed = 1008,
     /// Invalid input parameters
-    InvalidInput,
+    InvalidInput = 1009,
     /// Contract call failed
-    ContractCallFailed,
+    ContractCallFailed = 1010,
     /// Resource already locked
-    ResourceLocked,
-}
-
-/// Convert transaction errors to u32 for event publishing
-impl From<TransactionError> for u32 {
-    fn from(error: TransactionError) -> u32 {
-        match error {
-            TransactionError::TransactionNotFound => 1001,
-            TransactionError::InvalidPhase => 1002,
-            TransactionError::TransactionExists => 1003,
-            TransactionError::OperationNotFound => 1004,
-            TransactionError::Unauthorized => 1005,
-            TransactionError::TransactionTimeout => 1006,
-            TransactionError::DeadlockDetected => 1007,
-            TransactionError::RollbackFailed => 1008,
-            TransactionError::InvalidInput => 1009,
-            TransactionError::ContractCallFailed => 1010,
-            TransactionError::ResourceLocked => 1011,
-        }
-    }
+    ResourceLocked = 1011,
 }
 
 /// Helper functions for transaction management
@@ -279,10 +259,10 @@ pub fn remove_transaction_log(env: &Env, transaction_id: u64) {
     env.storage().instance().set(&ACTIVE_TRANSACTIONS, &new_active);
 }
 
-pub fn get_default_timeout_config() -> TransactionTimeoutConfig {
+pub fn get_default_timeout_config(env: &Env) -> TransactionTimeoutConfig {
     TransactionTimeoutConfig {
         default_timeout: DEFAULT_TRANSACTION_TIMEOUT,
         max_timeout: MAX_TRANSACTION_TIMEOUT,
-        contract_timeouts: Vec::new(&Env::default()), // Will be populated during initialization
+        contract_timeouts: Vec::new(env),
     }
 }

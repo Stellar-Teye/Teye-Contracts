@@ -177,6 +177,33 @@ impl From<OrchestratorError> for ErrorSeverity {
     }
 }
 
+/// Convert an OrchestratorError to a human-readable Soroban String
+fn error_to_string(env: &Env, error: OrchestratorError) -> String {
+    match error {
+        OrchestratorError::NotInitialized => String::from_str(env, "NotInitialized"),
+        OrchestratorError::AlreadyInitialized => String::from_str(env, "AlreadyInitialized"),
+        OrchestratorError::Unauthorized => String::from_str(env, "Unauthorized"),
+        OrchestratorError::Paused => String::from_str(env, "Paused"),
+        OrchestratorError::TransactionNotFound => String::from_str(env, "TransactionNotFound"),
+        OrchestratorError::TransactionExists => String::from_str(env, "TransactionExists"),
+        OrchestratorError::InvalidPhase => String::from_str(env, "InvalidPhase"),
+        OrchestratorError::TransactionTimeout => String::from_str(env, "TransactionTimeout"),
+        OrchestratorError::DeadlockDetected => String::from_str(env, "DeadlockDetected"),
+        OrchestratorError::RollbackFailed => String::from_str(env, "RollbackFailed"),
+        OrchestratorError::OperationNotFound => String::from_str(env, "OperationNotFound"),
+        OrchestratorError::InvalidInput => String::from_str(env, "InvalidInput"),
+        OrchestratorError::ContractCallFailed => String::from_str(env, "ContractCallFailed"),
+        OrchestratorError::ResourceLocked => String::from_str(env, "ResourceLocked"),
+        OrchestratorError::ValidationError => String::from_str(env, "ValidationError"),
+        OrchestratorError::InvalidAddress => String::from_str(env, "InvalidAddress"),
+        OrchestratorError::InvalidTimeout => String::from_str(env, "InvalidTimeout"),
+        OrchestratorError::InvalidOperation => String::from_str(env, "InvalidOperation"),
+        OrchestratorError::StorageError => String::from_str(env, "StorageError"),
+        OrchestratorError::SerializationError => String::from_str(env, "SerializationError"),
+        OrchestratorError::DeserializationError => String::from_str(env, "DeserializationError"),
+    }
+}
+
 /// Creates an error context for logging and debugging
 pub fn create_error_context(
     env: &Env,
@@ -188,7 +215,7 @@ pub fn create_error_context(
         error_code: error as u32,
         category: error.into(),
         severity: error.into(),
-        message: String::from_str(env, &format!("{:?}", error)),
+        message: error_to_string(env, error),
         user_address,
         resource_id,
         timestamp: env.ledger().timestamp(),

@@ -5,7 +5,7 @@ pub mod audit;
 pub mod helpers;
 
 use verifier::{Proof, Bn254Verifier, PoseidonHasher};
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String, Vec, BytesN};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Vec, BytesN, Symbol};
 
 /// Verification result storage
 #[contracttype]
@@ -13,9 +13,9 @@ use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, E
 pub struct VerificationResult {
     pub proof_id: u64,
     pub submitter: Address,
-    public_inputs: Vec<BytesN<32>>,
-    verified: bool,
-    timestamp: u64,
+    pub public_inputs: Vec<BytesN<32>>,
+    pub verified: bool,
+    pub timestamp: u64,
 }
 
 /// Preparation data for verification
@@ -29,11 +29,23 @@ pub struct PrepareVerification {
     pub timestamp: u64,
 }
 
-/// Storage keys
+/// Storage keys (all ≤9 chars for symbol_short!)
 const ADMIN: Symbol = symbol_short!("ADMIN");
 const INITIALIZED: Symbol = symbol_short!("INIT");
-const PROOF_COUNTER: Symbol = symbol_short!("PROOF_CTR");
-const VERIFICATION_RESULTS: Symbol = symbol_short!("VERIFY_RES");
+const PROOF_CTR: Symbol = symbol_short!("PROOF_CTR");
+const VFY_RES: Symbol = symbol_short!("VFY_RES");
+
+/// Contract error codes
+#[soroban_sdk::contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum ContractError {
+    AlreadyInitialized = 1001,
+    NotInitialized = 1002,
+    InvalidInput = 1003,
+    VerificationNotFound = 1004,
+    Unauthorized = 1005,
+}
 
 #[contract]
 pub struct ZkVerifierContract;
@@ -48,7 +60,7 @@ impl ZkVerifierContract {
 
         env.storage().instance().set(&ADMIN, &admin);
         env.storage().instance().set(&INITIALIZED, &true);
-        env.storage().instance().set(&PROOF_COUNTER, &0u64);
+        env.storage().instance().set(&PROOF_CTR, &0u64);
 
         Ok(())
     }
@@ -63,19 +75,16 @@ impl ZkVerifierContract {
         Self::require_initialized(&env)?;
         submitter.require_auth();
 
-        // Generate proof ID
         let proof_id: u64 = env
             .storage()
             .instance()
-            .get(&PROOF_COUNTER)
+            .get(&PROOF_CTR)
             .unwrap_or(0u64)
             .saturating_add(1u64);
-        env.storage().instance().set(&PROOF_COUNTER, &proof_id);
+        env.storage().instance().set(&PROOF_CTR, &proof_id);
 
-        // Verify the proof
         let verified = Bn254Verifier::verify_proof(&env, &proof, &public_inputs);
 
-        // Store verification result
         let result = VerificationResult {
             proof_id,
             submitter: submitter.clone(),
@@ -84,11 +93,10 @@ impl ZkVerifierContract {
             timestamp: env.ledger().timestamp(),
         };
 
-        let key = (VERIFICATION_RESULTS, proof_id);
+        let key = (VFY_RES, proof_id);
         env.storage().persistent().set(&key, &result);
 
-        // Log the verification
-        audit::log_verification(&env, &submitter, proof_id, verified);
+        audit::AuditTrail::log_verification(&env, &submitter, proof_id, verified);
 
         Ok(proof_id)
     }
@@ -108,11 +116,11 @@ impl ZkVerifierContract {
         }
 
         let mut proof_ids = Vec::new(&env);
-        
+
         for i in 0..proofs.len() {
             let proof = proofs.get(i).unwrap().clone();
             let public_inputs = public_inputs_batch.get(i).unwrap().clone();
-            
+
             let proof_id = Self::verify_proof(env.clone(), submitter.clone(), proof, public_inputs)?;
             proof_ids.push_back(proof_id);
         }
@@ -122,7 +130,7 @@ impl ZkVerifierContract {
 
     /// Get verification result
     pub fn get_verification_result(env: Env, proof_id: u64) -> Result<VerificationResult, ContractError> {
-        let key = (VERIFICATION_RESULTS, proof_id);
+        let key = (VFY_RES, proof_id);
         env.storage()
             .persistent()
             .get(&key)
@@ -131,8 +139,8 @@ impl ZkVerifierContract {
 
     /// Check if a proof was verified
     pub fn is_verified(env: Env, proof_id: u64) -> bool {
-        let key = (VERIFICATION_RESULTS, proof_id);
-        if let Some(result) = env.storage().persistent().get::<VerificationResult>(&key) {
+        let key = (VFY_RES, proof_id);
+        if let Some(result) = env.storage().persistent().get::<_, VerificationResult>(&key) {
             result.verified
         } else {
             false
@@ -168,21 +176,18 @@ impl ZkVerifierContract {
     ) -> Result<u64, ContractError> {
         Self::require_initialized(&env)?;
 
-        // Validate inputs without making state changes
         if public_inputs.is_empty() {
             return Err(ContractError::InvalidInput);
         }
 
-        // Generate proof ID
         let proof_id: u64 = env
             .storage()
             .instance()
-            .get(&PROOF_COUNTER)
+            .get(&PROOF_CTR)
             .unwrap_or(0u64)
             .saturating_add(1u64);
 
-        // Store preparation data
-        let prep_key = (symbol_short!("PREP_VERIFY"), proof_id);
+        let prep_key = (symbol_short!("PREP_VFY"), proof_id);
         let prep_data = PrepareVerification {
             proof_id,
             submitter: submitter.clone(),
@@ -196,25 +201,18 @@ impl ZkVerifierContract {
     }
 
     /// Commit phase for proof verification
-    pub fn commit_verify_proof(
-        env: Env,
-        proof_id: u64,
-    ) -> Result<(), ContractError> {
+    pub fn commit_verify_proof(env: Env, proof_id: u64) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
 
-        // Retrieve preparation data
-        let prep_key = (symbol_short!("PREP_VERIFY"), proof_id);
+        let prep_key = (symbol_short!("PREP_VFY"), proof_id);
         let prep_data: PrepareVerification = env.storage().temporary()
             .get(&prep_key)
             .ok_or(ContractError::InvalidInput)?;
 
-        // Update the counter
-        env.storage().instance().set(&PROOF_COUNTER, &proof_id);
+        env.storage().instance().set(&PROOF_CTR, &proof_id);
 
-        // Verify the proof
         let verified = Bn254Verifier::verify_proof(&env, &prep_data.proof, &prep_data.public_inputs);
 
-        // Store verification result
         let result = VerificationResult {
             proof_id,
             submitter: prep_data.submitter.clone(),
@@ -223,27 +221,20 @@ impl ZkVerifierContract {
             timestamp: prep_data.timestamp,
         };
 
-        let key = (VERIFICATION_RESULTS, proof_id);
+        let key = (VFY_RES, proof_id);
         env.storage().persistent().set(&key, &result);
 
-        // Log the verification
-        audit::log_verification(&env, &prep_data.submitter, proof_id, verified);
+        audit::AuditTrail::log_verification(&env, &prep_data.submitter, proof_id, verified);
 
-        // Clean up preparation data
         env.storage().temporary().remove(&prep_key);
 
         Ok(())
     }
 
     /// Rollback phase for proof verification
-    pub fn rollback_verify_proof(
-        env: Env,
-        proof_id: u64,
-    ) -> Result<(), ContractError> {
-        // Clean up preparation data
-        let prep_key = (symbol_short!("PREP_VERIFY"), proof_id);
+    pub fn rollback_verify_proof(env: Env, proof_id: u64) -> Result<(), ContractError> {
+        let prep_key = (symbol_short!("PREP_VFY"), proof_id);
         env.storage().temporary().remove(&prep_key);
-
         Ok(())
     }
 
@@ -264,13 +255,12 @@ impl ZkVerifierContract {
         let mut start_proof_id: u64 = env
             .storage()
             .instance()
-            .get(&PROOF_COUNTER)
+            .get(&PROOF_CTR)
             .unwrap_or(0u64);
 
-        // Validate all inputs and generate IDs
         for i in 0..proofs.len() {
             let public_inputs = public_inputs_batch.get(i).unwrap().clone();
-            
+
             if public_inputs.is_empty() {
                 return Err(ContractError::InvalidInput);
             }
@@ -278,8 +268,7 @@ impl ZkVerifierContract {
             start_proof_id = start_proof_id.saturating_add(1);
             proof_ids.push_back(start_proof_id);
 
-            // Store preparation data for each proof
-            let prep_key = (symbol_short!("PREP_BATCH_VERIFY"), start_proof_id);
+            let prep_key = (symbol_short!("PREP_BVF"), start_proof_id);
             let prep_data = PrepareVerification {
                 proof_id: start_proof_id,
                 submitter: submitter.clone(),
@@ -294,28 +283,22 @@ impl ZkVerifierContract {
     }
 
     /// Commit phase for batch verification
-    pub fn commit_batch_verify_proofs(
-        env: Env,
-        proof_ids: Vec<u64>,
-    ) -> Result<(), ContractError> {
+    pub fn commit_batch_verify_proofs(env: Env, proof_ids: Vec<u64>) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
 
         let mut max_proof_id = 0u64;
 
-        // Commit each verification
-        for proof_id in proof_ids {
+        for i in 0..proof_ids.len() {
+            let proof_id = proof_ids.get(i).unwrap();
             max_proof_id = max_proof_id.max(proof_id);
-            
-            // Retrieve preparation data
-            let prep_key = (symbol_short!("PREP_BATCH_VERIFY"), proof_id);
+
+            let prep_key = (symbol_short!("PREP_BVF"), proof_id);
             let prep_data: PrepareVerification = env.storage().temporary()
                 .get(&prep_key)
                 .ok_or(ContractError::InvalidInput)?;
 
-            // Verify the proof
             let verified = Bn254Verifier::verify_proof(&env, &prep_data.proof, &prep_data.public_inputs);
 
-            // Store verification result
             let result = VerificationResult {
                 proof_id,
                 submitter: prep_data.submitter.clone(),
@@ -324,33 +307,26 @@ impl ZkVerifierContract {
                 timestamp: prep_data.timestamp,
             };
 
-            let key = (VERIFICATION_RESULTS, proof_id);
+            let key = (VFY_RES, proof_id);
             env.storage().persistent().set(&key, &result);
 
-            // Log the verification
-            audit::log_verification(&env, &prep_data.submitter, proof_id, verified);
+            audit::AuditTrail::log_verification(&env, &prep_data.submitter, proof_id, verified);
 
-            // Clean up preparation data
             env.storage().temporary().remove(&prep_key);
         }
 
-        // Update the counter to the highest proof ID
-        env.storage().instance().set(&PROOF_COUNTER, &max_proof_id);
+        env.storage().instance().set(&PROOF_CTR, &max_proof_id);
 
         Ok(())
     }
 
     /// Rollback phase for batch verification
-    pub fn rollback_batch_verify_proofs(
-        env: Env,
-        proof_ids: Vec<u64>,
-    ) -> Result<(), ContractError> {
-        // Clean up preparation data for all proofs
-        for proof_id in proof_ids {
-            let prep_key = (symbol_short!("PREP_BATCH_VERIFY"), proof_id);
+    pub fn rollback_batch_verify_proofs(env: Env, proof_ids: Vec<u64>) -> Result<(), ContractError> {
+        for i in 0..proof_ids.len() {
+            let proof_id = proof_ids.get(i).unwrap();
+            let prep_key = (symbol_short!("PREP_BVF"), proof_id);
             env.storage().temporary().remove(&prep_key);
         }
-
         Ok(())
     }
 
@@ -360,28 +336,6 @@ impl ZkVerifierContract {
             Err(ContractError::NotInitialized)
         } else {
             Ok(())
-        }
-    }
-}
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ContractError {
-    AlreadyInitialized,
-    NotInitialized,
-    InvalidInput,
-    VerificationNotFound,
-    Unauthorized,
-}
-
-impl From<ContractError> for u32 {
-    fn from(error: ContractError) -> u32 {
-        match error {
-            ContractError::AlreadyInitialized => 1001,
-            ContractError::NotInitialized => 1002,
-            ContractError::InvalidInput => 1003,
-            ContractError::VerificationNotFound => 1004,
-            ContractError::Unauthorized => 1005,
         }
     }
 }
