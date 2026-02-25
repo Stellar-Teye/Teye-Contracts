@@ -784,16 +784,24 @@ pub fn evaluate_access_policies(
         patient,
         current_time: env.ledger().timestamp(),
     };
+    let mut found_policy = false;
 
     for i in 0..default_policy_ids.len() {
         if let Some(policy_id) = default_policy_ids.get(i) {
             let key = access_policy_key(&policy_id);
             if let Some(policy) = env.storage().persistent().get::<_, AccessPolicy>(&key) {
+                found_policy = true;
                 if evaluate_policy(env, &policy, &context) {
                     return true;
                 }
             }
         }
+    }
+
+    // Backward-compatible default: if no ABAC policies are configured,
+    // don't block otherwise valid consent/access grants.
+    if !found_policy {
+        return true;
     }
 
     false

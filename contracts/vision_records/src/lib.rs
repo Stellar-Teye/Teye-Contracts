@@ -503,7 +503,7 @@ impl VisionRecordsContract {
         caller: Address,
         max_requests_per_window: u64,
         window_duration_seconds: u64,
-        proposal_id: u64,
+        _proposal_id: u64,
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
@@ -535,7 +535,7 @@ impl VisionRecordsContract {
         caller: Address,
         version: String,
         key: String,
-        proposal_id: u64,
+        _proposal_id: u64,
     ) -> Result<(), ContractError> {
         caller.require_auth();
 

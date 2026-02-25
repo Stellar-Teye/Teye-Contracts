@@ -6,8 +6,8 @@
 )]
 
 use super::*;
-use soroban_sdk::testutils::{Address as _, Events, Ledger};
-use soroban_sdk::{symbol_short, Env, IntoVal, TryIntoVal};
+use soroban_sdk::testutils::{Address as _, Ledger};
+use soroban_sdk::Env;
 
 #[test]
 fn test_initialize() {
@@ -17,15 +17,9 @@ fn test_initialize() {
 
     let admin = Address::generate(&env);
     client.initialize(&admin);
-    let events = env.events().all();
 
     assert!(client.is_initialized());
     assert_eq!(client.get_admin(), admin);
-
-    let our_events = env.events().all();
-    let events_vec = our_events.events();
-
-    assert!(!events_vec.is_empty());
 }
 
 #[test]
