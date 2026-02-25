@@ -2261,6 +2261,102 @@ impl VisionRecordsContract {
         rbac::simulate_policy_check(&env, &caller, &action_str, resource_id)
     }
 
+    // ======================== Compliance Hooks ========================
+
+    /// Emit a compliance-check event for an operation.
+    ///
+    /// This is a lightweight on-chain hook that publishes a structured event
+    /// for off-chain compliance engines (HIPAA/GDPR rule evaluation) to
+    /// consume. The event includes the actor, action, target, sensitivity
+    /// level, and purpose — sufficient for the rules engine to evaluate
+    /// compliance without storing PHI on-chain.
+    ///
+    /// Off-chain compliance services subscribe to these events and run the
+    /// full rules engine (see `compliance::rules_engine`) to produce verdicts
+    /// and alerts.
+    pub fn emit_compliance_check(
+        env: Env,
+        caller: Address,
+        action: String,
+        target: String,
+        sensitivity: u32,
+        purpose: String,
+        has_consent: bool,
+        record_count: u32,
+    ) {
+        #[allow(deprecated)]
+        env.events().publish(
+            (symbol_short!("COMP_CHK"), caller.clone()),
+            (action, target, sensitivity, purpose, has_consent, record_count),
+        );
+    }
+
+    /// Emit a compliance violation event.
+    ///
+    /// Called by off-chain compliance services when a rule violation is
+    /// detected. This creates an on-chain record of the violation for
+    /// audit trail purposes.
+    pub fn emit_compliance_violation(
+        env: Env,
+        caller: Address,
+        rule_id: String,
+        severity: u32,
+        description: String,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+
+        // Only admins can record compliance violations on-chain.
+        if !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin) {
+            return Self::unauthorized(
+                &env,
+                &caller,
+                "emit_compliance_violation",
+                "admin_tier:ContractAdmin",
+            );
+        }
+
+        #[allow(deprecated)]
+        env.events().publish(
+            (symbol_short!("COMP_VIO"), caller),
+            (rule_id, severity, description),
+        );
+
+        Ok(())
+    }
+
+    /// Emit a compliance report summary event.
+    ///
+    /// Published periodically by off-chain compliance services to anchor
+    /// aggregate compliance scores on-chain.
+    pub fn emit_compliance_report(
+        env: Env,
+        caller: Address,
+        period_start: u64,
+        period_end: u64,
+        total_operations: u64,
+        compliance_score: u64,
+        violations_count: u32,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+
+        if !Self::has_admin_access(&env, &caller, &AdminTier::ContractAdmin) {
+            return Self::unauthorized(
+                &env,
+                &caller,
+                "emit_compliance_report",
+                "admin_tier:ContractAdmin",
+            );
+        }
+
+        #[allow(deprecated)]
+        env.events().publish(
+            (symbol_short!("COMP_RPT"), caller),
+            (period_start, period_end, total_operations, compliance_score, violations_count),
+        );
+
+        Ok(())
+    }
+
     // ======================== Internal Helpers ========================
 
     /// Best-effort metering hook.  Fires and forgets — a failure in the
