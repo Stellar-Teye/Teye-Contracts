@@ -1,4 +1,3 @@
-use crate::verifier::Proof;
 use crate::AccessRequest;
 use soroban_sdk::{BytesN, Env, Vec};
 

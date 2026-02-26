@@ -49,8 +49,8 @@ pub use prescription::{LensType, OptionalContactLensData, Prescription, Prescrip
 const ADMIN: Symbol = symbol_short!("ADMIN");
 const PENDING_ADMIN: Symbol = symbol_short!("PEND_ADM");
 const INITIALIZED: Symbol = symbol_short!("INIT");
-const RATE_CFG: Symbol = symbol_short!("RL_CFG");
-const RATE_TRACK: Symbol = symbol_short!("RL_TRK");
+const RATE_CFG: Symbol = symbol_short!("RL_IN_CFG");
+const RATE_TRACK: Symbol = symbol_short!("RL_IN_TRK");
 
 const TTL_THRESHOLD: u32 = 5184000;
 const TTL_EXTEND_TO: u32 = 10368000;
