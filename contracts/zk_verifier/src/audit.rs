@@ -1,5 +1,5 @@
-use soroban_sdk::{contracttype, Address, Bytes, BytesN, Env, Vec};
 use crate::VerificationRecord;
+use soroban_sdk::{contracttype, Address, Bytes, BytesN, Env, Vec};
 
 /// Record of a successful ZK verification event.
 #[contracttype]
