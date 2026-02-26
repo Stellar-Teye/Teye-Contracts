@@ -225,7 +225,7 @@ pub enum Permission {
 ///
 /// Roles form a hierarchy where higher roles typically inherit permissions from lower roles.
 /// Each role carries a set of base permissions that users in that role automatically receive.
-/// 
+///
 /// Hierarchy: Patient → Staff → Optometrist/Ophthalmologist → Admin
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -324,7 +324,7 @@ pub struct Delegation {
 /// A scoped delegation: delegator grants specific permissions (not a full role) to delegatee.
 ///
 /// Unlike full role delegations, scoped delegations grant only a subset of permissions.
-/// This is useful for giving temporary access to specific operations (e.g., allow a 
+/// This is useful for giving temporary access to specific operations (e.g., allow a
 /// contractor to write records but not manage access).
 ///
 /// The delegatee's permission set includes:
@@ -402,7 +402,6 @@ pub fn user_credential_key(user: &Address) -> (Symbol, Address) {
 pub fn record_sensitivity_key(record_id: &u64) -> (Symbol, u64) {
     (symbol_short!("REC_SENS"), *record_id)
 }
-
 
 /// Assign a role to a user.
 ///
