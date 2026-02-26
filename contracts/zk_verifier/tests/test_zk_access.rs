@@ -1047,6 +1047,71 @@ fn test_audit_chain_integrity() {
 }
 
 #[test]
+fn test_nullifier_computation_only() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let user = Address::generate(&env);
+    let resource_id = [26u8; 32];
+
+    // Test nullifier computation directly
+    let mut proof_a = [0u8; 64];
+    proof_a[0] = 1;
+    let mut proof_b = [0u8; 128];
+    proof_b[0] = 1;
+    proof_b[32] = 0x02;
+    proof_b[64] = 0x03;
+    proof_b[96] = 0x04;
+    let mut proof_c = [0u8; 64];
+    proof_c[0] = 1;
+    proof_c[32] = 0x02;
+    let mut pi = [0u8; 32];
+    pi[0] = 1;
+
+    let request = ZkAccessHelper::create_request(
+        &env,
+        user.clone(),
+        resource_id,
+        proof_a,
+        proof_b,
+        proof_c,
+        &[&pi],
+    );
+
+    // Test that nullifier computation works
+    let nullifier1 = ZkAccessHelper::compute_nullifier(
+        &env,
+        &request.proof,
+        &request.public_inputs,
+        &request.user,
+        &request.resource_id,
+    );
+
+    // Same request should produce same nullifier
+    let nullifier2 = ZkAccessHelper::compute_nullifier(
+        &env,
+        &request.proof,
+        &request.public_inputs,
+        &request.user,
+        &request.resource_id,
+    );
+
+    assert_eq!(nullifier1, nullifier2, "Same request should produce same nullifier");
+
+    // Different user should produce different nullifier
+    let user2 = Address::generate(&env);
+    let nullifier3 = ZkAccessHelper::compute_nullifier(
+        &env,
+        &request.proof,
+        &request.public_inputs,
+        &user2,
+        &request.resource_id,
+    );
+
+    assert_ne!(nullifier1, nullifier3, "Different user should produce different nullifier");
+}
+
+#[test]
 fn test_nullifier_basic_functionality() {
     let env = Env::default();
     env.mock_all_auths();
