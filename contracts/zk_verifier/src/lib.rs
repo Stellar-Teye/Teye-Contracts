@@ -13,7 +13,13 @@ pub use crate::audit::{AuditRecord, AuditTrail};
 pub use crate::events::AccessRejectedEvent;
 pub use crate::helpers::{MerkleVerifier, ZkAccessHelper};
 pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof, ProofValidationError, ZkVerifier};
-pub use crate::vk::VerificationKey;
+pub use crate::vk::{G1Point, G2Point, VerificationKey};
+
+// Re-export contract types for tests
+pub use AccessRequest;
+pub use BatchAccessAuditEvent;
+pub use BatchVerificationSummary;
+pub use ContractError;
 
 use common::{nonce, whitelist, CommonError};
 use soroban_sdk::{
@@ -222,6 +228,9 @@ fn is_paused(env: &Env) -> bool {
 
 #[contract]
 pub struct ZkVerifierContract;
+
+// Re-export the contract client for tests
+pub use ZkVerifierContractClient;
 
 #[contractimpl]
 impl ZkVerifierContract {
