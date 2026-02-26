@@ -1,3 +1,5 @@
+#![allow(deprecated)] // events().publish migration to #[contractevent] tracked separately
+
 use common::transaction::{ContractType, DeadlockInfo, TransactionLog, TransactionPhase};
 use soroban_sdk::{symbol_short, Address, Env, String, Vec};
 

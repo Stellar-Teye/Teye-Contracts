@@ -12,8 +12,6 @@
 //!   index automatically.
 //! * Expose a simplified `record` / `query` / `search` surface that matches
 //!   the ergonomics expected by compliance-layer callers.
-//! * Retain the old `AuditEntry` type (re-exported from `audit::types`) for
-//!   backward compatibility with any existing callers.
 //!
 //! ## Tamper evidence
 //!
@@ -67,7 +65,7 @@ pub struct ComplianceAuditLog {
 }
 
 #[derive(Debug, Clone)]
-pub struct AuditEntry {
+pub struct SimpleAuditEntry {
     pub actor: String,
     pub action: String,
     pub target: String,
