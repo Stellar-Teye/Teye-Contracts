@@ -56,7 +56,7 @@ jobs:
           PKG_FLAGS=""
           for dir in $CHANGED_DIRS; do
             if [ -f "$dir/Cargo.toml" ]; then
-              PKG_NAME=$(grep '^name' "$dir/Cargo.toml" | head -1 | sed 's/name = "\(.*\)"/\1/')
+              PKG_NAME=$(sed -n 's/^name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/Cargo.toml" | head -1 | tr -d '\r')
               if [ -n "$PKG_NAME" ]; then
                 PKG_FLAGS="$PKG_FLAGS -p $PKG_NAME"
               fi
