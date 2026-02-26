@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(clippy::too_many_arguments)]
 
 pub mod credential;
 pub mod events;
@@ -7,7 +8,7 @@ pub mod recovery;
 use credential::CredentialError;
 use recovery::{RecoveryError, RecoveryRequest};
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, String, Symbol, Vec,
+    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Symbol, Vec,
 };
 
 /// Preparation data for guardian addition

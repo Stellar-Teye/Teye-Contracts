@@ -347,6 +347,7 @@ impl BreachDetector {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn create_alert(
         &mut self,
         severity: AlertSeverity,
