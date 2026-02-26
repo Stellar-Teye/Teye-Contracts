@@ -4,7 +4,7 @@
 use soroban_sdk::{
     testutils::{Address as _, Events, Ledger},
     xdr::{ContractEventBody, ScVal},
-    Address, BytesN, Env, IntoVal, TryFromVal, Vec,
+    symbol_short, Address, BytesN, Env, IntoVal, TryFromVal, Vec,
 };
 use zk_verifier::vk::{G1Point, G2Point, VerificationKey};
 use zk_verifier::{MerkleVerifier, ZkAccessHelper};
@@ -977,7 +977,7 @@ fn test_exactly_max_public_inputs_accepted() {
 #[test]
 #[ignore]
 fn test_audit_chain_integrity() {
-    use crate::{AccessRequest, ZkVerifierContract};
+    use zk_verifier::{AccessRequest, ZkVerifierContract};
     use soroban_sdk::{Address, BytesN, Env, Vec};
     use zk_verifier::verifier::{G1Point, G2Point, Proof};
 
@@ -1081,6 +1081,7 @@ fn test_audit_chain_integrity() {
             proof: proof.clone(),
             public_inputs: public_inputs.clone(),
             nonce, // use the correct nonce
+            expires_at: env.ledger().timestamp() + 1000,
         };
 
         let result = ZkVerifierContract::verify_access(env.clone(), request.clone());
@@ -1155,11 +1156,12 @@ fn test_plonk_valid_proof_verification() {
     let request = ZkAccessHelper::create_request(
         &env,
         user.clone(),
-        resource_id,
+        resource_id.to_array(),
         proof_a,
         proof_b,
         proof_c,
         &[&pi],
+        env.ledger().timestamp() + 1000,
     );
 
     // Verify using PLONK endpoint
@@ -1208,11 +1210,12 @@ fn test_plonk_invalid_proof_rejection() {
     let request = ZkAccessHelper::create_request(
         &env,
         user.clone(),
-        resource_id,
+        resource_id.to_array(),
         proof_a,
         proof_b,
         proof_c,
         &[&pi],
+        env.ledger().timestamp() + 1000,
     );
 
     // Invalid PLONK proof should fail
@@ -1262,11 +1265,12 @@ fn test_plonk_and_groth16_coexistence() {
     let request_groth16 = ZkAccessHelper::create_request(
         &env,
         user.clone(),
-        resource_id_groth16.clone(),
+        resource_id_groth16.to_array(),
         proof_a_g16,
         proof_b_g16,
         proof_c_g16,
         &[&pi_g16],
+        env.ledger().timestamp() + 1000,
     );
 
     // Create PLONK proof
@@ -1287,11 +1291,12 @@ fn test_plonk_and_groth16_coexistence() {
     let request_plonk = ZkAccessHelper::create_request(
         &env,
         user.clone(),
-        resource_id_plonk.clone(),
+        resource_id_plonk.to_array(),
         proof_a_plonk,
         proof_b_plonk,
         proof_c_plonk,
         &[&pi_plonk],
+        env.ledger().timestamp() + 1000,
     );
 
     // Both verifiers should work independently
@@ -1349,11 +1354,12 @@ fn test_plonk_respects_pause() {
     let request = ZkAccessHelper::create_request(
         &env,
         user.clone(),
-        resource_id,
+        resource_id.to_array(),
         proof_a,
         proof_b,
         proof_c,
         &[&pi],
+        env.ledger().timestamp() + 1000,
     );
 
     // Pause the contract
@@ -1413,11 +1419,12 @@ fn test_plonk_multiple_public_inputs() {
     let request = ZkAccessHelper::create_request(
         &env,
         user.clone(),
-        resource_id,
+        resource_id.to_array(),
         proof_a,
         proof_b,
         proof_c,
         &[&pi1, &pi2, &pi3],
+        env.ledger().timestamp() + 1000,
     );
 
     // Should handle multiple public inputs
@@ -1823,4 +1830,146 @@ fn test_merkle_compute_root_odd_leaves() {
     let expected_root = zk_verifier::PoseidonHasher::hash(&env, &root_inputs);
     
     assert_eq!(root, expected_root, "Odd leaves should duplicate last leaf");
+}
+
+#[test]
+fn test_verify_batch_access_recursive_and_per_item_audit() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let mut proof_a = [0u8; 64];
+    proof_a[0] = 1;
+    proof_a[32] = 0x02;
+    let mut proof_b = [0u8; 128];
+    proof_b[0] = 1;
+    proof_b[32] = 0x02;
+    proof_b[64] = 0x03;
+    proof_b[96] = 0x04;
+    let mut proof_c = [0u8; 64];
+    proof_c[0] = 1;
+    proof_c[32] = 0x02;
+    let mut pi = [0u8; 32];
+    pi[0] = 1;
+
+    let user_a = Address::generate(&env);
+    let user_b = Address::generate(&env);
+    let resource_a = [101u8; 32];
+    let resource_b = [102u8; 32];
+
+    let req_a = ZkAccessHelper::create_request(
+        &env,
+        user_a.clone(),
+        resource_a,
+        proof_a,
+        proof_b,
+        proof_c,
+        &[&pi],
+        env.ledger().timestamp() + 1000,
+    );
+    let req_b = ZkAccessHelper::create_request(
+        &env,
+        user_b.clone(),
+        resource_b,
+        proof_a,
+        proof_b,
+        proof_c,
+        &[&pi],
+        env.ledger().timestamp() + 1000,
+    );
+
+    let mut batch = Vec::new(&env);
+    batch.push_back(req_a);
+    batch.push_back(req_b);
+
+    let summary = client.verify_batch_access(&batch);
+    assert_eq!(summary.total, 2);
+    assert_eq!(summary.verified, 2);
+    assert!(summary.recursive_valid);
+
+    let audit_a = client.get_audit_record(&user_a, &BytesN::from_array(&env, &resource_a));
+    let audit_b = client.get_audit_record(&user_b, &BytesN::from_array(&env, &resource_b));
+    assert!(audit_a.is_some(), "batch should emit audit for user_a");
+    assert!(audit_b.is_some(), "batch should emit audit for user_b");
+}
+
+#[test]
+fn test_batch_verification_cpu_sublinear_vs_individual() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ZkVerifierContract, ());
+    let client = ZkVerifierContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let mut proof_a = [0u8; 64];
+    proof_a[0] = 1;
+    proof_a[32] = 0x02;
+    let mut proof_b = [0u8; 128];
+    proof_b[0] = 1;
+    proof_b[32] = 0x02;
+    proof_b[64] = 0x03;
+    proof_b[96] = 0x04;
+    let mut proof_c = [0u8; 64];
+    proof_c[0] = 1;
+    proof_c[32] = 0x02;
+    let mut pi = [0u8; 32];
+    pi[0] = 1;
+
+    let count = 6u8;
+    let single_user = Address::generate(&env);
+    let single_req = ZkAccessHelper::create_request(
+        &env,
+        single_user,
+        [77u8; 32],
+        proof_a,
+        proof_b,
+        proof_c,
+        &[&pi],
+        env.ledger().timestamp() + 1000,
+    );
+    let mut single_batch = Vec::new(&env);
+    single_batch.push_back(single_req);
+
+    let mut multi_batch = Vec::new(&env);
+    for i in 0..count {
+        let user = Address::generate(&env);
+        let resource_id = [i.saturating_add(100); 32];
+        let req = ZkAccessHelper::create_request(
+            &env,
+            user,
+            resource_id,
+            proof_a,
+            proof_b,
+            proof_c,
+            &[&pi],
+            env.ledger().timestamp() + 1000,
+        );
+        multi_batch.push_back(req);
+    }
+
+    env.cost_estimate().budget().reset_default();
+    let single_summary = client.verify_batch_access(&single_batch);
+    let single_cpu = env.cost_estimate().budget().cpu_instruction_cost();
+
+    env.cost_estimate().budget().reset_default();
+    let multi_summary = client.verify_batch_access(&multi_batch);
+    let multi_cpu = env.cost_estimate().budget().cpu_instruction_cost();
+
+    assert_eq!(single_summary.total, 1);
+    assert_eq!(single_summary.verified, 1);
+    assert_eq!(multi_summary.total, count as u32);
+    assert_eq!(multi_summary.verified, count as u32);
+    assert!(
+        multi_cpu < single_cpu.saturating_mul(count as u64),
+        "batch path should scale sub-linearly (multi={multi_cpu}, baseline_linear={})",
+        single_cpu.saturating_mul(count as u64)
+    );
 }
