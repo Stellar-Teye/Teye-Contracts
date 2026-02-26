@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(clippy::too_many_arguments)]
 
 pub mod credential;
 pub mod events;
@@ -7,7 +8,7 @@ pub mod recovery;
 use credential::CredentialError;
 use recovery::{RecoveryError, RecoveryRequest};
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, String, Symbol, Vec,
+    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Symbol, Vec,
 };
 
 /// Preparation data for guardian addition
@@ -52,6 +53,7 @@ pub use credential::CredentialError as CredentialVerificationError;
 pub struct IdentityContract;
 
 #[contractimpl]
+#[allow(clippy::too_many_arguments)]
 impl IdentityContract {
     /// Initialize the identity contract with an owner address.
     pub fn initialize(env: Env, owner: Address) -> Result<(), RecoveryError> {
