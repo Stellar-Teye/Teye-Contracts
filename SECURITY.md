@@ -1,5 +1,16 @@
 # Security Policy
 
+## 📚 Security Documentation
+
+For comprehensive security information, see our [Security Documentation Hub](docs/security/README.md).
+
+### Quick Links
+- **[Security Overview](docs/security/overview.md)** - High-level security architecture
+- **[Access Control Matrix](docs/security/access-control-matrix.md)** - Complete permission mapping
+- **[Contract Security Profiles](docs/security/contract-profiles.md)** - Per-contract security analysis
+- **[Cryptography](docs/security/cryptography.md)** - Cryptographic primitives and assumptions
+- **[Rate Limiting & DoS Protection](docs/security/rate-limiting.md)** - DoS mitigation strategies
+
 ## Supported Versions
 
 We provide security updates for the following contract and SDK versions:
