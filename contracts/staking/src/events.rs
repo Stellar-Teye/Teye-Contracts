@@ -1,10 +1,6 @@
 #![allow(deprecated)] // events().publish migration tracked separately
 
-<<<<<<< HEAD
-use soroban_sdk::{symbol_short, Address, Env};
-=======
 use soroban_sdk::{symbol_short, Address, Env, String};
->>>>>>> upstream/master
 
 // ── Event payloads ──────────────────────────────────────────────────────────
 

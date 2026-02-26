@@ -20,19 +20,7 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, BytesN, Env,
     Vec,
 };
-use verifier::ProofValidationError;
 
-<<<<<<< HEAD
-const ADMIN: Symbol = symbol_short!("ADMIN");
-const PENDING_ADMIN: Symbol = symbol_short!("PEND_ADM");
-const RATE_CFG: Symbol = symbol_short!("RATECFG");
-const RATE_TRACK: Symbol = symbol_short!("RLTRK");
-const VK: Symbol = symbol_short!("VK");
-
-
-/// Maximum number of public inputs accepted per proof verification.
-=======
->>>>>>> upstream/master
 const MAX_PUBLIC_INPUTS: u32 = 16;
 const MAX_BATCH_PROOFS: u32 = 64;
 
@@ -114,15 +102,8 @@ pub enum ContractError {
     BatchTooLarge = 15,
 }
 
-<<<<<<< HEAD
-/// Map low-level proof validation errors into contract-level errors.
-#[allow(dead_code)]
-fn map_proof_validation_error(e: ProofValidationError) -> ContractError {
-    match e {
-=======
 fn map_proof_validation_error(error: ProofValidationError) -> ContractError {
     match error {
->>>>>>> upstream/master
         ProofValidationError::ZeroedComponent => ContractError::DegenerateProof,
         ProofValidationError::OversizedComponent => ContractError::OversizedProofComponent,
         ProofValidationError::MalformedG1PointA | ProofValidationError::MalformedG1PointC => {
@@ -274,61 +255,6 @@ impl ZkVerifierContract {
         Ok(())
     }
 
-<<<<<<< HEAD
-    /// Accept the pending admin transfer. Only the proposed new admin can call this.
-    /// Completes the two-step admin transfer process.
-    pub fn accept_admin(env: Env, new_admin: Address) -> Result<(), ContractError> {
-        new_admin.require_auth();
-
-        let pending: Address = env
-            .storage()
-            .instance()
-            .get(&PENDING_ADMIN)
-            .ok_or(ContractError::InvalidConfig)?;
-
-        if new_admin != pending {
-            return Err(ContractError::Unauthorized);
-        }
-
-        let old_admin: Address = env
-            .storage()
-            .instance()
-            .get(&ADMIN)
-            .ok_or(ContractError::Unauthorized)?;
-
-        env.storage().instance().set(&ADMIN, &new_admin);
-        env.storage().instance().remove(&PENDING_ADMIN);
-
-        events::publish_admin_transfer_accepted(&env, old_admin, new_admin);
-
-        Ok(())
-    }
-
-    /// Cancel a pending admin transfer. Only the current admin can call this.
-    pub fn cancel_admin_transfer(env: Env, current_admin: Address) -> Result<(), ContractError> {
-        Self::require_admin(&env, &current_admin)?;
-
-        let pending: Address = env
-            .storage()
-            .instance()
-            .get(&PENDING_ADMIN)
-            .ok_or(ContractError::InvalidConfig)?;
-
-        env.storage().instance().remove(&PENDING_ADMIN);
-
-        events::publish_admin_transfer_cancelled(&env, current_admin, pending);
-
-        Ok(())
-    }
-
-    /// Get the pending admin address, if any.
-    pub fn get_pending_admin(env: Env) -> Option<Address> {
-        env.storage().instance().get(&PENDING_ADMIN)
-    }
-
-    /// Configure per-address rate limiting for this contract.
-=======
->>>>>>> upstream/master
     pub fn set_rate_limit_config(
         env: Env,
         caller: Address,
@@ -403,20 +329,9 @@ impl ZkVerifierContract {
         Self::verify_single(&env, &request, false)
     }
 
-<<<<<<< HEAD
-        validate_request(&request).inspect_err(|&err| {
-            events::publish_access_rejected(
-                &env,
-                request.user.clone(),
-                request.resource_id.clone(),
-                err,
-            );
-        })?;
-=======
     pub fn verify_access_plonk(env: Env, request: AccessRequest) -> Result<bool, ContractError> {
         Self::verify_single(&env, &request, true)
     }
->>>>>>> upstream/master
 
     /// Verify a recursively composed batch of access proofs in one transaction.
     pub fn verify_batch_access(
@@ -433,21 +348,6 @@ impl ZkVerifierContract {
             return Err(ContractError::BatchTooLarge);
         }
 
-<<<<<<< HEAD
-        Self::check_and_update_rate_limit(&env, &request.user).inspect_err(|&err| {
-            events::publish_access_rejected(
-                &env,
-                request.user.clone(),
-                request.resource_id.clone(),
-                err,
-            );
-        })?;
-
-        let is_valid = Bn254Verifier::verify_proof(&env, &request.proof, &request.public_inputs);
-        if is_valid {
-            let proof_hash = PoseidonHasher::hash(&env, &request.public_inputs);
-            AuditTrail::log_access(&env, request.user, request.resource_id, proof_hash);
-=======
         let vk = get_verification_key(&env);
         let mut recursive_proofs = Vec::new(&env);
         let mut recursive_inputs: Vec<Vec<BytesN<32>>> = Vec::new(&env);
@@ -511,6 +411,7 @@ impl ZkVerifierContract {
                 );
             }
 
+            #[allow(deprecated)]
             env.events().publish(
                 (
                     symbol_short!("BATCHLOG"),
@@ -527,7 +428,6 @@ impl ZkVerifierContract {
             );
 
             i = i.saturating_add(1);
->>>>>>> upstream/master
         }
 
         Ok(BatchVerificationSummary {

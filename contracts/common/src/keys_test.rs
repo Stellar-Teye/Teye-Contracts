@@ -1,9 +1,5 @@
-<<<<<<< HEAD
-use super::keys::{AuditLog, KeyManager};
-=======
 use super::keys::{DataKey, KeyManager};
 use std::collections::HashMap;
->>>>>>> upstream/master
 
 #[cfg(test)]
 mod tests {
@@ -21,7 +17,7 @@ mod tests {
         let new_master = vec![5, 6, 7, 8];
 
         // Dummy audit log
-        let mut audit = AuditLog::default();
+        let mut audit = super::AuditLog::default();
 
         // Perform secure rotation
         km.rotate_master_secure(new_master.clone(), &mut audit, "admin", 1000);

@@ -75,15 +75,9 @@ impl AuditTrail {
             expires_at,
             prev_hash,
         };
-<<<<<<< HEAD
-        env.storage()
-            .persistent()
-            .set(&(&user, &resource_id), &record);
-=======
 
         chain.push_back(record.clone());
         env.storage().persistent().set(&key, &chain);
->>>>>>> upstream/master
         #[allow(deprecated)]
         env.events().publish((user, resource_id), record);
     }
@@ -156,6 +150,7 @@ impl AuditTrail {
         env.storage()
             .persistent()
             .set(&("verification", proof_id), &record);
+        #[allow(deprecated)]
         env.events()
             .publish(("verification", proof_id), (submitter, verified));
     }

@@ -12,7 +12,7 @@ use ballot::{DataKey, OptionIndex, VoteError};
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, BytesN, Env, Vec,
 };
-use zk_verifier::{Bn254Verifier, Proof};
+use zk_verifier::{Bn254Verifier, Proof, ZkVerifier};
 
 #[contracttype]
 #[derive(Clone, Debug)]

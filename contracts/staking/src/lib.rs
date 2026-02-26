@@ -16,8 +16,6 @@ use soroban_sdk::{
 };
 
 use timelock::{RateChangeProposal, UnstakeRequest};
-<<<<<<< HEAD
-=======
 
 /// Preparation data for staking operation
 #[contracttype]
@@ -36,7 +34,6 @@ pub struct PrepareWithdraw {
     pub request_id: u64,
     pub timestamp: u64,
 }
->>>>>>> upstream/master
 
 // ── Storage key constants ────────────────────────────────────────────────────
 
@@ -75,17 +72,12 @@ pub enum ContractError {
     AlreadyWithdrawn = 7,
     RequestNotFound = 8,
     TokensIdentical = 9,
-<<<<<<< HEAD
-    RateChangeNotReady = 10,
-    NoPendingRateChange = 11,
-=======
     SlashingUnauthorized = 10,
     RateChangeNotReady = 11,
     NoPendingRateChange = 12,
     MultisigRequired = 13,
     MultisigError = 14,
     Paused = 15,
->>>>>>> upstream/master
 }
 
 // ── Public-facing types (re-exported for test consumers) ─────────────────────
@@ -353,7 +345,7 @@ impl StakingContract {
             .get(&STAKE_TOKEN)
             .ok_or(ContractError::NotInitialized)?;
         token::Client::new(&env, &stake_token).transfer(
-            env.current_contract_address(),
+            &env.current_contract_address(),
             &staker,
             &request.amount,
         );
@@ -404,7 +396,7 @@ impl StakingContract {
             .get(&REWARD_TOKEN)
             .ok_or(ContractError::NotInitialized)?;
         token::Client::new(&env, &reward_token).transfer(
-            env.current_contract_address(),
+            &env.current_contract_address(),
             &staker,
             &earned,
         );
@@ -726,8 +718,6 @@ impl StakingContract {
             return Err(ContractError::InvalidInput);
         }
 
-<<<<<<< HEAD
-=======
         // If multisig is configured, require an executable proposal and consume it.
         if !multisig::is_legacy_admin_allowed(&env) {
             if proposal_id == 0 {
@@ -745,7 +735,6 @@ impl StakingContract {
             Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin, "set_reward_rate")?;
         }
 
->>>>>>> upstream/master
         let delay: u64 = env.storage().instance().get(&RATE_DELAY).unwrap_or(0);
 
         if delay == 0 {
@@ -770,11 +759,7 @@ impl StakingContract {
     pub fn apply_reward_rate(env: Env, caller: Address) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
-<<<<<<< HEAD
-        Self::require_admin(&env, &caller)?;
-=======
         Self::require_admin(&env, &caller, "apply_reward_rate")?;
->>>>>>> upstream/master
 
         let proposal =
             timelock::get_rate_proposal(&env).ok_or(ContractError::NoPendingRateChange)?;
@@ -802,11 +787,7 @@ impl StakingContract {
     ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
-<<<<<<< HEAD
-        Self::require_admin(&env, &caller)?;
-=======
         Self::require_admin(&env, &caller, "set_rate_change_delay")?;
->>>>>>> upstream/master
 
         env.storage().instance().set(&RATE_DELAY, &delay);
 

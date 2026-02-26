@@ -3,8 +3,6 @@ use soroban_sdk::{contracttype, BytesN, Env, Vec};
 
 pub type VerificationKey = crate::vk::VerificationKey;
 
-<<<<<<< HEAD
-=======
 /// Shared trait for all ZK proof verification systems.
 /// This enables adding new proving systems (PLONK, STARKs, etc.) without breaking existing code.
 pub trait ZkVerifier {
@@ -65,7 +63,6 @@ pub trait ZkVerifier {
 // TODO: post-quantum migration - `G1Point`, `G2Point`, and `Proof` map to elliptic curves.
 // For hash-based STARKs or Lattice proofs, replace these representations with Hash paths
 // or matrix structural analogs.
->>>>>>> upstream/master
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct G1Point {
@@ -89,11 +86,7 @@ pub struct Proof {
     pub c: G1Point,
 }
 
-<<<<<<< HEAD
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-=======
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
->>>>>>> upstream/master
 pub enum ProofValidationError {
     ZeroedComponent,
     OversizedComponent,
@@ -136,10 +129,6 @@ fn g2_is_all_ones(point: &G2Point) -> bool {
         && bytes_all_ff(&point.y.1.to_array())
 }
 
-<<<<<<< HEAD
-#[allow(dead_code)]
-=======
->>>>>>> upstream/master
 fn g1_to_bytes(point: &G1Point) -> [u8; 64] {
     let mut out = [0u8; 64];
     out[0..32].copy_from_slice(&point.x.to_array());
@@ -159,11 +148,6 @@ fn g2_to_bytes(point: &G2Point) -> [u8; 128] {
 /// Verifier implementation for the BN254 curve.
 pub struct Bn254Verifier;
 
-<<<<<<< HEAD
-impl Bn254Verifier {
-    /// Validate individual proof components for known-bad byte patterns.
-    pub fn validate_proof_components(
-=======
 impl ZkVerifier for Bn254Verifier {
     /// Validate individual proof components for known-bad byte patterns that
     /// would cause undefined behaviour or nonsensical results in a real pairing
@@ -173,7 +157,6 @@ impl ZkVerifier for Bn254Verifier {
     /// contract entrypoint also rejects empty inputs to provide a clear error
     /// and event at the contract boundary.
     fn validate_proof_components(
->>>>>>> upstream/master
         proof: &Proof,
         public_inputs: &Vec<BytesN<32>>,
     ) -> Result<(), ProofValidationError> {
@@ -226,17 +209,12 @@ impl ZkVerifier for Bn254Verifier {
     }
 
     /// Verify a Groth16 proof over BN254.
-<<<<<<< HEAD
-    pub fn verify_proof(
-        _env: &Env,
-=======
     // TODO: post-quantum migration - The mock logic here or actual BN254 pairing checks
     // will be superseded by a new implementation validating collision-resistant hash paths
     // (for FRI) or LWE assertions (for Lattices).
     fn verify_proof(
         _env: &Env,
         _vk: &VerificationKey,
->>>>>>> upstream/master
         proof: &Proof,
         public_inputs: &Vec<BytesN<32>>,
     ) -> bool {

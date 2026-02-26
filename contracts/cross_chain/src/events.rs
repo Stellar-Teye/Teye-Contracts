@@ -1,10 +1,6 @@
 #![allow(deprecated)] // events().publish migration tracked separately
 
-<<<<<<< HEAD
-use soroban_sdk::{symbol_short, Address, Bytes, Env, String};
-=======
 use soroban_sdk::{contracttype, symbol_short, Address, Bytes, BytesN, Env, String, Symbol};
->>>>>>> upstream/master
 
 pub fn publish_initialized(env: &Env, admin: Address) {
     env.events().publish((symbol_short!("INIT"),), admin);

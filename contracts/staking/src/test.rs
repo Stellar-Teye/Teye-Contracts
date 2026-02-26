@@ -484,11 +484,7 @@ fn test_delayed_reward_rate_proposal_and_apply() {
 
     // Propose a rate change at t=100; rate should remain unchanged.
     env.ledger().set_timestamp(100);
-<<<<<<< HEAD
-    client.set_reward_rate(&admin, &20);
-=======
     client.set_reward_rate(&admin, &20, &0);
->>>>>>> upstream/master
     assert_eq!(client.get_reward_rate(), 10);
 
     // Verify proposal is stored.
@@ -509,11 +505,7 @@ fn test_apply_reward_rate_before_delay_fails() {
     client.set_rate_change_delay(&admin, &3_600);
 
     env.ledger().set_timestamp(100);
-<<<<<<< HEAD
-    client.set_reward_rate(&admin, &20);
-=======
     client.set_reward_rate(&admin, &20, &0);
->>>>>>> upstream/master
 
     env.ledger().set_timestamp(3_699);
     let result = client.try_apply_reward_rate(&admin);
@@ -548,11 +540,7 @@ fn test_delayed_rate_change_rewards_are_correct() {
 
     // Propose rate increase at t=100.
     env.ledger().set_timestamp(100);
-<<<<<<< HEAD
-    client.set_reward_rate(&admin, &20);
-=======
     client.set_reward_rate(&admin, &20, &0);
->>>>>>> upstream/master
 
     // Apply at t=3701. Old rate (10) active from t=0 to t=3701.
     env.ledger().set_timestamp(3_701);

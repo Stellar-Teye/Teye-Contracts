@@ -2,10 +2,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, Vec};
-<<<<<<< HEAD
-=======
 use zk_verifier::verifier::{G1Point, G2Point};
->>>>>>> upstream/master
 use zk_verifier::Proof;
 use zk_voting::merkle::{make_leaf, MerkleTree};
 use zk_voting::{ZkVoting, ZkVotingClient};
@@ -15,13 +12,6 @@ use zk_voting::{ZkVoting, ZkVotingClient};
 /// Build a valid Groth16 proof (matches Bn254Verifier mock rules:
 /// a[0]==1, c[0]==1, public_inputs[0][0]==1).
 fn valid_proof(env: &Env) -> (Proof, Vec<BytesN<32>>) {
-<<<<<<< HEAD
-    let mut a = [0u8; 64];
-    a[0] = 1;
-    let mut b = [0u8; 128];
-    let mut c = [0u8; 64];
-    c[0] = 1;
-=======
     // a is a G1Point: x=[1,0..], y=[0..]
     let mut ax = [0u8; 32];
     ax[0] = 1;
@@ -38,7 +28,6 @@ fn valid_proof(env: &Env) -> (Proof, Vec<BytesN<32>>) {
     cx[0] = 1;
     let cy = [0u8; 32];
 
->>>>>>> upstream/master
     let mut pi = [0u8; 32];
     pi[0] = 1;
 
@@ -67,15 +56,8 @@ fn valid_proof(env: &Env) -> (Proof, Vec<BytesN<32>>) {
 
 /// Build an invalid proof (a.x[0]==0 fails the mock verifier).
 fn invalid_proof(env: &Env) -> (Proof, Vec<BytesN<32>>) {
-<<<<<<< HEAD
-    let a = [0u8; 64];
-    let b = [0u8; 128];
-    let c = [0u8; 64];
-    let pi = [0u8; 32];
-=======
     // All-zero G1/G2 points — mock verifier rejects because a.x[0] != 1
     let z32 = [0u8; 32];
->>>>>>> upstream/master
 
     let proof = Proof {
         a: G1Point {

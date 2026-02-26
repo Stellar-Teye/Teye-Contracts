@@ -1,10 +1,6 @@
 #![allow(deprecated)] // events().publish migration tracked separately
 
-<<<<<<< HEAD
-use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env};
-=======
 use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env, String};
->>>>>>> upstream/master
 
 /// Fired when an admin transfer is proposed.
 #[contracttype]
