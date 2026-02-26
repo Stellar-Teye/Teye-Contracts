@@ -19,6 +19,45 @@ pub trait ZkVerifier {
         proof: &Proof,
         public_inputs: &Vec<BytesN<32>>,
     ) -> bool;
+
+    /// Verifies a recursively composed batch of proofs in a single call path.
+    ///
+    /// The default implementation performs structural validation and verification
+    /// for each `(proof, public_inputs)` pair and short-circuits on the first
+    /// failure.
+    fn verify_recursive_proof(
+        env: &Env,
+        vk: &VerificationKey,
+        proofs: &Vec<Proof>,
+        batched_public_inputs: &Vec<Vec<BytesN<32>>>,
+    ) -> bool {
+        if proofs.is_empty() || proofs.len() != batched_public_inputs.len() {
+            return false;
+        }
+
+        let mut i: u32 = 0;
+        while i < proofs.len() {
+            let proof = match proofs.get(i) {
+                Some(proof) => proof,
+                None => return false,
+            };
+            let public_inputs = match batched_public_inputs.get(i) {
+                Some(public_inputs) => public_inputs,
+                None => return false,
+            };
+
+            if Self::validate_proof_components(&proof, &public_inputs).is_err() {
+                return false;
+            }
+            if !Self::verify_proof(env, vk, &proof, &public_inputs) {
+                return false;
+            }
+
+            i += 1;
+        }
+
+        true
+    }
 }
 
 // TODO: post-quantum migration - `G1Point`, `G2Point`, and `Proof` map to elliptic curves.
