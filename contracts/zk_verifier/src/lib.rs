@@ -399,23 +399,6 @@ impl ZkVerifierContract {
 
         let mut state: (u64, u64) = env.storage().persistent().get(&key).unwrap_or((0, now));
 
-            #[allow(deprecated)]
-            env.events().publish(
-                (
-                    symbol_short!("BATCHLOG"),
-                    request.user.clone(),
-                    request.resource_id.clone(),
-                ),
-                BatchAccessAuditEvent {
-                    user: request.user.clone(),
-                    resource_id: request.resource_id.clone(),
-                    proof_index: i,
-                    verified: proof_valid,
-                    timestamp: env.ledger().timestamp(),
-                },
-            );
-
-            i = i.saturating_add(1);
         let window_end = state.1.saturating_add(window_duration_seconds);
         if now >= window_end {
             state.0 = 0;
