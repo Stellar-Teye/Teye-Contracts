@@ -151,6 +151,7 @@ impl AuditTrail {
         env.storage()
             .persistent()
             .set(&("verification", proof_id), &record);
+        #[allow(deprecated)]
         env.events()
             .publish(("verification", proof_id), (submitter, verified));
     }

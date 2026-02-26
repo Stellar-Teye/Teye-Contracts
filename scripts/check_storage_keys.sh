@@ -13,6 +13,8 @@ for contract in "$CONTRACTS_DIR"/*/; do
     if [ -d "$contract/src" ]; then
         contract_name=$(basename "$contract")
         
+<<<<<<< HEAD
+=======
 
 ROOT_DIR=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 CONTRACTS_DIR="$ROOT_DIR/contracts"
@@ -25,6 +27,7 @@ for contract in "$CONTRACTS_DIR"/*/; do
         contract_name=$(basename "$contract")
         
 
+>>>>>>> upstream/master
         # We want to find actual DEFINITIONS or unique usages that represent keys.
         # This is tricky without a full parser, but we can look for:
         # 1. const DEFINITION: Symbol = symbol_short!("...")
@@ -53,6 +56,8 @@ for contract in "$CONTRACTS_DIR"/*/; do
         
         duplicates=$(echo "$const_definitions" | uniq -d)
         
+<<<<<<< HEAD
+=======
 
         # For now, let's grep for all symbol_short! and filter out common false positives
         # or just be more specific about what constitutes a "definition".
@@ -66,6 +71,7 @@ for contract in "$CONTRACTS_DIR"/*/; do
 
         duplicates=$(echo "$const_definitions" | uniq -d)
 
+>>>>>>> upstream/master
         if [ -n "$duplicates" ]; then
             echo "❌ Collision(s) found in contract: $contract_name"
             while IFS= read -r dup; do

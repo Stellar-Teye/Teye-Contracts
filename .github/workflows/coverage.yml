@@ -1,0 +1,85 @@
+name: Code Coverage
+
+on:
+  push:
+    branches: [master, develop]
+  pull_request:
+    branches: [master, develop]
+
+concurrency:
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUST_VERSION: "1.92.0"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  coverage:
+    name: Generate Coverage Report
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config libudev-dev libhidapi-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: wasm32-unknown-unknown
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-coverage-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-coverage-
+
+      - name: Install cargo-tarpaulin
+        run: |
+          if ! command -v cargo-tarpaulin &>/dev/null; then
+            cargo install cargo-tarpaulin
+          fi
+
+      - name: Generate coverage
+        run: |
+          cargo tarpaulin \
+            --workspace \
+            --out xml \
+            --output-dir coverage \
+            --timeout 600 \
+            --exclude-files "tests/*" "fuzz/*" "contracts/benches/*" "example/*" \
+            --engine llvm \
+            --no-fail-fast \
+            2>&1 | tee coverage/tarpaulin.log
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage/cobertura.xml
+          flags: unittests
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Post coverage summary
+        if: always()
+        run: |
+          if [ -f coverage/tarpaulin.log ]; then
+            COVERAGE=$(grep -oP '\d+\.\d+% coverage' coverage/tarpaulin.log | tail -1 || echo "unknown")
+            echo "## Code Coverage" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Overall: **${COVERAGE}**" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
