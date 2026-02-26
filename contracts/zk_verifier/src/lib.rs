@@ -19,17 +19,27 @@ mod audit;
 pub mod credentials;
 pub mod events;
 mod helpers;
+<<<<<<< HEAD
+pub mod plonk;
+=======
 pub mod revocation;
 pub mod selective_disclosure;
+>>>>>>> 8ac60fcc51b5991fb5c3c3a879dcb5daa5df7d74
 pub mod verifier;
 pub mod vk;
 
 pub use crate::audit::{AuditRecord, AuditTrail};
 pub use crate::credentials::CredentialManager;
 pub use crate::events::AccessRejectedEvent;
+<<<<<<< HEAD
+pub use crate::helpers::{MerkleVerifier, ZkAccessHelper};
+pub use crate::plonk::PlonkVerifier;
+pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof, ProofValidationError, ZkVerifier};
+=======
 pub use crate::helpers::ZkAccessHelper;
 pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof, ProofValidationError, VerificationKey};
 pub use crate::verifier::{Bn254Verifier, PoseidonHasher, Proof, ProofValidationError};
+>>>>>>> 8ac60fcc51b5991fb5c3c3a879dcb5daa5df7d74
 pub use crate::vk::VerificationKey;
 
 use common::{nonce, whitelist};
@@ -572,7 +582,7 @@ impl ZkVerifierContract {
             err
         })?;
 
-        Bn254Verifier::validate_proof_components(&request.proof, &request.public_inputs)
+        <Bn254Verifier as ZkVerifier>::validate_proof_components(&request.proof, &request.public_inputs)
             .map_err(map_proof_validation_error)?;
 
         // TODO: post-quantum migration - The verification branch below is hardcoded for BN254 Groth16.
@@ -580,7 +590,7 @@ impl ZkVerifierContract {
         // or a native host-function call if STARK verification limits CPU budgets.
         let vk = Self::get_verification_key(env.clone()).ok_or(ContractError::InvalidConfig)?;
         let is_valid =
-            Bn254Verifier::verify_proof(&env, &vk, &request.proof, &request.public_inputs);
+            <Bn254Verifier as ZkVerifier>::verify_proof(&env, &vk, &request.proof, &request.public_inputs);
         if is_valid {
             let proof_hash = PoseidonHasher::hash(&env, &request.public_inputs);
             AuditTrail::log_access(&env, request.user, request.resource_id, proof_hash, request.expires_at);
@@ -593,6 +603,73 @@ impl ZkVerifierContract {
             );
         }
         Ok(())
+    }
+
+    /// Verifies a ZK proof for resource access using PLONK.
+    ///
+    /// This endpoint provides PLONK-based verification as an alternative to Groth16.
+    /// PLONK offers universal setup (no trusted ceremony) and circuit flexibility.
+    /// 
+    /// It performs the same security checks as `verify_access`:
+    /// 1. Authorizes the user.
+    /// 2. Validates the request shape.
+    /// 3. Checks whitelist and rate limits.
+    /// 4. Verifies the PLONK proof via `PlonkVerifier`.
+    /// 5. Logs the access in the `AuditTrail` if successful.
+    ///
+    /// Returns `true` if the proof is valid and all checks pass, otherwise returns an error or `false`.
+    pub fn verify_access_plonk(env: Env, request: AccessRequest) -> Result<bool, ContractError> {
+        common::pausable::require_not_paused(&env).map_err(|_| ContractError::Paused)?;
+        request.user.require_auth();
+
+        validate_request(&request).map_err(|err| {
+            events::publish_access_rejected(
+                &env,
+                request.user.clone(),
+                request.resource_id.clone(),
+                err,
+            );
+            err
+        })?;
+
+        if !whitelist::check_whitelist_access(&env, &request.user) {
+            events::publish_access_rejected(
+                &env,
+                request.user.clone(),
+                request.resource_id.clone(),
+                ContractError::Unauthorized,
+            );
+            return Self::unauthorized(&env, &request.user, "verify_access_plonk", "whitelisted_user");
+        }
+
+        Self::check_and_update_rate_limit(&env, &request.user).map_err(|err| {
+            events::publish_access_rejected(
+                &env,
+                request.user.clone(),
+                request.resource_id.clone(),
+                err,
+            );
+            err
+        })?;
+
+        <PlonkVerifier as ZkVerifier>::validate_proof_components(&request.proof, &request.public_inputs)
+            .map_err(map_proof_validation_error)?;
+
+        let vk = Self::get_verification_key(env.clone()).ok_or(ContractError::InvalidConfig)?;
+        let is_valid =
+            <PlonkVerifier as ZkVerifier>::verify_proof(&env, &vk, &request.proof, &request.public_inputs);
+        if is_valid {
+            let proof_hash = PoseidonHasher::hash(&env, &request.public_inputs);
+            AuditTrail::log_access(&env, request.user, request.resource_id, proof_hash);
+        } else {
+            Self::emit_access_violation(
+                &env,
+                &request.user,
+                "verify_access_plonk",
+                "valid_plonk_proof",
+            );
+        }
+        Ok(is_valid)
     }
 
     /// Verifies access with auth-level-aware ZK requirements.
@@ -642,6 +719,41 @@ impl ZkVerifierContract {
         AuditTrail::verify_chain(&env, user, resource_id)
     }
 
+<<<<<<< HEAD
+    /// Verifies that a specific data record exists in a committed Merkle tree.
+    ///
+    /// This enables privacy-preserving data inclusion proofs where a client can prove
+    /// a vision record exists in a dataset without revealing other records.
+    ///
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    /// * `root` - The committed Merkle tree root hash
+    /// * `leaf_hash` - The hash of the data record to verify
+    /// * `proof` - Vector of (sibling_hash, is_left) tuples forming the Merkle proof path
+    ///   - Each tuple contains the sibling node hash and a boolean indicating if it's on the left
+    ///
+    /// # Returns
+    /// `true` if the proof is valid and the leaf exists in the tree, `false` otherwise
+    ///
+    /// # Example
+    /// A client can prove their vision record is part of a committed dataset without
+    /// revealing the entire dataset or other records in it.
+    ///
+    /// # Gas Considerations
+    /// Gas cost scales linearly with tree depth (proof length):
+    /// - Depth 4: ~4-5k gas
+    /// - Depth 8: ~8-10k gas
+    /// - Depth 16: ~16-20k gas
+    /// - Depth 32 (max): ~32-40k gas
+    pub fn verify_data_inclusion(
+        env: Env,
+        root: BytesN<32>,
+        leaf_hash: BytesN<32>,
+        proof: Vec<(BytesN<32>, bool)>,
+    ) -> bool {
+        helpers::MerkleVerifier::verify_merkle_proof(&env, &root, &leaf_hash, &proof)
+    }
+=======
     // ── Credential schema management ─────────────────────────────────────────
 
     /// Register a new credential schema. Only admin can register schemas.
@@ -889,3 +1001,4 @@ impl ZkVerifierContract {
         RevocationRegistryManager::is_revoked(&env, &registry_id, index)
     }
 }
+>>>>>>> 8ac60fcc51b5991fb5c3c3a879dcb5daa5df7d74

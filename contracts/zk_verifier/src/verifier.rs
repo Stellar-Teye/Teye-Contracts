@@ -3,6 +3,24 @@ use soroban_sdk::{contracttype, BytesN, Env, Vec};
 
 pub type VerificationKey = crate::vk::VerificationKey;
 
+/// Shared trait for all ZK proof verification systems.
+/// This enables adding new proving systems (PLONK, STARKs, etc.) without breaking existing code.
+pub trait ZkVerifier {
+    /// Validates proof components for structural integrity before verification.
+    fn validate_proof_components(
+        proof: &Proof,
+        public_inputs: &Vec<BytesN<32>>,
+    ) -> Result<(), ProofValidationError>;
+
+    /// Verifies a ZK proof against a verification key and public inputs.
+    fn verify_proof(
+        env: &Env,
+        vk: &VerificationKey,
+        proof: &Proof,
+        public_inputs: &Vec<BytesN<32>>,
+    ) -> bool;
+}
+
 // TODO: post-quantum migration - `G1Point`, `G2Point`, and `Proof` map to elliptic curves.
 // For hash-based STARKs or Lattice proofs, replace these representations with Hash paths
 // or matrix structural analogs.
@@ -92,7 +110,7 @@ fn g2_to_bytes(point: &G2Point) -> [u8; 128] {
 /// Verifier implementation for the BN254 curve.
 pub struct Bn254Verifier;
 
-impl Bn254Verifier {
+impl ZkVerifier for Bn254Verifier {
     /// Validate individual proof components for known-bad byte patterns that
     /// would cause undefined behaviour or nonsensical results in a real pairing
     /// check. This runs *before* the (mock) verification arithmetic.
@@ -100,7 +118,7 @@ impl Bn254Verifier {
     /// Note: empty `public_inputs` are rejected here as a safety guard, and the
     /// contract entrypoint also rejects empty inputs to provide a clear error
     /// and event at the contract boundary.
-    pub fn validate_proof_components(
+    fn validate_proof_components(
         proof: &Proof,
         public_inputs: &Vec<BytesN<32>>,
     ) -> Result<(), ProofValidationError> {
@@ -153,7 +171,19 @@ impl Bn254Verifier {
     }
 
     /// Verify a Groth16 proof over BN254.
+<<<<<<< HEAD
+    // TODO: post-quantum migration - The mock logic here or actual BN254 pairing checks
+    // will be superseded by a new implementation validating collision-resistant hash paths
+    // (for FRI) or LWE assertions (for Lattices).
+    fn verify_proof(
+        _env: &Env,
+        _vk: &VerificationKey,
+        proof: &Proof,
+        public_inputs: &Vec<BytesN<32>>,
+    ) -> bool {
+=======
     pub fn verify_proof(_env: &Env, proof: &Proof, public_inputs: &Vec<BytesN<32>>) -> bool {
+>>>>>>> 8ac60fcc51b5991fb5c3c3a879dcb5daa5df7d74
         if public_inputs.is_empty() {
             return false;
         }
