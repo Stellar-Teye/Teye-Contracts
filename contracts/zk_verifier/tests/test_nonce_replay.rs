@@ -63,6 +63,7 @@ fn make_request(
         proof,
         public_inputs: inputs,
         nonce,
+        expires_at: env.ledger().timestamp().saturating_add(600),
     }
 }
 

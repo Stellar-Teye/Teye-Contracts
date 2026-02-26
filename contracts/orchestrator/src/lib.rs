@@ -240,20 +240,22 @@ impl OrchestratorContract {
         for i in 0..active.len() {
             let transaction_id = active.get(i).unwrap();
             if let Some(log) = get_transaction_log(&env, transaction_id) {
-                if is_transaction_expired(&env, &log) && log.phase != TransactionPhase::Committed
-                    && rollback_manager.rollback_transaction(&log).is_ok() {
-                        let mut updated_log = log;
-                        updated_log.phase = TransactionPhase::TimedOut;
-                        updated_log.status = TransactionStatus::Failed;
-                        updated_log.updated_at = env.ledger().timestamp();
-                        updated_log.error = Some(String::from_str(&env, "Transaction timed out"));
+                if is_transaction_expired(&env, &log)
+                    && log.phase != TransactionPhase::Committed
+                    && rollback_manager.rollback_transaction(&log).is_ok()
+                {
+                    let mut updated_log = log;
+                    updated_log.phase = TransactionPhase::TimedOut;
+                    updated_log.status = TransactionStatus::Failed;
+                    updated_log.updated_at = env.ledger().timestamp();
+                    updated_log.error = Some(String::from_str(&env, "Transaction timed out"));
 
-                        set_transaction_log(&env, &updated_log);
-                        let _ = Self::release_resource_locks(&env, transaction_id);
+                    set_transaction_log(&env, &updated_log);
+                    let _ = Self::release_resource_locks(&env, transaction_id);
 
-                        timed_out.push_back(transaction_id);
-                        EventPublisher::transaction_timed_out(&env, &updated_log);
-                    }
+                    timed_out.push_back(transaction_id);
+                    EventPublisher::transaction_timed_out(&env, &updated_log);
+                }
             }
         }
 

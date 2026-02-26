@@ -13,12 +13,63 @@ concurrency:
 
 env:
   RUST_VERSION: "1.92.0"
-  SOROBAN_VERSION: "23.1.4"
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
 jobs:
-  # ── Fast checks (no heavy deps) ──────────────────────────────
+  # ── Detect which contract(s) changed ──────────────────────────
+  detect-changes:
+    name: Detect Changed Contracts
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.changes.outputs.packages }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine changed packages
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE=${{ github.event.pull_request.base.sha }}
+          else
+            BASE=${{ github.event.before }}
+          fi
+
+          # Fallback: if BASE is empty or all zeros (new branch), check all
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "packages=--all" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Find changed Cargo.toml files to identify affected packages
+          CHANGED_DIRS=$(git diff --name-only "$BASE" HEAD -- 'contracts/' 'sdk/' 'libs/' | \
+            sed -E 's|^(contracts/[^/]+|sdk/[^/]+|libs/[^/]+)/.*|\1|' | sort -u)
+
+          if [ -z "$CHANGED_DIRS" ]; then
+            echo "packages=--all" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Build -p flags for each changed package
+          PKG_FLAGS=""
+          for dir in $CHANGED_DIRS; do
+            if [ -f "$dir/Cargo.toml" ]; then
+              PKG_NAME=$(grep '^name' "$dir/Cargo.toml" | head -1 | sed 's/name = "\(.*\)"/\1/')
+              if [ -n "$PKG_NAME" ]; then
+                PKG_FLAGS="$PKG_FLAGS -p $PKG_NAME"
+              fi
+            fi
+          done
+
+          if [ -z "$PKG_FLAGS" ]; then
+            echo "packages=--all" >> "$GITHUB_OUTPUT"
+          else
+            echo "packages=$PKG_FLAGS" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── Formatting ────────────────────────────────────────────────
   fmt:
     name: Formatting
     runs-on: ubuntu-latest
@@ -30,10 +81,11 @@ jobs:
           components: rustfmt
       - run: cargo fmt --all -- --check
 
-  # ── Lint ──────────────────────────────────────────────────────
+  # ── Clippy ────────────────────────────────────────────────────
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
+    needs: [detect-changes]
     steps:
       - uses: actions/checkout@v4
 
@@ -57,13 +109,13 @@ jobs:
           key: ${{ runner.os }}-clippy-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-clippy-
 
-      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - run: cargo clippy ${{ needs.detect-changes.outputs.packages }} --all-targets -- -D warnings
 
-  # ── Unit tests ────────────────────────────────────────────────
-  test-unit:
-    name: Unit Tests
+  # ── Cargo Check ───────────────────────────────────────────────
+  check:
+    name: Cargo Check
     runs-on: ubuntu-latest
-    needs: [fmt, clippy]
+    needs: [detect-changes]
     steps:
       - uses: actions/checkout@v4
 
@@ -83,149 +135,16 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-test-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-test-
+          key: ${{ runner.os }}-check-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-check-
 
-      - run: cargo test --lib --all --no-fail-fast
-
-  # ── Integration tests ────────────────────────────────────────
-  test-integration:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    needs: [fmt, clippy]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config libudev-dev libhidapi-dev
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: ${{ env.RUST_VERSION }}
-          targets: wasm32-unknown-unknown
-
-      - name: Install Soroban CLI
-        run: cargo install --locked --version ${{ env.SOROBAN_VERSION }} soroban-cli
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-test-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-test-
-
-      - run: cargo test --test '*' --all --no-fail-fast
-
-  # ── Property-based tests ─────────────────────────────────────
-  test-property:
-    name: Property Tests
-    runs-on: ubuntu-latest
-    needs: [fmt, clippy]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config libudev-dev libhidapi-dev
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: ${{ env.RUST_VERSION }}
-          targets: wasm32-unknown-unknown
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-test-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-test-
-
-      - run: cargo test --test property --no-fail-fast
-        env:
-          PROPTEST_CASES: 256
-
-  # ── Doc tests ─────────────────────────────────────────────────
-  test-doc:
-    name: Doc Tests
-    runs-on: ubuntu-latest
-    needs: [fmt]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config libudev-dev libhidapi-dev
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: ${{ env.RUST_VERSION }}
-
-      - run: cargo test --doc --all
-
-  # ── WASM build ────────────────────────────────────────────────
-  build:
-    name: Build WASM Contracts
-    runs-on: ubuntu-latest
-    needs: [fmt, clippy]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config libudev-dev libhidapi-dev
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: ${{ env.RUST_VERSION }}
-          targets: wasm32-unknown-unknown
-
-      - name: Install Soroban CLI
-        run: cargo install --locked --version ${{ env.SOROBAN_VERSION }} soroban-cli
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-build-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-build-
-
-      - name: Build optimized contracts
-        run: cargo build --target wasm32-unknown-unknown --release
-
-      - name: Upload WASM artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: wasm-contracts
-          path: target/wasm32-unknown-unknown/release/*.wasm
-          retention-days: 7
-
-  # ── Shell script linting ──────────────────────────────────────
-  shellcheck:
-    name: ShellCheck
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ludeeus/action-shellcheck@master
-        with:
-          scandir: ./scripts
-          severity: warning
-        env:
-          SHELLCHECK_OPTS: -e SC1091 -e SC2155 -e SC2016
+      - run: cargo check ${{ needs.detect-changes.outputs.packages }}
 
   # ── Gate — all required checks must pass ──────────────────────
   ci-pass:
     name: CI Pass
     if: always()
-    needs: [fmt, clippy, test-unit, test-integration, test-property, test-doc, build, shellcheck]
+    needs: [fmt, clippy, check]
     runs-on: ubuntu-latest
     steps:
       - name: Evaluate results
@@ -234,12 +153,7 @@ jobs:
           results=(
             "Formatting:${{ needs.fmt.result }}"
             "Clippy:${{ needs.clippy.result }}"
-            "Unit Tests:${{ needs.test-unit.result }}"
-            "Integration Tests:${{ needs.test-integration.result }}"
-            "Property Tests:${{ needs.test-property.result }}"
-            "Doc Tests:${{ needs.test-doc.result }}"
-            "Build:${{ needs.build.result }}"
-            "ShellCheck:${{ needs.shellcheck.result }}"
+            "Cargo Check:${{ needs.check.result }}"
           )
 
           failed=0

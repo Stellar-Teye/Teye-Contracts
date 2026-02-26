@@ -64,6 +64,15 @@ pub fn save_prescription(
     prescription: &Prescription,
     exam_record_id: Option<u64>,
 ) {
+///
+/// If `derived_from_exam_id` is `Some(exam_id)`, a `DerivedFrom` edge is
+/// added linking this prescription back to the source examination.  This is
+/// the canonical exam → prescription provenance link required by the issue.
+///
+/// # Parameters
+/// - `exam_record_id` — optional examination record that this prescription
+///   was derived from.  Pass `None` for standalone prescriptions.
+pub fn save_prescription(env: &Env, prescription: &Prescription, exam_record_id: Option<u64>) {
     let key = (soroban_sdk::symbol_short!("RX"), prescription.id);
     env.storage().persistent().set(&key, prescription);
 
@@ -103,8 +112,8 @@ pub fn save_prescription(
     if let Some(exam_id) = exam_record_id {
         lineage::add_edge(
             env,
-            exam_id,          // source: examination
-            prescription.id,  // target: prescription
+            exam_id,         // source: examination
+            prescription.id, // target: prescription
             RelationshipKind::DerivedFrom,
             prescription.provider.clone(),
             None,
