@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(clippy::too_many_arguments)]
 
 pub mod credential;
 pub mod events;
@@ -6,7 +7,9 @@ pub mod recovery;
 
 use credential::CredentialError;
 use recovery::{RecoveryError, RecoveryRequest};
-use soroban_sdk::{BytesN, contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec, String};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Symbol, Vec,
+};
 
 /// Preparation data for guardian addition
 #[contracttype]
@@ -188,7 +191,7 @@ impl IdentityContract {
     ) -> Result<(), RecoveryError> {
         // Validate all inputs without making state changes
         Self::require_active_owner(&env, &caller)?;
-        
+
         // Check if guardian already exists
         let guardians = recovery::get_guardians(&env, &caller);
         if guardians.contains(&guardian) {
@@ -201,7 +204,11 @@ impl IdentityContract {
         }
 
         // Store temporary preparation data
-        let prep_key = (Symbol::new(&env, "PREP_ADD_GUARD"), caller.clone(), guardian.clone());
+        let prep_key = (
+            Symbol::new(&env, "PREP_ADD_GUARD"),
+            caller.clone(),
+            guardian.clone(),
+        );
         let prep_data = PrepareGuardianAddition {
             caller: caller.clone(),
             guardian: guardian.clone(),
@@ -219,8 +226,15 @@ impl IdentityContract {
         guardian: Address,
     ) -> Result<(), RecoveryError> {
         // Retrieve preparation data
-        let prep_key = (Symbol::new(&env, "PREP_ADD_GUARD"), caller.clone(), guardian.clone());
-        let prep_data: PrepareGuardianAddition = env.storage().temporary().get(&prep_key)
+        let prep_key = (
+            Symbol::new(&env, "PREP_ADD_GUARD"),
+            caller.clone(),
+            guardian.clone(),
+        );
+        let prep_data: PrepareGuardianAddition = env
+            .storage()
+            .temporary()
+            .get(&prep_key)
             .ok_or(RecoveryError::Unauthorized)?; // Using Unauthorized as InvalidPhase equivalent
 
         // Verify preparation data matches commit parameters
@@ -258,7 +272,7 @@ impl IdentityContract {
     ) -> Result<(), RecoveryError> {
         // Validate all inputs without making state changes
         Self::require_active_owner(&env, &caller)?;
-        
+
         // Check if guardian exists
         let guardians = recovery::get_guardians(&env, &caller);
         if !guardians.contains(&guardian) {
@@ -266,7 +280,11 @@ impl IdentityContract {
         }
 
         // Store temporary preparation data
-        let prep_key = (Symbol::new(&env, "PREP_REM_GUARD"), caller.clone(), guardian.clone());
+        let prep_key = (
+            Symbol::new(&env, "PREP_REM_GUARD"),
+            caller.clone(),
+            guardian.clone(),
+        );
         let prep_data = PrepareGuardianRemoval {
             caller: caller.clone(),
             guardian: guardian.clone(),
@@ -284,8 +302,15 @@ impl IdentityContract {
         guardian: Address,
     ) -> Result<(), RecoveryError> {
         // Retrieve preparation data
-        let prep_key = (Symbol::new(&env, "PREP_REM_GUARD"), caller.clone(), guardian.clone());
-        let prep_data: PrepareGuardianRemoval = env.storage().temporary().get(&prep_key)
+        let prep_key = (
+            Symbol::new(&env, "PREP_REM_GUARD"),
+            caller.clone(),
+            guardian.clone(),
+        );
+        let prep_data: PrepareGuardianRemoval = env
+            .storage()
+            .temporary()
+            .get(&prep_key)
             .ok_or(RecoveryError::Unauthorized)?;
 
         // Verify preparation data matches commit parameters
@@ -323,7 +348,7 @@ impl IdentityContract {
     ) -> Result<(), RecoveryError> {
         // Validate all inputs without making state changes
         Self::require_active_owner(&env, &caller)?;
-        
+
         // Validate threshold
         if threshold == 0 || threshold > 5 {
             return Err(RecoveryError::InvalidThreshold);
@@ -355,7 +380,10 @@ impl IdentityContract {
     ) -> Result<(), RecoveryError> {
         // Retrieve preparation data
         let prep_key = (Symbol::new(&env, "PREP_SET_THRESH"), caller.clone());
-        let prep_data: PrepareThresholdChange = env.storage().temporary().get(&prep_key)
+        let prep_data: PrepareThresholdChange = env
+            .storage()
+            .temporary()
+            .get(&prep_key)
             .ok_or(RecoveryError::Unauthorized)?;
 
         // Verify preparation data matches commit parameters
@@ -462,10 +490,8 @@ impl IdentityContract {
         }
 
         #[allow(deprecated)]
-        env.events().publish(
-            (symbol_short!("CRD_BIND"), caller),
-            credential_id,
-        );
+        env.events()
+            .publish((symbol_short!("CRD_BIND"), caller), credential_id);
 
         Ok(())
     }
@@ -495,10 +521,8 @@ impl IdentityContract {
         env.storage().persistent().set(&key, &new_creds);
 
         #[allow(deprecated)]
-        env.events().publish(
-            (symbol_short!("CRD_UBND"), caller),
-            credential_id,
-        );
+        env.events()
+            .publish((symbol_short!("CRD_UBND"), caller), credential_id);
 
         Ok(())
     }
@@ -513,11 +537,7 @@ impl IdentityContract {
     }
 
     /// Check if a specific credential is bound to an identity.
-    pub fn is_credential_bound(
-        env: Env,
-        holder: Address,
-        credential_id: BytesN<32>,
-    ) -> bool {
+    pub fn is_credential_bound(env: Env, holder: Address, credential_id: BytesN<32>) -> bool {
         let key = (Symbol::new(&env, HOLDER_BIND_PREFIX), holder);
         let creds: Vec<BytesN<32>> = env
             .storage()
