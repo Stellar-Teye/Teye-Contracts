@@ -47,7 +47,7 @@ pub struct Proof {
     pub c: G1Point,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ProofValidationError {
     ZeroedComponent,
     OversizedComponent,
