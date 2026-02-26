@@ -18,6 +18,15 @@ pub struct AuditRecord {
     pub prev_hash: BytesN<32>,
 }
 
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerificationRecord {
+    pub submitter: Address,
+    pub proof_id: u64,
+    pub verified: bool,
+    pub timestamp: u64,
+}
+
 /// Compute a keccak256 hash of an audit record's contents.
 fn hash_record(env: &Env, record: &AuditRecord) -> BytesN<32> {
     let mut buf = Bytes::new(env);
@@ -31,15 +40,6 @@ fn hash_record(env: &Env, record: &AuditRecord) -> BytesN<32> {
 
 /// Utility for logging and retrieving ZK verification audits.
 pub struct AuditTrail;
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct VerificationRecord {
-    pub submitter: Address,
-    pub proof_id: u64,
-    pub verified: bool,
-    pub timestamp: u64,
-}
 
 impl AuditTrail {
     /// Logs a successful access verification event to persistent storage and emits an event.
@@ -140,6 +140,7 @@ impl AuditTrail {
         true
     }
 
+    #[allow(deprecated)]
     pub fn log_verification(env: &Env, submitter: &Address, proof_id: u64, verified: bool) {
         let record = VerificationRecord {
             submitter: submitter.clone(),
@@ -150,6 +151,7 @@ impl AuditTrail {
         env.storage()
             .persistent()
             .set(&("verification", proof_id), &record);
+        #[allow(deprecated)]
         env.events()
             .publish(("verification", proof_id), (submitter, verified));
     }

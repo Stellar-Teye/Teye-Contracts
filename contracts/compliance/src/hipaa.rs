@@ -327,10 +327,7 @@ mod tests {
         ctx.actor_role = "researcher".into();
         ctx.sensitivity = 1; // low sensitivity so HIPAA-001 passes
         ctx.action = "record.write".into();
-        let _verdict = engine.evaluate(&ctx);
-        // Researcher cannot write even at low sensitivity PHI
-        // Actually sensitivity < 2 means HIPAA-004 allows it
-        // Let's test with sensitivity 2
+        // Researcher cannot write at PHI sensitivity levels.
         ctx.sensitivity = 2;
         let verdict = engine.evaluate(&ctx);
         assert!(!verdict.allowed);
