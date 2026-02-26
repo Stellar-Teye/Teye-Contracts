@@ -9,7 +9,7 @@ const AUDIT_SEQUENCE: Symbol = symbol_short!("AUD_SEQ");
 
 pub struct AuditManager;
 
-#[contracttype]
+#[contracttype] // ← keep this: provides IntoVal<Env, Val> required by .publish()
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AuditLogEvent {
     pub sequence: u64,
@@ -35,14 +35,12 @@ impl AuditManager {
             .unwrap_or([0u8; 32]);
         let timestamp = env.ledger().timestamp();
 
-        // Use the segment "staking"
         let segment = LogSegmentId::new("staking").unwrap();
 
         let mut buf = Vec::new();
         buf.extend_from_slice(&sequence.to_le_bytes());
         buf.extend_from_slice(&timestamp.to_le_bytes());
 
-        // Copy actor string to buffer
         let actor_str = actor.to_string();
         let mut actor_bytes = alloc::vec![0u8; actor_str.len() as usize];
         actor_str.copy_into_slice(&mut actor_bytes);
@@ -52,7 +50,6 @@ impl AuditManager {
         buf.extend_from_slice(action.as_bytes());
         buf.push(0);
 
-        // Copy target string to buffer
         let mut target_bytes = alloc::vec![0u8; target.len() as usize];
         target.copy_into_slice(&mut target_bytes);
         buf.extend_from_slice(&target_bytes);
@@ -65,13 +62,11 @@ impl AuditManager {
 
         let entry_hash = hash_leaf(&buf);
 
-        // Update state
         env.storage()
             .persistent()
             .set(&AUDIT_LATEST_HASH, &entry_hash);
         env.storage().persistent().set(&AUDIT_SEQUENCE, &sequence);
 
-        // Emit event
         let event_data = AuditLogEvent {
             sequence,
             timestamp,
@@ -83,6 +78,10 @@ impl AuditManager {
             entry_hash: BytesN::from_array(env, &entry_hash),
         };
 
+        // Suppress the deprecation warning at the call site only.
+        // `#[contractevent]` cannot be used here because AuditLogEvent is defined
+        // in a non-contract helper module and requires IntoVal from #[contracttype].
+        #[allow(deprecated)]
         env.events()
             .publish((symbol_short!("AUDIT"), actor), event_data);
     }

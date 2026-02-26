@@ -26,11 +26,10 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 
-
 use teye_common::{
     admin_tiers, concurrency::ConflictEntry, concurrency::FieldChange,
-    concurrency::ResolutionStrategy, multisig, progressive_auth, risk_engine,
-    whitelist, AdminTier, KeyManager, MeteringOpType, UpdateOutcome, VersionStamp,
+    concurrency::ResolutionStrategy, multisig, progressive_auth, risk_engine, whitelist, AdminTier,
+    KeyManager, MeteringOpType, UpdateOutcome, VersionStamp,
 };
 
 /// Re-export the contract-specific error type at the crate root.
@@ -140,7 +139,11 @@ fn has_active_consent(env: &Env, patient: &Address, grantee: &Address) -> bool {
     }
 }
 
-pub use rbac::{Permission, Role, AccessPolicy, PolicyContext, evaluate_access_policies, set_user_credential, set_record_sensitivity, create_access_policy, CredentialType, SensitivityLevel, TimeRestriction};
+pub use rbac::{
+    create_access_policy, evaluate_access_policies, set_record_sensitivity, set_user_credential,
+    AccessPolicy, CredentialType, Permission, PolicyContext, Role, SensitivityLevel,
+    TimeRestriction,
+};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -376,10 +379,7 @@ impl VisionRecordsContract {
         };
         let bytes = derived.key.to_array().to_vec();
         let version_str = derived.version.to_string();
-        Ok(Some((
-            bytes,
-            String::from_str(env, &version_str),
-        )))
+        Ok(Some((bytes, String::from_str(env, &version_str))))
     }
 
     fn parse_key_version_u32(version: &String) -> Option<u32> {
@@ -1001,7 +1001,7 @@ impl VisionRecordsContract {
                     master_bytes = bytes;
                 }
             }
-        }        // Build KeyManager and encrypt the provided data_hash
+        } // Build KeyManager and encrypt the provided data_hash
         let km = KeyManager::new(master_bytes);
         let ciphertext = km.encrypt(&env, data_hash.clone());
         let stored_hash = ciphertext;
@@ -1545,8 +1545,8 @@ impl VisionRecordsContract {
         caller.require_auth();
 
         let admin = Self::get_admin(env.clone())?;
-        let has_admin = caller == admin
-            || rbac::has_permission(&env, &caller, &Permission::SystemAdmin);
+        let has_admin =
+            caller == admin || rbac::has_permission(&env, &caller, &Permission::SystemAdmin);
 
         if !has_admin {
             let key = (symbol_short!("RECORD"), record_id);
@@ -1741,7 +1741,8 @@ impl VisionRecordsContract {
         if let Some(grant) = env.storage().persistent().get::<_, AccessGrant>(&key) {
             if grant.expires_at > env.ledger().timestamp() {
                 // Check if ABAC policies also allow this access
-                let abac_allowed = evaluate_access_policies(&env, &grantee, None, Some(patient.clone()));
+                let abac_allowed =
+                    evaluate_access_policies(&env, &grantee, None, Some(patient.clone()));
                 if abac_allowed {
                     return grant.level;
                 }
@@ -2270,10 +2271,14 @@ impl VisionRecordsContract {
 
         // Only record provider or SystemAdmin can set sensitivity
         let record_key = (symbol_short!("RECORD"), record_id);
-        let record: VisionRecord = env.storage().persistent().get(&record_key)
+        let record: VisionRecord = env
+            .storage()
+            .persistent()
+            .get(&record_key)
             .ok_or(ContractError::RecordNotFound)?;
 
-        let has_perm = caller == record.provider || rbac::has_permission(&env, &caller, &Permission::SystemAdmin);
+        let has_perm = caller == record.provider
+            || rbac::has_permission(&env, &caller, &Permission::SystemAdmin);
         if !has_perm {
             return Err(ContractError::Unauthorized);
         }
@@ -2339,12 +2344,18 @@ impl VisionRecordsContract {
     ) -> Result<(), ContractError> {
         // Retrieve preparation data
         let prep_key = (symbol_short!("P_REG_USR"), user.clone());
-        let prep_data: PrepareUserRegistration = env.storage().temporary().get(&prep_key)
+        let prep_data: PrepareUserRegistration = env
+            .storage()
+            .temporary()
+            .get(&prep_key)
             .ok_or(ContractError::InvalidPhase)?;
 
         // Verify preparation data matches commit parameters
-        if prep_data.caller != caller || prep_data.user != user || 
-           prep_data.role != role || prep_data.name != name {
+        if prep_data.caller != caller
+            || prep_data.user != user
+            || prep_data.role != role
+            || prep_data.name != name
+        {
             return Err(ContractError::InvalidPhase);
         }
 
@@ -2444,13 +2455,12 @@ impl VisionRecordsContract {
     }
 
     /// Commit phase for adding a vision record
-    pub fn commit_add_record(
-        env: Env,
-        record_id: u64,
-    ) -> Result<(), ContractError> {
+    pub fn commit_add_record(env: Env, record_id: u64) -> Result<(), ContractError> {
         // Retrieve preparation data
         let prep_key = (symbol_short!("P_ADD_REC"), record_id);
-        let prep_data: PrepareAddRecord = env.storage().temporary()
+        let prep_data: PrepareAddRecord = env
+            .storage()
+            .temporary()
             .get(&prep_key)
             .ok_or(ContractError::InvalidInput)?;
 
@@ -2495,10 +2505,7 @@ impl VisionRecordsContract {
     }
 
     /// Rollback phase for adding a vision record
-    pub fn rollback_add_record(
-        env: Env,
-        record_id: u64,
-    ) -> Result<(), ContractError> {
+    pub fn rollback_add_record(env: Env, record_id: u64) -> Result<(), ContractError> {
         // Clean up preparation data
         let prep_key = (symbol_short!("P_ADD_REC"), record_id);
         env.storage().temporary().remove(&prep_key);
@@ -2547,7 +2554,9 @@ impl VisionRecordsContract {
     ) -> Result<(), ContractError> {
         // Retrieve preparation data
         let prep_key = (symbol_short!("P_GNT_ACC"), patient.clone(), grantee.clone());
-        let prep_data: PrepareGrantAccess = env.storage().temporary()
+        let prep_data: PrepareGrantAccess = env
+            .storage()
+            .temporary()
             .get(&prep_key)
             .ok_or(ContractError::InvalidInput)?;
 
@@ -2561,7 +2570,11 @@ impl VisionRecordsContract {
         };
 
         // Store the grant
-        let key = (symbol_short!("GRANT"), prep_data.patient.clone(), prep_data.grantee.clone());
+        let key = (
+            symbol_short!("GRANT"),
+            prep_data.patient.clone(),
+            prep_data.grantee.clone(),
+        );
         env.storage().persistent().set(&key, &grant);
         extend_ttl_address_key(&env, &key);
 
@@ -2572,7 +2585,7 @@ impl VisionRecordsContract {
             .persistent()
             .get(&grants_key)
             .unwrap_or(Vec::new(&env));
-        
+
         if !grants.contains(&prep_data.grantee) {
             grants.push_back(prep_data.grantee.clone());
             env.storage().persistent().set(&grants_key, &grants);
@@ -2610,9 +2623,9 @@ impl VisionRecordsContract {
 
         // Check provider permissions
         let caller = provider.clone();
-        let has_perm = rbac::has_permission(&env, &caller, &Permission::WriteRecord) ||
-                      rbac::has_delegated_permission(&env, &provider, &caller, &Permission::WriteRecord) ||
-                      rbac::has_permission(&env, &caller, &Permission::SystemAdmin);
+        let has_perm = rbac::has_permission(&env, &caller, &Permission::WriteRecord)
+            || rbac::has_delegated_permission(&env, &provider, &caller, &Permission::WriteRecord)
+            || rbac::has_permission(&env, &caller, &Permission::SystemAdmin);
 
         if !has_perm {
             return Err(ContractError::Unauthorized);
@@ -2641,13 +2654,12 @@ impl VisionRecordsContract {
     }
 
     /// Commit phase for adding a prescription
-    pub fn commit_add_prescription(
-        env: Env,
-        rx_id: u64,
-    ) -> Result<(), ContractError> {
+    pub fn commit_add_prescription(env: Env, rx_id: u64) -> Result<(), ContractError> {
         // Retrieve preparation data
         let prep_key = (symbol_short!("P_ADD_RX"), rx_id);
-        let prep_data: PrepareAddPrescription = env.storage().temporary()
+        let prep_data: PrepareAddPrescription = env
+            .storage()
+            .temporary()
             .get(&prep_key)
             .ok_or(ContractError::InvalidInput)?;
 
@@ -2680,10 +2692,7 @@ impl VisionRecordsContract {
     }
 
     /// Rollback phase for adding a prescription
-    pub fn rollback_add_prescription(
-        env: Env,
-        rx_id: u64,
-    ) -> Result<(), ContractError> {
+    pub fn rollback_add_prescription(env: Env, rx_id: u64) -> Result<(), ContractError> {
         // Clean up preparation data
         let prep_key = (symbol_short!("P_ADD_RX"), rx_id);
         env.storage().temporary().remove(&prep_key);
