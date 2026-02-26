@@ -79,6 +79,7 @@ pub enum ContractError {
 }
 
 /// Map low-level proof validation errors into contract-level errors.
+#[allow(dead_code)]
 fn map_proof_validation_error(e: ProofValidationError) -> ContractError {
     match e {
         ProofValidationError::ZeroedComponent => ContractError::DegenerateProof,
@@ -360,14 +361,13 @@ impl ZkVerifierContract {
     pub fn verify_access(env: Env, request: AccessRequest) -> Result<bool, ContractError> {
         request.user.require_auth();
 
-        validate_request(&request).map_err(|err| {
+        validate_request(&request).inspect_err(|&err| {
             events::publish_access_rejected(
                 &env,
                 request.user.clone(),
                 request.resource_id.clone(),
                 err,
             );
-            err
         })?;
 
         if !whitelist::check_whitelist_access(&env, &request.user) {
@@ -380,14 +380,13 @@ impl ZkVerifierContract {
             return Err(ContractError::Unauthorized);
         }
 
-        Self::check_and_update_rate_limit(&env, &request.user).map_err(|err| {
+        Self::check_and_update_rate_limit(&env, &request.user).inspect_err(|&err| {
             events::publish_access_rejected(
                 &env,
                 request.user.clone(),
                 request.resource_id.clone(),
                 err,
             );
-            err
         })?;
 
         let is_valid = Bn254Verifier::verify_proof(&env, &request.proof, &request.public_inputs);

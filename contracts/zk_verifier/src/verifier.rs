@@ -68,6 +68,7 @@ fn g2_is_all_ones(point: &G2Point) -> bool {
         && bytes_all_ff(&point.y.1.to_array())
 }
 
+#[allow(dead_code)]
 fn g1_to_bytes(point: &G1Point) -> [u8; 64] {
     let mut out = [0u8; 64];
     out[0..32].copy_from_slice(&point.x.to_array());
