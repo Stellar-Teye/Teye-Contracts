@@ -1,11 +1,14 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use common::transaction::{
-        get_default_timeout_config, ContractType, TransactionError, TransactionOperation,
-        TransactionPhase, TransactionStatus, TransactionTimeoutConfig,
+    use crate::{
+        deadlock::DeadlockDetector, events::EventPublisher, rollback::RollbackManager,
+        transaction::TransactionManager, OrchestratorContract,
     };
-    use soroban_sdk::{Address, Env, String, Vec};
+    use common::transaction::{
+        get_default_timeout_config, ContractType, TransactionError, TransactionLog,
+        TransactionOperation, TransactionPhase, TransactionStatus, TransactionTimeoutConfig,
+    };
+    use soroban_sdk::{testutils::Address as _, vec, Address, Env, String, Vec};
 
     #[test]
     fn test_orchestrator_initialization() {
@@ -66,7 +69,7 @@ mod tests {
     fn test_transaction_validation() {
         let env = Env::default();
         let admin = Address::generate(&env);
-        let initiator = Address::generate(&env);
+        let _initiator = Address::generate(&env);
         let contract_address = Address::generate(&env);
 
         // Initialize orchestrator
@@ -265,16 +268,16 @@ mod tests {
     fn test_transaction_queries() {
         let env = Env::default();
         let admin = Address::generate(&env);
-        let initiator = Address::generate(&env);
+        let _initiator = Address::generate(&env);
 
         // Initialize orchestrator
         OrchestratorContract::initialize(env.clone(), admin.clone(), None).unwrap();
 
         // Test getting non-existent transaction
-        assert_eq!(
+        assert!(matches!(
             OrchestratorContract::get_transaction(env.clone(), 999),
             Err(TransactionError::TransactionNotFound)
-        );
+        ));
 
         // Test getting active transactions (should be empty initially)
         let active = OrchestratorContract::get_active_transactions(env.clone()).unwrap();
@@ -306,7 +309,7 @@ mod tests {
         });
 
         // Start transaction (should fail)
-        let result = OrchestratorContract::start_transaction(
+        let _result = OrchestratorContract::start_transaction(
             env.clone(),
             initiator.clone(),
             operations,
@@ -370,10 +373,10 @@ mod tests {
         let non_admin = Address::generate(&env);
 
         // Test operations without initialization
-        assert_eq!(
+        assert!(matches!(
             OrchestratorContract::get_timeout_config(env.clone()),
             Err(TransactionError::Unauthorized)
-        );
+        ));
 
         assert_eq!(
             OrchestratorContract::get_active_transactions(env.clone()),
