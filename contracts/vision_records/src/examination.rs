@@ -2,6 +2,7 @@
 use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol, Vec};
 use teye_common::concurrency::{self, FieldChange, UpdateOutcome, VersionStamp};
 use teye_common::lineage::{self, RelationshipKind};
+use teye_common::state_machine::{self, EntityKind, LifecycleState, TransitionContext, TransitionRecord};
 
 const TTL_THRESHOLD: u32 = 5184000;
 const TTL_EXTEND_TO: u32 = 10368000;
@@ -155,6 +156,22 @@ pub fn set_examination(env: &Env, exam: &EyeExamination, provider: &Address) {
             None,
         );
     }
+
+    let _ = state_machine::apply_transition(
+        env,
+        0,
+        &EntityKind::VisionRecord,
+        exam.record_id,
+        LifecycleState::Vision(state_machine::VisionRecordState::PendingReview),
+        TransitionContext {
+            actor: provider.clone(),
+            actor_role: symbol_short!("PROV"),
+            now: env.ledger().timestamp(),
+            retention_until: 0,
+            expires_at: 0,
+            prerequisites_met: true,
+        },
+    );
 }
 
 pub fn remove_examination(env: &Env, record_id: u64) {
@@ -215,4 +232,13 @@ pub fn versioned_set_examination(
 /// Retrieves the current OCC version stamp for an examination record.
 pub fn get_exam_version(env: &Env, record_id: u64) -> VersionStamp {
     concurrency::get_version_stamp(env, record_id)
+}
+
+pub fn transition_exam_state(
+    env: &Env,
+    record_id: u64,
+    to_state: LifecycleState,
+    ctx: TransitionContext,
+) -> Result<TransitionRecord, state_machine::StateMachineError> {
+    state_machine::apply_transition(env, 0, &EntityKind::VisionRecord, record_id, to_state, ctx)
 }

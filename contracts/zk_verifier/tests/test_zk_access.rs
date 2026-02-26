@@ -1824,3 +1824,45 @@ fn test_merkle_compute_root_odd_leaves() {
     
     assert_eq!(root, expected_root, "Odd leaves should duplicate last leaf");
 }
+
+#[test]
+fn test_poseidon_vector_bn254_ones_twos() {
+    let env = Env::default();
+
+    let a = BytesN::from_array(&env, &[1u8; 32]);
+    let b = BytesN::from_array(&env, &[2u8; 32]);
+    let mut inputs = Vec::new(&env);
+    inputs.push_back(a);
+    inputs.push_back(b);
+
+    let out = zk_verifier::PoseidonHasher::hash(&env, &inputs);
+    assert_eq!(
+        out.to_array(),
+        [
+            13, 84, 225, 147, 143, 138, 140, 28, 125, 235, 94, 3, 85, 242, 99, 25, 32, 123,
+            132, 254, 156, 162, 206, 27, 38, 231, 53, 200, 41, 130, 25, 144
+        ]
+    );
+}
+
+#[test]
+fn test_poseidon_vector_bn254_one_one() {
+    let env = Env::default();
+
+    let mut one = [0u8; 32];
+    one[31] = 1;
+    let a = BytesN::from_array(&env, &one);
+    let b = BytesN::from_array(&env, &one);
+    let mut inputs = Vec::new(&env);
+    inputs.push_back(a);
+    inputs.push_back(b);
+
+    let out = zk_verifier::PoseidonHasher::hash(&env, &inputs);
+    assert_eq!(
+        out.to_array(),
+        [
+            0, 122, 243, 70, 226, 211, 4, 39, 158, 121, 224, 169, 243, 2, 63, 119, 18, 148, 167,
+            138, 203, 112, 231, 63, 144, 175, 226, 124, 173, 64, 30, 129
+        ]
+    );
+}

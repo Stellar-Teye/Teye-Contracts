@@ -36,14 +36,19 @@ pub mod multisig;
 pub mod nonce;
 pub mod pausable;
 pub mod policy_dsl;
+/// Higher-level provenance traversal, access checks, and export helpers.
+pub mod provenance_graph;
 pub mod progressive_auth;
 pub mod rate_limit;
 pub mod reentrancy_guard;
 pub mod risk_engine;
 pub mod session;
+/// Generic lifecycle state machine with guarded transitions and hash-chained audit log.
+pub mod state_machine;
 pub mod transaction;
 pub mod vector_clock;
 pub mod versioned_storage;
+pub mod vault_types;
 pub mod whitelist;
 
 pub mod credential_types;
@@ -68,12 +73,15 @@ pub use metering::*;
 pub use migration::*;
 pub use multisig::*;
 pub use nonce::*;
+pub use provenance_graph::*;
 pub use rate_limit::*;
 pub use reentrancy_guard::*;
 pub use risk_engine::*;
 pub use session::*;
+pub use state_machine::*;
 pub use vector_clock::*;
 pub use versioned_storage::*;
+pub use vault_types::*;
 pub use whitelist::*;
 
 // ── Shared error enum ────────────────────────────────────────────────────────

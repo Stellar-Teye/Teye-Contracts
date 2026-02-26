@@ -1,4 +1,9 @@
 #![allow(dead_code)]
+extern crate alloc;
+use alloc::vec::Vec as StdVec;
+
+use ark_bn254::Fr;
+use light_poseidon_nostd::{Poseidon, PoseidonBytesHasher};
 use soroban_sdk::{contracttype, BytesN, Env, Vec};
 
 pub type VerificationKey = crate::vk::VerificationKey;
@@ -47,7 +52,7 @@ pub struct Proof {
     pub c: G1Point,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ProofValidationError {
     ZeroedComponent,
     OversizedComponent,
@@ -201,14 +206,60 @@ impl PoseidonHasher {
     /// Hashes a vector of inputs using the Poseidon hash function.
     pub fn hash(env: &Env, inputs: &Vec<BytesN<32>>) -> BytesN<32> {
         if inputs.is_empty() {
-            return env.crypto().keccak256(&soroban_sdk::Bytes::new(env)).into();
+            let zero = [0u8; 32];
+            return Self::hash_chunk(env, &[&zero]);
         }
 
-        let mut combined_bytes = soroban_sdk::Bytes::new(env);
-        for input in inputs.iter() {
-            let input_bytes = input.to_array();
-            combined_bytes.extend_from_array(&input_bytes);
+        // Circom-compatible parameters support up to 12 inputs directly.
+        // For longer vectors, fold as Poseidon(Poseidon(chunk), next).
+        if inputs.len() <= 12 {
+            let mut chunks = StdVec::with_capacity(inputs.len() as usize);
+            for input in inputs.iter() {
+                chunks.push(input.to_array());
+            }
+            let refs: StdVec<&[u8]> = chunks.iter().map(|v| v.as_slice()).collect();
+            return Self::hash_chunk(env, &refs);
         }
-        env.crypto().keccak256(&combined_bytes).into()
+
+        let mut current: Option<[u8; 32]> = None;
+        let mut idx: u32 = 0;
+        while idx < inputs.len() {
+            if current.is_none() {
+                // Hash the first up-to-12 elements in one shot.
+                let mut first = StdVec::new();
+                let mut j = 0u32;
+                while j < 12 && idx + j < inputs.len() {
+                    if let Some(v) = inputs.get(idx + j) {
+                        first.push(v.to_array());
+                    }
+                    j += 1;
+                }
+                let refs: StdVec<&[u8]> = first.iter().map(|v| v.as_slice()).collect();
+                let seed = Self::hash_chunk(env, &refs);
+                current = Some(seed.to_array());
+                idx += j;
+            } else if let (Some(curr), Some(next)) = (current, inputs.get(idx)) {
+                let next_arr = next.to_array();
+                let folded = Self::hash_chunk(env, &[&curr, &next_arr]);
+                current = Some(folded.to_array());
+                idx += 1;
+            } else {
+                break;
+            }
+        }
+
+        BytesN::from_array(env, &current.unwrap_or([0u8; 32]))
+    }
+
+    fn hash_chunk(env: &Env, chunks: &[&[u8]]) -> BytesN<32> {
+        let mut poseidon = match Poseidon::<Fr>::new_circom(chunks.len()) {
+            Ok(p) => p,
+            Err(_) => return BytesN::from_array(env, &[0u8; 32]),
+        };
+
+        match poseidon.hash_bytes_be(chunks) {
+            Ok(bytes) => BytesN::from_array(env, &bytes),
+            Err(_) => BytesN::from_array(env, &[0u8; 32]),
+        }
     }
 }
