@@ -117,9 +117,10 @@ fn breach_notification_rule() -> ComplianceRule {
         name: "Breach detection — unusual access patterns".into(),
         jurisdictions: vec![Jurisdiction::US, Jurisdiction::Both],
         severity: Severity::Warning,
-        remediation: "Review this access for potential breach. Bulk access, after-hours PHI access, \
+        remediation:
+            "Review this access for potential breach. Bulk access, after-hours PHI access, \
                       and data exports require additional justification."
-            .into(),
+                .into(),
         evaluate: Box::new(|ctx: &OperationContext| {
             // Bulk access detection.
             if ctx.record_count > BULK_ACCESS_THRESHOLD {
@@ -154,8 +155,8 @@ fn access_control_rule() -> ComplianceRule {
         name: "Role-based access control for PHI".into(),
         jurisdictions: vec![Jurisdiction::US, Jurisdiction::Both],
         severity: Severity::Critical,
-        remediation: "Only clinicians and admins may modify PHI. Researchers have read-only access."
-            .into(),
+        remediation:
+            "Only clinicians and admins may modify PHI. Researchers have read-only access.".into(),
         evaluate: Box::new(|ctx: &OperationContext| {
             if ctx.sensitivity >= 2 {
                 let is_write = ctx.action.contains("write")
@@ -237,9 +238,7 @@ fn purpose_limitation_rule() -> ComplianceRule {
             .into(),
         evaluate: Box::new(|ctx: &OperationContext| {
             if ctx.sensitivity >= 2 {
-                let permitted = PERMITTED_PHI_PURPOSES
-                    .iter()
-                    .any(|p| *p == ctx.purpose);
+                let permitted = PERMITTED_PHI_PURPOSES.iter().any(|p| *p == ctx.purpose);
 
                 // If purpose is not in the permitted list, consent is required.
                 if !permitted && !ctx.has_consent {

@@ -1,12 +1,16 @@
-use soroban_sdk::{Env, Address, symbol_short};
-use teye_common::{CommonError, ChannelStatus};
 use crate::channel::Channel;
+use soroban_sdk::{symbol_short, Address, Env};
+use teye_common::{ChannelStatus, CommonError};
 
 const CHALLENGE_PERIOD: u64 = 86400; // 1 day in seconds
 
 pub fn unilateral_close(env: &Env, channel_id: u64, closer: Address) -> Result<(), CommonError> {
     let key = (symbol_short!("CHAN"), channel_id);
-    let mut channel: Channel = env.storage().persistent().get(&key).ok_or(CommonError::RecordNotFound)?;
+    let mut channel: Channel = env
+        .storage()
+        .persistent()
+        .get(&key)
+        .ok_or(CommonError::RecordNotFound)?;
 
     if channel.status != ChannelStatus::Open {
         return Err(CommonError::InvalidChannelState);
@@ -31,7 +35,11 @@ pub fn submit_fraud_proof(
     _sig: soroban_sdk::BytesN<64>,
 ) -> Result<(), CommonError> {
     let key = (symbol_short!("CHAN"), channel_id);
-    let mut channel: Channel = env.storage().persistent().get(&key).ok_or(CommonError::RecordNotFound)?;
+    let mut channel: Channel = env
+        .storage()
+        .persistent()
+        .get(&key)
+        .ok_or(CommonError::RecordNotFound)?;
 
     if channel.status != ChannelStatus::Disputed {
         return Err(CommonError::InvalidChannelState);

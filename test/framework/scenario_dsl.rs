@@ -28,8 +28,8 @@ use soroban_sdk::Address;
 use std::string::String;
 use std::vec::Vec;
 
-use super::{StakingTestHarness, TestEnv};
 use super::invariants::InvariantSet;
+use super::{StakingTestHarness, TestEnv};
 
 // ── Scenario Context ─────────────────────────────────────────────────────────
 
@@ -221,11 +221,7 @@ impl Scenario {
 macro_rules! assert_contract_error {
     ($result:expr, $expected:expr) => {
         match $result {
-            Err(Ok(e)) => assert_eq!(
-                e, $expected,
-                "Expected error {:?}, got {:?}",
-                $expected, e
-            ),
+            Err(Ok(e)) => assert_eq!(e, $expected, "Expected error {:?}, got {:?}", $expected, e),
             Err(Err(e)) => panic!("Unexpected SDK error: {:?}", e),
             Ok(_) => panic!("Expected error {:?}, but operation succeeded", $expected),
         }

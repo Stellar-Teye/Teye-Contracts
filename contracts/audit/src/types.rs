@@ -6,7 +6,6 @@
 ///   (e.g. a SHA-256 digest is always 32 bytes) to eliminate heap allocation.
 /// - `LogEntry` is intentionally immutable after construction; callers receive
 ///   an owned value and should never need to mutate it.
-
 // ─── Re-exports so consumers only need `audit::types::*` ────────────────────
 pub use crate::merkle_log::MerkleRoot;
 
@@ -222,16 +221,10 @@ pub enum AuditError {
     InvalidSegmentId,
 
     /// Compaction was requested but insufficient witnesses have co-signed.
-    InsufficientWitnesses {
-        required: usize,
-        present: usize,
-    },
+    InsufficientWitnesses { required: usize, present: usize },
 
     /// Retention policy prevents deletion of this entry.
-    RetentionPolicyViolation {
-        sequence: u64,
-        retained_until: u64,
-    },
+    RetentionPolicyViolation { sequence: u64, retained_until: u64 },
 
     /// The provided root does not match the computed root for the given size.
     RootMismatch,

@@ -1,12 +1,7 @@
-<<<<<<< HEAD
 use crate::{
-    verifier::{G1Point, G2Point, Proof, PoseidonHasher},
+    verifier::{G1Point, G2Point, PoseidonHasher, Proof},
     AccessRequest,
 };
-=======
-use crate::verifier::{G1Point, G2Point};
-use crate::{AccessRequest, Proof};
->>>>>>> 8ac60fcc51b5991fb5c3c3a879dcb5daa5df7d74
 use soroban_sdk::{BytesN, Env, Vec};
 
 /// Helper utility for creating ZK access requests.
@@ -123,7 +118,7 @@ impl MerkleVerifier {
 
             // Create a vector with both hashes in the correct order
             let mut hashes = Vec::new(env);
-            
+
             if is_left {
                 // Sibling is on the left, current is on the right
                 hashes.push_back(sibling_hash);
@@ -168,7 +163,7 @@ impl MerkleVerifier {
 
             while i < current_level.len() {
                 let left = current_level.get_unchecked(i);
-                
+
                 // If odd number of nodes, duplicate the last one
                 let right = if i + 1 < current_level.len() {
                     current_level.get_unchecked(i + 1)
@@ -179,7 +174,7 @@ impl MerkleVerifier {
                 let mut pair = Vec::new(env);
                 pair.push_back(left);
                 pair.push_back(right);
-                
+
                 let parent = PoseidonHasher::hash(env, &pair);
                 next_level.push_back(parent);
 

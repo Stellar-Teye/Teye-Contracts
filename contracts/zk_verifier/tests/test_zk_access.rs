@@ -838,8 +838,8 @@ fn test_malformed_public_input_first_byte_not_one() {
         &[&bad_pi],
         env.ledger().timestamp() + 1000,
     );
-  
-    ));
+
+    let result = client.try_verify_access(&request);
     let is_err = result.is_err();
     assert!(is_err, "All-zero public input should be rejected");
     if is_err {
@@ -1116,18 +1116,12 @@ fn test_audit_chain_empty_is_valid() {
         "Empty audit chain should be valid"
     );
 }
-<<<<<<< HEAD
 // ================================
 // PLONK Verifier Tests
 // ================================
 
 #[test]
 fn test_plonk_valid_proof_verification() {
-=======
-
-#[test]
-fn test_expired_proof_rejected() {
->>>>>>> 8ac60fcc51b5991fb5c3c3a879dcb5daa5df7d74
     let env = Env::default();
     env.mock_all_auths();
 
@@ -1141,7 +1135,6 @@ fn test_expired_proof_rejected() {
     client.set_verification_key(&admin, &vk);
 
     let user = Address::generate(&env);
-<<<<<<< HEAD
     let resource_id = BytesN::from_array(&env, &[42u8; 32]);
 
     // Create PLONK-compatible proof (first byte = 2 for PLONK compatibility)
@@ -1150,33 +1143,14 @@ fn test_expired_proof_rejected() {
     proof_a[32] = 0x02;
     let mut proof_b = [0u8; 128];
     proof_b[0] = 2;
-=======
-    let resource_id = [30u8; 32];
-
-    let mut proof_a = [0u8; 64];
-    proof_a[0] = 1;
-    proof_a[32] = 0x02;
-    let mut proof_b = [0u8; 128];
-    proof_b[0] = 1;
->>>>>>> 8ac60fcc51b5991fb5c3c3a879dcb5daa5df7d74
     proof_b[32] = 0x02;
     proof_b[64] = 0x03;
     proof_b[96] = 0x04;
     let mut proof_c = [0u8; 64];
-<<<<<<< HEAD
     proof_c[0] = 2;
     proof_c[32] = 0x02;
     let mut pi = [0u8; 32];
     pi[0] = 2; // PLONK public input marker
-=======
-    proof_c[0] = 1;
-    proof_c[32] = 0x02;
-    let mut pi = [0u8; 32];
-    pi[0] = 1;
-
-    // Set ledger timestamp to 500, but expires_at to 100 (already expired).
-    env.ledger().set_timestamp(500);
->>>>>>> 8ac60fcc51b5991fb5c3c3a879dcb5daa5df7d74
 
     let request = ZkAccessHelper::create_request(
         &env,
@@ -1186,7 +1160,6 @@ fn test_expired_proof_rejected() {
         proof_b,
         proof_c,
         &[&pi],
-<<<<<<< HEAD
     );
 
     // Verify using PLONK endpoint
@@ -1202,21 +1175,6 @@ fn test_expired_proof_rejected() {
 
 #[test]
 fn test_plonk_invalid_proof_rejection() {
-=======
-        100, // expired
-    );
-
-    let res = client.try_verify_access(&request);
-    assert!(res.is_err(), "Expired proof must be rejected");
-    assert!(matches!(
-        res.unwrap_err(),
-        Ok(ContractError::ExpiredProof)
-    ));
-}
-
-#[test]
-fn test_valid_timestamp_accepted() {
->>>>>>> 8ac60fcc51b5991fb5c3c3a879dcb5daa5df7d74
     let env = Env::default();
     env.mock_all_auths();
 
@@ -1230,7 +1188,6 @@ fn test_valid_timestamp_accepted() {
     client.set_verification_key(&admin, &vk);
 
     let user = Address::generate(&env);
-<<<<<<< HEAD
     let resource_id = BytesN::from_array(&env, &[43u8; 32]);
 
     // Create invalid PLONK proof (wrong marker bytes)
@@ -1239,30 +1196,14 @@ fn test_valid_timestamp_accepted() {
     proof_a[32] = 0x02;
     let mut proof_b = [0u8; 128];
     proof_b[0] = 0xFF;
-=======
-    let resource_id = [31u8; 32];
-
-    let mut proof_a = [0u8; 64];
-    proof_a[0] = 1;
-    proof_a[32] = 0x02;
-    let mut proof_b = [0u8; 128];
-    proof_b[0] = 1;
->>>>>>> 8ac60fcc51b5991fb5c3c3a879dcb5daa5df7d74
     proof_b[32] = 0x02;
     proof_b[64] = 0x03;
     proof_b[96] = 0x04;
     let mut proof_c = [0u8; 64];
-<<<<<<< HEAD
     proof_c[0] = 0xFF;
     proof_c[32] = 0x02;
     let mut pi = [0u8; 32];
     pi[0] = 0xFF;
-=======
-    proof_c[0] = 1;
-    proof_c[32] = 0x02;
-    let mut pi = [0u8; 32];
-    pi[0] = 1;
->>>>>>> 8ac60fcc51b5991fb5c3c3a879dcb5daa5df7d74
 
     let request = ZkAccessHelper::create_request(
         &env,
@@ -1272,7 +1213,6 @@ fn test_valid_timestamp_accepted() {
         proof_b,
         proof_c,
         &[&pi],
-<<<<<<< HEAD
     );
 
     // Invalid PLONK proof should fail
@@ -1288,21 +1228,6 @@ fn test_valid_timestamp_accepted() {
 
 #[test]
 fn test_plonk_and_groth16_coexistence() {
-=======
-        env.ledger().timestamp() + 1000,
-    );
-
-    // Should NOT fail with ExpiredProof — may fail at BN254 level, but not expiry.
-    let result = client.try_verify_access(&request);
-    assert!(
-        !matches!(result, Err(Ok(ContractError::ExpiredProof))),
-        "Valid timestamp should not trigger ExpiredProof"
-    );
-}
-
-#[test]
-fn test_audit_record_contains_expires_at() {
->>>>>>> 8ac60fcc51b5991fb5c3c3a879dcb5daa5df7d74
     let env = Env::default();
     env.mock_all_auths();
 
@@ -1316,7 +1241,6 @@ fn test_audit_record_contains_expires_at() {
     client.set_verification_key(&admin, &vk);
 
     let user = Address::generate(&env);
-<<<<<<< HEAD
     let resource_id_groth16 = BytesN::from_array(&env, &[44u8; 32]);
     let resource_id_plonk = BytesN::from_array(&env, &[45u8; 32]);
 
@@ -1413,33 +1337,14 @@ fn test_plonk_respects_pause() {
     proof_a[32] = 0x02;
     let mut proof_b = [0u8; 128];
     proof_b[0] = 2;
-=======
-    let resource_id = [32u8; 32];
-    let rid = BytesN::from_array(&env, &resource_id);
-
-    let mut proof_a = [0u8; 64];
-    proof_a[0] = 1;
-    proof_a[32] = 0x02;
-    let mut proof_b = [0u8; 128];
-    proof_b[0] = 1;
->>>>>>> 8ac60fcc51b5991fb5c3c3a879dcb5daa5df7d74
     proof_b[32] = 0x02;
     proof_b[64] = 0x03;
     proof_b[96] = 0x04;
     let mut proof_c = [0u8; 64];
-<<<<<<< HEAD
     proof_c[0] = 2;
     proof_c[32] = 0x02;
     let mut pi = [0u8; 32];
     pi[0] = 2;
-=======
-    proof_c[0] = 1;
-    proof_c[32] = 0x02;
-    let mut pi = [0u8; 32];
-    pi[0] = 1;
-
-    let expires_at = env.ledger().timestamp() + 5000;
->>>>>>> 8ac60fcc51b5991fb5c3c3a879dcb5daa5df7d74
 
     let request = ZkAccessHelper::create_request(
         &env,
@@ -1449,7 +1354,6 @@ fn test_plonk_respects_pause() {
         proof_b,
         proof_c,
         &[&pi],
-<<<<<<< HEAD
     );
 
     // Pause the contract
@@ -1920,17 +1824,3 @@ fn test_merkle_compute_root_odd_leaves() {
     
     assert_eq!(root, expected_root, "Odd leaves should duplicate last leaf");
 }
-=======
-        expires_at,
-    );
-
-    let is_valid = client.verify_access(&request);
-    assert!(is_valid, "Proof should be accepted");
-
-    let record = client.get_audit_record(&user, &rid).unwrap();
-    assert_eq!(
-        record.expires_at, expires_at,
-        "AuditRecord must store the expires_at from the request"
-    );
-}
->>>>>>> 8ac60fcc51b5991fb5c3c3a879dcb5daa5df7d74

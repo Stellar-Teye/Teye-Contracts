@@ -113,7 +113,7 @@ mod tests {
 
     fn with_contract_env<F: FnOnce(&Env)>(f: F) {
         let env = Env::default();
-        let contract_id = env.register_contract(None, TestContract);
+        let contract_id = env.register(TestContract, ());
         env.as_contract(&contract_id, || {
             f(&env);
         });
@@ -206,7 +206,7 @@ mod tests {
 
     #[test]
     fn error_codes_are_stable() {
-        with_contract_env(|env| {
+        with_contract_env(|_env| {
             assert_eq!(CommonError::InvalidNonce as u32, 31);
             assert_eq!(CommonError::NonceOverflow as u32, 32);
         });

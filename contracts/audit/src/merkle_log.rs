@@ -24,7 +24,6 @@
 /// | `query_range`       | O(k)      | O(k)       |
 ///
 /// where n is the total number of entries and k is the range width.
-
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 
 use sha2::{Digest as Sha2Digest, Sha256};
@@ -72,7 +71,7 @@ pub fn compute_root(leaves: &[Digest]) -> MerkleRoot {
     // Iterative bottom-up reduction — no recursion, fixed stack depth.
     let mut level: Vec<Digest> = leaves.to_vec();
     while level.len() > 1 {
-        let mut next = Vec::with_capacity((level.len() + 1) / 2);
+        let mut next = Vec::with_capacity(level.len().div_ceil(2));
         let mut i = 0;
         while i < level.len() {
             if i + 1 < level.len() {
@@ -554,7 +553,7 @@ fn merkle_siblings(leaves: &[Digest], leaf_index: usize, _tree_size: usize) -> V
             siblings.push(level[sibling_idx]);
         }
         // Build the next level up.
-        let mut next = Vec::with_capacity((level.len() + 1) / 2);
+        let mut next = Vec::with_capacity(level.len().div_ceil(2));
         let mut i = 0;
         while i < level.len() {
             if i + 1 < level.len() {
@@ -669,10 +668,7 @@ mod tests {
         log.append(500, "u", "a", "t", "ok");
         // now = 999 → retained_until = 500 + 1_000 = 1_500 > 999
         let err = log.compact(1, 1, 999, 0).unwrap_err();
-        assert!(matches!(
-            err,
-            AuditError::RetentionPolicyViolation { .. }
-        ));
+        assert!(matches!(err, AuditError::RetentionPolicyViolation { .. }));
     }
 
     #[test]

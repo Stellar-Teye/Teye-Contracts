@@ -6,7 +6,7 @@ pub mod recovery;
 
 use credential::CredentialError;
 use recovery::{RecoveryError, RecoveryRequest};
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec, String};
+use soroban_sdk::{BytesN, contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec, String};
 
 /// Preparation data for guardian addition
 #[contracttype]
@@ -192,16 +192,16 @@ impl IdentityContract {
         // Check if guardian already exists
         let guardians = recovery::get_guardians(&env, &caller);
         if guardians.contains(&guardian) {
-            return Err(RecoveryError::GuardianAlreadyExists);
+            return Err(RecoveryError::DuplicateGuardian);
         }
 
         // Check guardian limit
         if guardians.len() >= 5 {
-            return Err(RecoveryError::TooManyGuardians);
+            return Err(RecoveryError::MaxGuardiansReached);
         }
 
         // Store temporary preparation data
-        let prep_key = (symbol_short!("PREP_ADD_GUARD"), caller.clone(), guardian.clone());
+        let prep_key = (Symbol::new(&env, "PREP_ADD_GUARD"), caller.clone(), guardian.clone());
         let prep_data = PrepareGuardianAddition {
             caller: caller.clone(),
             guardian: guardian.clone(),
@@ -219,7 +219,7 @@ impl IdentityContract {
         guardian: Address,
     ) -> Result<(), RecoveryError> {
         // Retrieve preparation data
-        let prep_key = (symbol_short!("PREP_ADD_GUARD"), caller.clone(), guardian.clone());
+        let prep_key = (Symbol::new(&env, "PREP_ADD_GUARD"), caller.clone(), guardian.clone());
         let prep_data: PrepareGuardianAddition = env.storage().temporary().get(&prep_key)
             .ok_or(RecoveryError::Unauthorized)?; // Using Unauthorized as InvalidPhase equivalent
 
@@ -244,7 +244,7 @@ impl IdentityContract {
         guardian: Address,
     ) -> Result<(), RecoveryError> {
         // Clean up preparation data
-        let prep_key = (symbol_short!("PREP_ADD_GUARD"), caller, guardian);
+        let prep_key = (Symbol::new(&env, "PREP_ADD_GUARD"), caller, guardian);
         env.storage().temporary().remove(&prep_key);
 
         Ok(())
@@ -266,7 +266,7 @@ impl IdentityContract {
         }
 
         // Store temporary preparation data
-        let prep_key = (symbol_short!("PREP_REM_GUARD"), caller.clone(), guardian.clone());
+        let prep_key = (Symbol::new(&env, "PREP_REM_GUARD"), caller.clone(), guardian.clone());
         let prep_data = PrepareGuardianRemoval {
             caller: caller.clone(),
             guardian: guardian.clone(),
@@ -284,7 +284,7 @@ impl IdentityContract {
         guardian: Address,
     ) -> Result<(), RecoveryError> {
         // Retrieve preparation data
-        let prep_key = (symbol_short!("PREP_REM_GUARD"), caller.clone(), guardian.clone());
+        let prep_key = (Symbol::new(&env, "PREP_REM_GUARD"), caller.clone(), guardian.clone());
         let prep_data: PrepareGuardianRemoval = env.storage().temporary().get(&prep_key)
             .ok_or(RecoveryError::Unauthorized)?;
 
@@ -309,7 +309,7 @@ impl IdentityContract {
         guardian: Address,
     ) -> Result<(), RecoveryError> {
         // Clean up preparation data
-        let prep_key = (symbol_short!("PREP_REM_GUARD"), caller, guardian);
+        let prep_key = (Symbol::new(&env, "PREP_REM_GUARD"), caller, guardian);
         env.storage().temporary().remove(&prep_key);
 
         Ok(())
@@ -336,7 +336,7 @@ impl IdentityContract {
         }
 
         // Store temporary preparation data
-        let prep_key = (symbol_short!("PREP_SET_THRESH"), caller.clone());
+        let prep_key = (Symbol::new(&env, "PREP_SET_THRESH"), caller.clone());
         let prep_data = PrepareThresholdChange {
             caller: caller.clone(),
             threshold,
@@ -354,7 +354,7 @@ impl IdentityContract {
         threshold: u32,
     ) -> Result<(), RecoveryError> {
         // Retrieve preparation data
-        let prep_key = (symbol_short!("PREP_SET_THRESH"), caller.clone());
+        let prep_key = (Symbol::new(&env, "PREP_SET_THRESH"), caller.clone());
         let prep_data: PrepareThresholdChange = env.storage().temporary().get(&prep_key)
             .ok_or(RecoveryError::Unauthorized)?;
 
@@ -379,10 +379,11 @@ impl IdentityContract {
         _threshold: u32,
     ) -> Result<(), RecoveryError> {
         // Clean up preparation data
-        let prep_key = (symbol_short!("PREP_SET_THRESH"), caller);
+        let prep_key = (Symbol::new(&env, "PREP_SET_THRESH"), caller);
         env.storage().temporary().remove(&prep_key);
 
         Ok(())
+    }
     // ── ZK credential verification ────────────────────────────────────────────
 
     /// Set the address of the deployed `zk_verifier` contract.
@@ -412,14 +413,14 @@ impl IdentityContract {
         env: Env,
         user: Address,
         resource_id: BytesN<32>,
-        proof_a: VkG1Point,
-        proof_b: VkG2Point,
-        proof_c: VkG1Point,
+        proof_a: soroban_sdk::Bytes,
+        proof_b: soroban_sdk::Bytes,
+        proof_c: soroban_sdk::Bytes,
         public_inputs: Vec<BytesN<32>>,
         expires_at: u64,
     ) -> Result<bool, CredentialError> {
         user.require_auth();
-        let result = credential::verify_zk_credential(
+        credential::verify_zk_credential(
             &env,
             &user,
             resource_id,

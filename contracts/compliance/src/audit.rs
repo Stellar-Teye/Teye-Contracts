@@ -64,6 +64,8 @@ pub struct ComplianceAuditLog {
     log: MerkleLog,
     /// HMAC-SHA256-based forward index for keyword search.
     search: SearchEngine,
+}
+
 #[derive(Debug, Clone)]
 pub struct AuditEntry {
     pub actor: String,
@@ -82,8 +84,8 @@ impl ComplianceAuditLog {
     /// * `search_key` – 32-byte symmetric key for searchable encryption.
     ///   Use a cryptographically random value in production.
     pub fn new(search_key: SearchKey) -> Self {
-        let seg = LogSegmentId::new(Self::SEGMENT)
-            .expect("segment label is valid ASCII ≤ 64 bytes");
+        let seg =
+            LogSegmentId::new(Self::SEGMENT).expect("segment label is valid ASCII ≤ 64 bytes");
         Self {
             log: MerkleLog::new(seg),
             search: SearchEngine::new(search_key),
@@ -111,7 +113,8 @@ impl ComplianceAuditLog {
         result: &str,
     ) -> u64 {
         let seq = self.log.append(timestamp, actor, action, target, result);
-        self.search.index_entry(seq, actor, action, target, result, &[]);
+        self.search
+            .index_entry(seq, actor, action, target, result, &[]);
         seq
     }
 
@@ -283,6 +286,12 @@ mod tests {
         );
         assert_eq!(log.search("datacenter:EU"), vec![1]);
         assert_eq!(log.search("sensitivity:high"), vec![1]);
+    }
+}
+
+pub struct AuditLog {
+    pub entries: Vec<AuditEntry>,
+}
 
 impl AuditLog {
     /// Records an audit entry. For key rotation, use action="rotate_master_secure" and target="master_key".
@@ -318,7 +327,11 @@ impl ComplianceVerdictLogger {
         ctx: &crate::rules_engine::OperationContext,
         verdict: &crate::rules_engine::ComplianceVerdict,
     ) -> u64 {
-        let result = if verdict.allowed { "allowed" } else { "blocked" };
+        let result = if verdict.allowed {
+            "allowed"
+        } else {
+            "blocked"
+        };
         let score_tag = format!("score:{:.0}", verdict.score);
         let jurisdiction_tag = format!("jurisdiction:{:?}", ctx.jurisdiction);
 

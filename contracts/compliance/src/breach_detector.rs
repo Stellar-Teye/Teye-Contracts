@@ -293,9 +293,7 @@ impl BreachDetector {
     fn check_role_anomaly(&mut self, event: &AccessEvent) -> Option<BreachAlert> {
         // Non-clinical roles accessing PHI.
         let clinical_roles = ["clinician", "admin", "emergency"];
-        if event.sensitivity >= 2
-            && !clinical_roles.iter().any(|r| *r == event.actor_role)
-        {
+        if event.sensitivity >= 2 && !clinical_roles.iter().any(|r| *r == event.actor_role) {
             Some(self.create_alert(
                 AlertSeverity::High,
                 AlertType::RoleAnomaly,
@@ -323,7 +321,9 @@ impl BreachDetector {
         }
 
         let events = self.events_by_actor.get(&event.actor)?;
-        let window_start = event.timestamp.saturating_sub(self.config.brute_force_window);
+        let window_start = event
+            .timestamp
+            .saturating_sub(self.config.brute_force_window);
         let recent_failures = events
             .iter()
             .filter(|e| e.timestamp >= window_start && !e.success)
@@ -422,7 +422,9 @@ mod tests {
         let mut event = normal_event();
         event.timestamp = 3600 * 2; // 2 AM UTC
         let alerts = detector.record_event(event);
-        assert!(alerts.iter().any(|a| a.alert_type == AlertType::AfterHoursAccess));
+        assert!(alerts
+            .iter()
+            .any(|a| a.alert_type == AlertType::AfterHoursAccess));
     }
 
     #[test]
@@ -431,7 +433,9 @@ mod tests {
         let mut event = normal_event();
         event.actor_role = "researcher".into();
         let alerts = detector.record_event(event);
-        assert!(alerts.iter().any(|a| a.alert_type == AlertType::RoleAnomaly));
+        assert!(alerts
+            .iter()
+            .any(|a| a.alert_type == AlertType::RoleAnomaly));
     }
 
     #[test]

@@ -260,22 +260,37 @@ pub fn pattern_to_actions(pattern: &TransactionPattern, num_users: usize) -> Vec
     match pattern {
         TransactionPattern::SimpleStakeAndClaim => {
             vec![
-                StakingAction::Stake { user_index: 0, amount: 10_000 },
+                StakingAction::Stake {
+                    user_index: 0,
+                    amount: 10_000,
+                },
                 StakingAction::AdvanceTime { delta: 100 },
                 StakingAction::ClaimRewards { user_index: 0 },
-                StakingAction::RequestUnstake { user_index: 0, amount: 10_000 },
+                StakingAction::RequestUnstake {
+                    user_index: 0,
+                    amount: 10_000,
+                },
                 StakingAction::AdvanceTime { delta: 86_400 },
-                StakingAction::Withdraw { user_index: 0, request_id: 1 },
+                StakingAction::Withdraw {
+                    user_index: 0,
+                    request_id: 1,
+                },
             ]
         }
         TransactionPattern::MultiUserPartialUnstake => {
             let mut actions = Vec::new();
             for i in 0..num_users.min(4) {
-                actions.push(StakingAction::Stake { user_index: i, amount: (i as i128 + 1) * 1_000 });
+                actions.push(StakingAction::Stake {
+                    user_index: i,
+                    amount: (i as i128 + 1) * 1_000,
+                });
             }
             actions.push(StakingAction::AdvanceTime { delta: 50 });
             for i in 0..num_users.min(4) {
-                actions.push(StakingAction::RequestUnstake { user_index: i, amount: (i as i128 + 1) * 500 });
+                actions.push(StakingAction::RequestUnstake {
+                    user_index: i,
+                    amount: (i as i128 + 1) * 500,
+                });
             }
             actions.push(StakingAction::AdvanceTime { delta: 100 });
             for i in 0..num_users.min(4) {
@@ -285,19 +300,34 @@ pub fn pattern_to_actions(pattern: &TransactionPattern, num_users: usize) -> Vec
         }
         TransactionPattern::FlashStake => {
             vec![
-                StakingAction::Stake { user_index: 0, amount: 100_000 },
+                StakingAction::Stake {
+                    user_index: 0,
+                    amount: 100_000,
+                },
                 StakingAction::AdvanceTime { delta: 1 },
-                StakingAction::RequestUnstake { user_index: 0, amount: 100_000 },
+                StakingAction::RequestUnstake {
+                    user_index: 0,
+                    amount: 100_000,
+                },
                 StakingAction::AdvanceTime { delta: 1 },
-                StakingAction::Stake { user_index: 0, amount: 200_000 },
+                StakingAction::Stake {
+                    user_index: 0,
+                    amount: 200_000,
+                },
                 StakingAction::AdvanceTime { delta: 1 },
-                StakingAction::RequestUnstake { user_index: 0, amount: 200_000 },
+                StakingAction::RequestUnstake {
+                    user_index: 0,
+                    amount: 200_000,
+                },
             ]
         }
         TransactionPattern::RateChangeUnderLoad => {
             let mut actions = Vec::new();
             for i in 0..num_users.min(3) {
-                actions.push(StakingAction::Stake { user_index: i, amount: 5_000 });
+                actions.push(StakingAction::Stake {
+                    user_index: i,
+                    amount: 5_000,
+                });
             }
             actions.push(StakingAction::AdvanceTime { delta: 50 });
             actions.push(StakingAction::SetRewardRate { new_rate: 20 });
@@ -309,12 +339,21 @@ pub fn pattern_to_actions(pattern: &TransactionPattern, num_users: usize) -> Vec
         }
         TransactionPattern::FullUnstakeLifecycle => {
             vec![
-                StakingAction::Stake { user_index: 0, amount: 50_000 },
+                StakingAction::Stake {
+                    user_index: 0,
+                    amount: 50_000,
+                },
                 StakingAction::AdvanceTime { delta: 200 },
                 StakingAction::ClaimRewards { user_index: 0 },
-                StakingAction::RequestUnstake { user_index: 0, amount: 50_000 },
+                StakingAction::RequestUnstake {
+                    user_index: 0,
+                    amount: 50_000,
+                },
                 StakingAction::AdvanceTime { delta: 86_401 },
-                StakingAction::Withdraw { user_index: 0, request_id: 1 },
+                StakingAction::Withdraw {
+                    user_index: 0,
+                    request_id: 1,
+                },
             ]
         }
     }

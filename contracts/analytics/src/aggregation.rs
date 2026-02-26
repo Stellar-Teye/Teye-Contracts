@@ -20,7 +20,7 @@ impl Aggregator {
         Self::aggregate_sum(pub_key, encrypted_flags)
     }
 
-    /// Average is (sum / count). Since we can't divide ciphertexts, 
+    /// Average is (sum / count). Since we can't divide ciphertexts,
     /// the trusted aggregator decrypts both and computes the division.
     pub fn aggregate_average(sum: i128, count: i128) -> i128 {
         if count == 0 {

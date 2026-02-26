@@ -1,6 +1,7 @@
+extern crate alloc;
+use alloc::string::ToString;
 use soroban_sdk::{
-    contracttype, contracterror, symbol_short,
-    Address, Env, Map, Symbol, Vec, Bytes, String,
+    contracterror, contracttype, symbol_short, Address, Bytes, Env, Map, String, Symbol, Vec,
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -11,14 +12,14 @@ use soroban_sdk::{
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum MigrationError {
-    VersionTooNew             = 1,
-    NoMigrationPath           = 2,
-    ValidationFailed          = 3,
-    AlreadyMigrated           = 4,
-    RollbackUnavailable       = 5,
-    BulkNotAllowedInLazyMode  = 6,
-    TransformFailed           = 7,
-    InvalidCanaryPercentage   = 8,
+    VersionTooNew = 1,
+    NoMigrationPath = 2,
+    ValidationFailed = 3,
+    AlreadyMigrated = 4,
+    RollbackUnavailable = 5,
+    BulkNotAllowedInLazyMode = 6,
+    TransformFailed = 7,
+    InvalidCanaryPercentage = 8,
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -48,11 +49,11 @@ pub enum FieldTransform {
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct Migration {
-    pub from_version:  SchemaVersion,
-    pub to_version:    SchemaVersion,
-    pub forward:       Vec<FieldTransform>,
-    pub reverse:       Vec<FieldTransform>,
-    pub description:   String,
+    pub from_version: SchemaVersion,
+    pub to_version: SchemaVersion,
+    pub forward: Vec<FieldTransform>,
+    pub reverse: Vec<FieldTransform>,
+    pub description: String,
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -91,10 +92,7 @@ pub fn register_migration(env: &Env, migration: Migration) -> Result<(), Migrati
 const VERSION_KEY: Symbol = symbol_short!("SCHEMA_V");
 
 pub fn stored_version(env: &Env) -> SchemaVersion {
-    env.storage()
-        .instance()
-        .get(&VERSION_KEY)
-        .unwrap_or(0u32)
+    env.storage().instance().get(&VERSION_KEY).unwrap_or(0u32)
 }
 
 pub fn set_stored_version(env: &Env, version: SchemaVersion) {
@@ -106,10 +104,10 @@ pub fn set_stored_version(env: &Env, version: SchemaVersion) {
 // ─────────────────────────────────────────────────────────────
 
 pub fn migrate_forward(
-    env:         &Env,
-    record:      &mut Map<Symbol, Bytes>,
+    env: &Env,
+    record: &mut Map<Symbol, Bytes>,
     current_ver: SchemaVersion,
-    target_ver:  SchemaVersion,
+    target_ver: SchemaVersion,
 ) -> Result<SchemaVersion, MigrationError> {
     if current_ver >= target_ver {
         return Ok(current_ver);
@@ -122,8 +120,8 @@ pub fn migrate_forward(
     let mut ver = current_ver;
 
     while ver < target_ver {
-        let step = find_migration(&registry, ver, ver + 1)
-            .ok_or(MigrationError::NoMigrationPath)?;
+        let step =
+            find_migration(&registry, ver, ver + 1).ok_or(MigrationError::NoMigrationPath)?;
         apply_transforms(env, record, &step.forward)?;
         ver += 1;
     }
@@ -136,10 +134,10 @@ pub fn migrate_forward(
 // ─────────────────────────────────────────────────────────────
 
 pub fn migrate_rollback(
-    env:         &Env,
-    record:      &mut Map<Symbol, Bytes>,
+    env: &Env,
+    record: &mut Map<Symbol, Bytes>,
     current_ver: SchemaVersion,
-    target_ver:  SchemaVersion,
+    target_ver: SchemaVersion,
 ) -> Result<SchemaVersion, MigrationError> {
     if current_ver <= target_ver {
         return Ok(current_ver);
@@ -153,8 +151,8 @@ pub fn migrate_rollback(
     let mut steps: Vec<Migration> = Vec::new(env);
     let mut ver = current_ver;
     while ver > target_ver {
-        let step = find_migration(&registry, ver - 1, ver)
-            .ok_or(MigrationError::RollbackUnavailable)?;
+        let step =
+            find_migration(&registry, ver - 1, ver).ok_or(MigrationError::RollbackUnavailable)?;
         steps.push_back(step);
         ver -= 1;
     }
@@ -179,10 +177,10 @@ pub fn migrate_rollback(
 // ─────────────────────────────────────────────────────────────
 
 pub fn dry_run_migration(
-    env:         &Env,
-    record:      &Map<Symbol, Bytes>,
+    env: &Env,
+    record: &Map<Symbol, Bytes>,
     current_ver: SchemaVersion,
-    target_ver:  SchemaVersion,
+    target_ver: SchemaVersion,
 ) -> Result<SchemaVersion, MigrationError> {
     let mut snapshot = record.clone();
     let reached = migrate_forward(env, &mut snapshot, current_ver, target_ver)?;
@@ -195,9 +193,9 @@ pub fn dry_run_migration(
 // ─────────────────────────────────────────────────────────────
 
 pub fn lazy_read(
-    env:         &Env,
-    record:      &mut Map<Symbol, Bytes>,
-    record_ver:  SchemaVersion,
+    env: &Env,
+    record: &mut Map<Symbol, Bytes>,
+    record_ver: SchemaVersion,
 ) -> Result<SchemaVersion, MigrationError> {
     if record_ver == CURRENT_VERSION {
         return Ok(record_ver);
@@ -209,9 +207,9 @@ pub fn lazy_read(
 }
 
 pub fn lazy_write(
-    env:         &Env,
-    record:      &mut Map<Symbol, Bytes>,
-    record_ver:  SchemaVersion,
+    env: &Env,
+    record: &mut Map<Symbol, Bytes>,
+    record_ver: SchemaVersion,
 ) -> Result<SchemaVersion, MigrationError> {
     lazy_read(env, record, record_ver)
 }
@@ -224,7 +222,7 @@ const CANARY_PCT_KEY: Symbol = symbol_short!("CANARY_P");
 const CANARY_VER_KEY: Symbol = symbol_short!("CANARY_V");
 
 pub fn set_canary(
-    env:        &Env,
+    env: &Env,
     percentage: u32,
     new_version: SchemaVersion,
 ) -> Result<(), MigrationError> {
@@ -272,21 +270,16 @@ pub fn resolve_version_for_caller(env: &Env, caller: &Address) -> SchemaVersion 
 // ─────────────────────────────────────────────────────────────
 
 fn find_migration(
-    registry:   &Vec<Migration>,
-    from:       SchemaVersion,
-    to:         SchemaVersion,
+    registry: &Vec<Migration>,
+    from: SchemaVersion,
+    to: SchemaVersion,
 ) -> Option<Migration> {
-    for m in registry.iter() {
-        if m.from_version == from && m.to_version == to {
-            return Some(m);
-        }
-    }
-    None
+    registry.iter().find(|m| m.from_version == from && m.to_version == to)
 }
 
 fn apply_transforms(
-    _env:       &Env,
-    record:     &mut Map<Symbol, Bytes>,
+    _env: &Env,
+    record: &mut Map<Symbol, Bytes>,
     transforms: &Vec<FieldTransform>,
 ) -> Result<(), MigrationError> {
     for transform in transforms.iter() {
@@ -321,8 +314,8 @@ fn apply_transforms(
 }
 
 fn validate_record(
-    _env:    &Env,
-    record:  &Map<Symbol, Bytes>,
+    _env: &Env,
+    record: &Map<Symbol, Bytes>,
     version: SchemaVersion,
 ) -> Result<(), MigrationError> {
     let required: &[&str] = match version {
@@ -348,8 +341,8 @@ fn validate_record(
 pub fn initialize_default_migrations(env: &Env) {
     let m1 = Migration {
         from_version: 1,
-        to_version:   2,
-        description:  String::from_str(env, "Add iop_value field for intraocular pressure"),
+        to_version: 2,
+        description: String::from_str(env, "Add iop_value field for intraocular pressure"),
         forward: {
             let mut v = Vec::new(env);
             v.push_back(FieldTransform::AddField(
@@ -360,17 +353,15 @@ pub fn initialize_default_migrations(env: &Env) {
         },
         reverse: {
             let mut v = Vec::new(env);
-            v.push_back(FieldTransform::RemoveField(
-                Symbol::new(env, "iop_value"),
-            ));
+            v.push_back(FieldTransform::RemoveField(Symbol::new(env, "iop_value")));
             v
         },
     };
 
     let m2 = Migration {
         from_version: 2,
-        to_version:   3,
-        description:  String::from_str(env, "Rename raw_notes to clinical_notes; add AI flag"),
+        to_version: 3,
+        description: String::from_str(env, "Rename raw_notes to clinical_notes; add AI flag"),
         forward: {
             let mut v = Vec::new(env);
             v.push_back(FieldTransform::RenameField(
@@ -389,9 +380,7 @@ pub fn initialize_default_migrations(env: &Env) {
                 Symbol::new(env, "clinical_notes"),
                 Symbol::new(env, "raw_notes"),
             ));
-            v.push_back(FieldTransform::RemoveField(
-                Symbol::new(env, "ai_flag"),
-            ));
+            v.push_back(FieldTransform::RemoveField(Symbol::new(env, "ai_flag")));
             v
         },
     };

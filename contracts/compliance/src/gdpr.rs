@@ -140,9 +140,10 @@ fn purpose_limitation_rule() -> ComplianceRule {
         name: "Purpose limitation — data used only for stated purpose".into(),
         jurisdictions: vec![Jurisdiction::EU, Jurisdiction::Both],
         severity: Severity::Critical,
-        remediation: "Every data processing operation must have a stated purpose. \
+        remediation:
+            "Every data processing operation must have a stated purpose. \
                       Data must not be used for purposes incompatible with the original collection."
-            .into(),
+                .into(),
         evaluate: Box::new(|ctx: &OperationContext| {
             if ctx.sensitivity >= 1 {
                 // Must have a non-empty purpose.
@@ -223,10 +224,7 @@ fn data_protection_by_design_rule() -> ComplianceRule {
             .into(),
         evaluate: Box::new(|ctx: &OperationContext| {
             if ctx.sensitivity >= 2 {
-                return ctx
-                    .metadata
-                    .get("encrypted")
-                    .map_or(false, |v| v == "true");
+                return ctx.metadata.get("encrypted").map_or(false, |v| v == "true");
             }
             true
         }),
@@ -288,22 +286,14 @@ impl ErasureManager {
     }
 
     /// Submit a new erasure request.
-    pub fn submit_request(
-        &mut self,
-        data_subject: String,
-        data_targets: Vec<String>,
-        now: u64,
-    ) {
+    pub fn submit_request(&mut self, data_subject: String, data_targets: Vec<String>, now: u64) {
         self.requests
             .push(ErasureRequest::new(data_subject, data_targets, now));
     }
 
     /// Get all overdue (unfulfilled) erasure requests.
     pub fn overdue_requests(&self, now: u64) -> Vec<&ErasureRequest> {
-        self.requests
-            .iter()
-            .filter(|r| r.is_overdue(now))
-            .collect()
+        self.requests.iter().filter(|r| r.is_overdue(now)).collect()
     }
 
     /// Get all pending (incomplete) requests.

@@ -1,4 +1,4 @@
-use soroban_sdk::{Env, contracttype};
+use soroban_sdk::{contracttype, Env};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -25,26 +25,26 @@ impl HomomorphicEngine {
         let n = pub_key.n;
         let nn = pub_key.nn;
         let g = pub_key.g;
-        
+
         // r = 17 (fixed for simplicity in this demo, in prod use env.prng())
-        let r = 17i128; 
-        
+        let r = 17i128;
+
         // c = (g^m * r^n) mod n^2
         let gm = Self::pow_mod(g, m, nn);
         let rn = Self::pow_mod(r, n, nn);
-        
+
         (gm * rn) % nn
     }
 
     pub fn decrypt(pub_key: &PaillierPublicKey, priv_key: &PaillierPrivateKey, c: i128) -> i128 {
         let n = pub_key.n;
         let nn = pub_key.nn;
-        
+
         // L(u) = (u - 1) / n
         // m = L(c^lambda mod n^2) * mu mod n
         let u = Self::pow_mod(c, priv_key.lambda, nn);
         let l_u = (u - 1) / n;
-        
+
         (l_u * priv_key.mu) % n
     }
 

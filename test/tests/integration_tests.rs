@@ -262,23 +262,34 @@ fn test_transition_invariant_unstake_conservation() {
 fn test_explorer_simple_sequence() {
     let mut env = TestEnv::new();
     let harness = StakingTestHarness::new(&mut env, 10, 86_400);
-    let users: std::vec::Vec<Address> = (0..2)
-        .map(|_| harness.create_staker(1_000_000))
-        .collect();
+    let users: std::vec::Vec<Address> = (0..2).map(|_| harness.create_staker(1_000_000)).collect();
 
     let actions = vec![
-        StakingAction::Stake { user_index: 0, amount: 10_000 },
+        StakingAction::Stake {
+            user_index: 0,
+            amount: 10_000,
+        },
         StakingAction::AdvanceTime { delta: 100 },
-        StakingAction::Stake { user_index: 1, amount: 5_000 },
+        StakingAction::Stake {
+            user_index: 1,
+            amount: 5_000,
+        },
         StakingAction::AdvanceTime { delta: 50 },
         StakingAction::ClaimRewards { user_index: 0 },
-        StakingAction::RequestUnstake { user_index: 0, amount: 5_000 },
+        StakingAction::RequestUnstake {
+            user_index: 0,
+            amount: 5_000,
+        },
     ];
 
     let mut explorer = StateExplorer::with_defaults(&harness, users);
     let result = explorer.explore(&actions);
 
-    assert!(result.passed(), "Violations: {:?}", result.summary.invariant_violations);
+    assert!(
+        result.passed(),
+        "Violations: {:?}",
+        result.summary.invariant_violations
+    );
     assert_eq!(result.summary.actions_executed, 6);
     assert!(result.summary.entry_points_hit.contains("stake"));
     assert!(result.summary.entry_points_hit.contains("claim_rewards"));
@@ -289,17 +300,24 @@ fn test_explorer_simple_sequence() {
 fn test_explorer_coverage_tracking() {
     let mut env = TestEnv::new();
     let harness = StakingTestHarness::new(&mut env, 10, 0);
-    let users: std::vec::Vec<Address> = (0..2)
-        .map(|_| harness.create_staker(1_000_000))
-        .collect();
+    let users: std::vec::Vec<Address> = (0..2).map(|_| harness.create_staker(1_000_000)).collect();
 
     let actions = vec![
-        StakingAction::Stake { user_index: 0, amount: 10_000 },
+        StakingAction::Stake {
+            user_index: 0,
+            amount: 10_000,
+        },
         StakingAction::AdvanceTime { delta: 100 },
         StakingAction::ClaimRewards { user_index: 0 },
-        StakingAction::RequestUnstake { user_index: 0, amount: 10_000 },
+        StakingAction::RequestUnstake {
+            user_index: 0,
+            amount: 10_000,
+        },
         StakingAction::AdvanceTime { delta: 86_401 },
-        StakingAction::Withdraw { user_index: 0, request_id: 1 },
+        StakingAction::Withdraw {
+            user_index: 0,
+            request_id: 1,
+        },
         StakingAction::SetRewardRate { new_rate: 5 },
         StakingAction::SetLockPeriod { new_period: 3_600 },
     ];
@@ -309,7 +327,9 @@ fn test_explorer_coverage_tracking() {
 
     assert!(result.passed());
 
-    let coverage = result.summary.entry_point_coverage(STAKING_ENTRY_POINTS.len());
+    let coverage = result
+        .summary
+        .entry_point_coverage(STAKING_ENTRY_POINTS.len());
     assert!(
         coverage >= 0.5,
         "Expected at least 50% coverage, got {:.1}%",

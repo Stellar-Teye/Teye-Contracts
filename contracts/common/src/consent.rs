@@ -152,7 +152,11 @@ impl ConsentManager {
     }
 
     /// Get all active consents for a specific subject
-    pub fn get_active_consents_for_subject(&self, subject: &str, now: u64) -> Vec<ConsentAttribute> {
+    pub fn get_active_consents_for_subject(
+        &self,
+        subject: &str,
+        now: u64,
+    ) -> Vec<ConsentAttribute> {
         self.records
             .values()
             .filter(|record| record.subject == subject)

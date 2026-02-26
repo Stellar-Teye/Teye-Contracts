@@ -5,9 +5,16 @@ use identity::IdentityContractClient;
 use key_manager::{
     ContractError, KeyLevel, KeyManagerContract, KeyManagerContractClient, KeyPolicy, KeyType,
 };
-use soroban_sdk::{symbol_short, testutils::Address as _, testutils::Ledger, Address, BytesN, Env, Vec};
+use soroban_sdk::{
+    symbol_short, testutils::Address as _, testutils::Ledger, Address, BytesN, Env, Vec,
+};
 
-fn setup() -> (Env, KeyManagerContractClient<'static>, IdentityContractClient<'static>, Address) {
+fn setup() -> (
+    Env,
+    KeyManagerContractClient<'static>,
+    IdentityContractClient<'static>,
+    Address,
+) {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -124,7 +131,8 @@ fn test_hierarchy_validation() {
     };
 
     let key_bytes = BytesN::from_array(&env, &[5u8; 32]);
-    let master_id = client.create_master_key(&admin, &KeyType::Encryption, &policy, &0u64, &key_bytes);
+    let master_id =
+        client.create_master_key(&admin, &KeyType::Encryption, &policy, &0u64, &key_bytes);
 
     let err = client.try_derive_key(
         &admin,

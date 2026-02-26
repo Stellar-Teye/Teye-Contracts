@@ -1,5 +1,7 @@
+use common::transaction::{
+    TransactionError, TransactionOperation, TransactionPhase, TransactionTimeoutConfig,
+};
 use soroban_sdk::{String, Vec};
-use common::transaction::{TransactionError, TransactionPhase, TransactionTimeoutConfig, TransactionOperation};
 
 const MIN_TIMEOUT_SECONDS: u64 = 30;
 const MAX_TIMEOUT_SECONDS: u64 = 86400 * 7; // 7 days
@@ -9,7 +11,7 @@ const MAX_PARAMETERS_PER_OPERATION: u32 = 10;
 
 /// Validates timeout value
 pub fn validate_timeout(timeout_seconds: u64) -> Result<(), TransactionError> {
-    if timeout_seconds < MIN_TIMEOUT_SECONDS || timeout_seconds > MAX_TIMEOUT_SECONDS {
+    if !(MIN_TIMEOUT_SECONDS..=MAX_TIMEOUT_SECONDS).contains(&timeout_seconds) {
         Err(TransactionError::InvalidInput)
     } else {
         Ok(())
@@ -27,7 +29,7 @@ pub fn validate_operation_count(count: u32) -> Result<(), TransactionError> {
 
 /// Validates metadata size
 pub fn validate_metadata(metadata: &Vec<String>) -> Result<(), TransactionError> {
-    if metadata.len() > MAX_METADATA_ITEMS as u32 {
+    if metadata.len() > MAX_METADATA_ITEMS {
         Err(TransactionError::InvalidInput)
     } else {
         Ok(())
@@ -36,7 +38,7 @@ pub fn validate_metadata(metadata: &Vec<String>) -> Result<(), TransactionError>
 
 /// Validates operation parameters
 pub fn validate_operation_parameters(parameters: &Vec<String>) -> Result<(), TransactionError> {
-    if parameters.len() > MAX_PARAMETERS_PER_OPERATION as u32 {
+    if parameters.len() > MAX_PARAMETERS_PER_OPERATION {
         Err(TransactionError::InvalidInput)
     } else {
         Ok(())
@@ -102,18 +104,21 @@ pub fn validate_phase_transition(
     to_phase: &TransactionPhase,
 ) -> Result<(), TransactionError> {
     match (from_phase, to_phase) {
-        (TransactionPhase::Preparing, TransactionPhase::Prepared) |
-        (TransactionPhase::Prepared, TransactionPhase::Committed) |
-        (TransactionPhase::Prepared, TransactionPhase::RolledBack) |
-        (TransactionPhase::Preparing, TransactionPhase::RolledBack) |
-        (TransactionPhase::Preparing, TransactionPhase::TimedOut) |
-        (TransactionPhase::Prepared, TransactionPhase::TimedOut) => Ok(()),
+        (TransactionPhase::Preparing, TransactionPhase::Prepared)
+        | (TransactionPhase::Prepared, TransactionPhase::Committed)
+        | (TransactionPhase::Prepared, TransactionPhase::RolledBack)
+        | (TransactionPhase::Preparing, TransactionPhase::RolledBack)
+        | (TransactionPhase::Preparing, TransactionPhase::TimedOut)
+        | (TransactionPhase::Prepared, TransactionPhase::TimedOut) => Ok(()),
         _ => Err(TransactionError::InvalidPhase),
     }
 }
 
 /// Validates rollback operation
-pub fn validate_rollback_operation(prepared: bool, committed: bool) -> Result<(), TransactionError> {
+pub fn validate_rollback_operation(
+    prepared: bool,
+    committed: bool,
+) -> Result<(), TransactionError> {
     if !prepared || committed {
         Err(TransactionError::InvalidPhase)
     } else {

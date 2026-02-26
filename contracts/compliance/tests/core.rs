@@ -16,7 +16,7 @@ fn test_audit_record() {
     // Use timestamp 1000 for deterministic testing
     log.record(1000, "user1", "read", "record:1", "ok");
     assert_eq!(log.len(), 1);
-    
+
     // Test searchable functionality while we are at it
     let hits = log.search("user1");
     assert_eq!(hits, vec![1]);

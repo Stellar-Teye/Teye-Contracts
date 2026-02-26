@@ -95,7 +95,10 @@ pub fn sync_roots(env: &Env, roots: soroban_sdk::Vec<StateRootAnchor>) {
 
         let latest_key = relay_latest_key(anchor.chain_id.clone());
         let current_latest: Option<u32> = env.storage().persistent().get(&latest_key);
-        if current_latest.map(|s| anchor.ledger_sequence >= s).unwrap_or(true) {
+        if current_latest
+            .map(|s| anchor.ledger_sequence >= s)
+            .unwrap_or(true)
+        {
             env.storage()
                 .persistent()
                 .set(&latest_key, &anchor.ledger_sequence);

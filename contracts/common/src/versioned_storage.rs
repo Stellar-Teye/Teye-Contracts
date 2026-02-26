@@ -1,9 +1,8 @@
-
 use soroban_sdk::{Bytes, Env, Map, Symbol};
 
 use crate::migration::{
-    lazy_read, lazy_write, set_stored_version, stored_version,
-    MigrationError, SchemaVersion, CURRENT_VERSION,
+    lazy_read, lazy_write, set_stored_version, stored_version, MigrationError, SchemaVersion,
+    CURRENT_VERSION,
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -23,7 +22,7 @@ fn version_key(env: &Env, record_id: u64) -> (Symbol, u64) {
 // ─────────────────────────────────────────────────────────────
 
 pub struct VersionedRecord {
-    pub data:    Map<Symbol, Bytes>,
+    pub data: Map<Symbol, Bytes>,
     pub version: SchemaVersion,
 }
 
@@ -32,10 +31,10 @@ pub struct VersionedRecord {
 // ─────────────────────────────────────────────────────────────
 
 pub fn write_record(
-    env:       &Env,
+    env: &Env,
     record_id: u64,
-    mut data:  Map<Symbol, Bytes>,
-    from_ver:  SchemaVersion,
+    mut data: Map<Symbol, Bytes>,
+    from_ver: SchemaVersion,
 ) -> Result<(), MigrationError> {
     let migrated_ver = lazy_write(env, &mut data, from_ver)?;
 
@@ -48,32 +47,24 @@ pub fn write_record(
     Ok(())
 }
 
-pub fn read_record(
-    env:       &Env,
-    record_id: u64,
-) -> Result<Option<VersionedRecord>, MigrationError> {
+pub fn read_record(env: &Env, record_id: u64) -> Result<Option<VersionedRecord>, MigrationError> {
     let rk = record_key(env, record_id);
     let vk = version_key(env, record_id);
 
-    let maybe_data: Option<Map<Symbol, Bytes>> =
-        env.storage().persistent().get(&rk);
+    let maybe_data: Option<Map<Symbol, Bytes>> = env.storage().persistent().get(&rk);
 
     let data = match maybe_data {
-        None        => return Ok(None),
-        Some(d)     => d,
+        None => return Ok(None),
+        Some(d) => d,
     };
 
-    let record_ver: SchemaVersion = env
-        .storage()
-        .persistent()
-        .get(&vk)
-        .unwrap_or(1u32);
+    let record_ver: SchemaVersion = env.storage().persistent().get(&vk).unwrap_or(1u32);
 
     let mut migrated = data;
     let new_ver = lazy_read(env, &mut migrated, record_ver)?;
 
     Ok(Some(VersionedRecord {
-        data:    migrated,
+        data: migrated,
         version: new_ver,
     }))
 }

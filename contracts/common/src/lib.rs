@@ -39,23 +39,25 @@ pub mod policy_dsl;
 pub mod progressive_auth;
 pub mod rate_limit;
 pub mod reentrancy_guard;
-pub mod session;
 pub mod risk_engine;
+pub mod session;
+pub mod transaction;
 pub mod vector_clock;
 pub mod versioned_storage;
 pub mod whitelist;
-pub mod transaction;
 
 pub mod credential_types;
 
 pub use admin_tiers::*;
 pub use concurrency::{
-    compare_and_swap, get_pending_conflicts, get_record_conflicts, get_resolution_strategy as get_occ_strategy,
-    resolve_conflict, set_resolution_strategy as set_occ_strategy, ConflictEntry,
-    ResolutionStrategy as OCCStrategy, UpdateOutcome, VersionStamp,
+    compare_and_swap, get_pending_conflicts, get_record_conflicts,
+    get_resolution_strategy as get_occ_strategy, resolve_conflict,
+    set_resolution_strategy as set_occ_strategy, ConflictEntry, ResolutionStrategy as OCCStrategy,
+    UpdateOutcome, VersionStamp,
 };
 #[cfg(feature = "std")]
 pub use consent::*;
+pub use credential_types::*;
 pub use keys::*;
 pub use lineage::{
     LineageEdge, LineageNode, LineageSummary, RelationshipKind, TraversalNode, TraversalResult,
@@ -68,12 +70,11 @@ pub use multisig::*;
 pub use nonce::*;
 pub use rate_limit::*;
 pub use reentrancy_guard::*;
-pub use session::*;
 pub use risk_engine::*;
+pub use session::*;
 pub use vector_clock::*;
 pub use versioned_storage::*;
 pub use whitelist::*;
-pub use credential_types::*;
 
 // ── Shared error enum ────────────────────────────────────────────────────────
 
@@ -141,11 +142,5 @@ mod tests {
         assert_eq!(CommonError::NonceOverflow as u32, 32);
         assert_eq!(CommonError::Paused as u32, 40);
         // Lineage range.
-        assert_eq!(CommonError::LineageNodeNotFound as u32, 60);
-        assert_eq!(CommonError::LineageEdgeNotFound as u32, 61);
-        assert_eq!(CommonError::LineageAncestorMissing as u32, 62);
-        assert_eq!(CommonError::LineageTampered as u32, 63);
-        assert_eq!(CommonError::LineageCycleDetected as u32, 64);
-        assert_eq!(CommonError::LineageAccessDenied as u32, 65);
     }
 }

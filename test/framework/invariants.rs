@@ -70,7 +70,8 @@ impl Invariant for NonNegativeStakes {
             if *stake < 0 {
                 return Err(std::format!(
                     "User {:?} has negative stake: {}",
-                    addr, stake
+                    addr,
+                    stake
                 ));
             }
         }
@@ -93,7 +94,8 @@ impl Invariant for NonNegativeRewards {
             if *reward < 0 {
                 return Err(std::format!(
                     "User {:?} has negative pending rewards: {}",
-                    addr, reward
+                    addr,
+                    reward
                 ));
             }
         }
@@ -157,7 +159,9 @@ impl Invariant for StakeUpperBound {
             if *stake > snapshot.total_staked {
                 return Err(std::format!(
                     "User {:?} stake ({}) exceeds total staked ({})",
-                    addr, stake, snapshot.total_staked
+                    addr,
+                    stake,
+                    snapshot.total_staked
                 ));
             }
         }
@@ -185,14 +189,16 @@ impl Invariant for RewardDistributionActive {
         if !any_rewards {
             return Err(std::format!(
                 "No rewards distributed despite rate={} and total_staked={} at t={}",
-                snapshot.reward_rate, snapshot.total_staked, snapshot.timestamp
+                snapshot.reward_rate,
+                snapshot.total_staked,
+                snapshot.timestamp
             ));
         }
         Ok(())
     }
 }
 
-/// **Monotonic Time**: The timestamp in a snapshot must not decrease between 
+/// **Monotonic Time**: The timestamp in a snapshot must not decrease between
 /// consecutive checks. Used via `TransitionInvariant` with two snapshots.
 pub struct MonotonicTime;
 
@@ -205,7 +211,8 @@ impl MonotonicTime {
         if after.timestamp < before.timestamp {
             return Err(std::format!(
                 "Time went backwards: {} -> {}",
-                before.timestamp, after.timestamp
+                before.timestamp,
+                after.timestamp
             ));
         }
         Ok(())
@@ -312,7 +319,9 @@ impl TransitionInvariant for StakeConservation {
         if after.total_staked != expected {
             return Err(std::format!(
                 "After staking {}: expected total={}, got total={}",
-                self.amount, expected, after.total_staked
+                self.amount,
+                expected,
+                after.total_staked
             ));
         }
         Ok(())
@@ -335,7 +344,9 @@ impl TransitionInvariant for UnstakeConservation {
         if after.total_staked != expected {
             return Err(std::format!(
                 "After unstaking {}: expected total={}, got total={}",
-                self.amount, expected, after.total_staked
+                self.amount,
+                expected,
+                after.total_staked
             ));
         }
         Ok(())
@@ -362,7 +373,9 @@ impl TransitionInvariant for RewardMonotonicity {
                 if *after_reward < *before_reward {
                     return Err(std::format!(
                         "Rewards decreased for {:?}: {} -> {} (without claim)",
-                        addr, before_reward, after_reward
+                        addr,
+                        before_reward,
+                        after_reward
                     ));
                 }
             }

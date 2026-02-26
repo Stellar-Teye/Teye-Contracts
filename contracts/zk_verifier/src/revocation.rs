@@ -97,12 +97,7 @@ impl RevocationRegistryManager {
     ) -> Result<RevocationWitness, CredentialContractError> {
         let mut registry = Self::get_registry(env, registry_id)?;
 
-        let witness_value = Self::compute_witness(
-            env,
-            &registry.accumulator,
-            credential_id,
-            index,
-        );
+        let witness_value = Self::compute_witness(env, &registry.accumulator, credential_id, index);
 
         let witness = RevocationWitness {
             credential_id: credential_id.clone(),
@@ -116,8 +111,7 @@ impl RevocationRegistryManager {
         registry.last_updated = env.ledger().timestamp();
 
         // Update the accumulator to include the new credential.
-        registry.accumulator =
-            Self::accumulate(env, &registry.accumulator, credential_id);
+        registry.accumulator = Self::accumulate(env, &registry.accumulator, credential_id);
 
         let key = (Symbol::new(env, REGISTRY_PREFIX), registry_id.clone());
         env.storage().persistent().set(&key, &registry);
@@ -140,11 +134,7 @@ impl RevocationRegistryManager {
         let mut registry = Self::get_registry(env, registry_id)?;
 
         // Check if already revoked.
-        let revoked_key = (
-            Symbol::new(env, REVOKED_PREFIX),
-            registry_id.clone(),
-            index,
-        );
+        let revoked_key = (Symbol::new(env, REVOKED_PREFIX), registry_id.clone(), index);
         if env.storage().persistent().has(&revoked_key) {
             return Err(CredentialContractError::AlreadyRevoked);
         }
@@ -166,16 +156,8 @@ impl RevocationRegistryManager {
     }
 
     /// Check if a specific credential index is revoked.
-    pub fn is_revoked(
-        env: &Env,
-        registry_id: &BytesN<32>,
-        index: u64,
-    ) -> bool {
-        let revoked_key = (
-            Symbol::new(env, REVOKED_PREFIX),
-            registry_id.clone(),
-            index,
-        );
+    pub fn is_revoked(env: &Env, registry_id: &BytesN<32>, index: u64) -> bool {
+        let revoked_key = (Symbol::new(env, REVOKED_PREFIX), registry_id.clone(), index);
         env.storage().persistent().has(&revoked_key)
     }
 
@@ -265,11 +247,7 @@ impl RevocationRegistryManager {
     }
 
     /// Add a credential to the accumulator: Hash(accumulator || credential_id).
-    fn accumulate(
-        env: &Env,
-        accumulator: &BytesN<32>,
-        credential_id: &BytesN<32>,
-    ) -> BytesN<32> {
+    fn accumulate(env: &Env, accumulator: &BytesN<32>, credential_id: &BytesN<32>) -> BytesN<32> {
         let mut inputs = Vec::new(env);
         inputs.push_back(accumulator.clone());
         inputs.push_back(credential_id.clone());

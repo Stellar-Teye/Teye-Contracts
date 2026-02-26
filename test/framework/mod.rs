@@ -87,7 +87,9 @@ impl TestEnv {
     /// Advance the ledger timestamp by `delta` seconds.
     pub fn advance_time(&self, delta: u64) {
         let current = self.env.ledger().timestamp();
-        self.env.ledger().set_timestamp(current.saturating_add(delta));
+        self.env
+            .ledger()
+            .set_timestamp(current.saturating_add(delta));
     }
 
     /// Current ledger timestamp.
@@ -142,7 +144,13 @@ impl<'a> StakingTestHarness<'a> {
         let client = StakingContractClient::new(&env.env, &contract_id);
         let admin = env.generate_address();
 
-        client.initialize(&admin, &stake_token, &reward_token, &reward_rate, &lock_period);
+        client.initialize(
+            &admin,
+            &stake_token,
+            &reward_token,
+            &reward_rate,
+            &lock_period,
+        );
 
         // Pre-fund with reward tokens.
         StellarAssetClient::new(&env.env, &reward_token)

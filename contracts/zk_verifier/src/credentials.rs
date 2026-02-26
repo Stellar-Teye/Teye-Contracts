@@ -47,10 +47,7 @@ impl CredentialManager {
         env: &Env,
         schema: &CredentialSchema,
     ) -> Result<(), CredentialContractError> {
-        let key = (
-            Symbol::new(env, SCHEMA_PREFIX),
-            schema.schema_id.clone(),
-        );
+        let key = (Symbol::new(env, SCHEMA_PREFIX), schema.schema_id.clone());
 
         if env.storage().persistent().has(&key) {
             return Err(CredentialContractError::DuplicateSchema);

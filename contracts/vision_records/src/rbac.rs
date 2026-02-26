@@ -403,19 +403,6 @@ pub fn record_sensitivity_key(record_id: &u64) -> (Symbol, u64) {
     (symbol_short!("REC_SENS"), *record_id)
 }
 
-pub fn access_policy_key(id: &String) -> (Symbol, String) {
-    (symbol_short!("ACC_POL"), id.clone())
-}
-
-pub fn user_credential_key(user: &Address) -> (Symbol, Address) {
-    (symbol_short!("USER_CRED"), user.clone())
-}
-
-pub fn record_sensitivity_key(record_id: &u64) -> (Symbol, u64) {
-    (symbol_short!("REC_SENS"), record_id.clone())
-}
-
-// ======================== Core RBAC Engine ========================
 
 /// Assign a role to a user.
 ///
@@ -1022,7 +1009,7 @@ pub fn evaluate_policy(env: &Env, policy: &AccessPolicy, context: &PolicyContext
     let conditions = &policy.conditions;
 
     // Check role requirement
-    if let OptionalRole::Some(required_role) = &conditions.required_role {
+    if let Some(required_role) = &conditions.required_role {
         if let Some(assignment) = get_active_assignment(env, &context.user) {
             if assignment.role != conditions.required_role {
                 return false;
@@ -1250,7 +1237,7 @@ pub fn check_policy_engine(
     resource_id: Option<u64>,
 ) -> bool {
     let ctx = build_eval_context(env, user, action, resource_id);
-    let result = teye_common::policy_engine::evaluate(env, &ctx);
+    let result = crate::abac::evaluate(env, &ctx);
     result.effect == teye_common::policy_dsl::PolicyEffect::Permit
 }
 
@@ -1262,7 +1249,7 @@ pub fn simulate_policy_check(
     resource_id: Option<u64>,
 ) -> teye_common::policy_dsl::SimulationResult {
     let ctx = build_eval_context(env, user, action, resource_id);
-    teye_common::policy_engine::simulate(env, &ctx)
+    crate::abac::simulate(env, &ctx)
 }
 
 // ── Numeric helpers for on-chain string building ────────────────────────────

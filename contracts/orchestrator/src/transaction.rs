@@ -1,8 +1,8 @@
-use soroban_sdk::{Env, Vec, String, Symbol, Val, IntoVal};
 use common::transaction::{
-    TransactionLog, TransactionPhase, TransactionOperation, TransactionError,
-    set_transaction_log, get_transaction_log,
+    get_transaction_log, set_transaction_log, TransactionError, TransactionLog,
+    TransactionOperation, TransactionPhase,
 };
+use soroban_sdk::{Env, IntoVal, String, Symbol, Val, Vec};
 
 use super::events::EventPublisher;
 
@@ -39,16 +39,17 @@ impl<'a> TransactionManager<'a> {
 
             // invoke_contract panics on failure; Soroban runtime catches it
             // For orchestrated transactions, the caller should handle panics
-            let _result: Val = self.env.invoke_contract(
-                &operation.contract_address,
-                &func_sym,
-                args,
-            );
+            let _result: Val =
+                self.env
+                    .invoke_contract(&operation.contract_address, &func_sym, args);
 
             operation.prepared = true;
             prepared_operations.push_back(operation.clone());
             EventPublisher::operation_prepared(
-                self.env, log.transaction_id, operation.operation_id, &operation.contract_type,
+                self.env,
+                log.transaction_id,
+                operation.operation_id,
+                &operation.contract_type,
             );
         }
 
@@ -84,16 +85,17 @@ impl<'a> TransactionManager<'a> {
                 args.push_back(param.into_val(self.env));
             }
 
-            let _result: Val = self.env.invoke_contract(
-                &operation.contract_address,
-                &func_sym,
-                args,
-            );
+            let _result: Val =
+                self.env
+                    .invoke_contract(&operation.contract_address, &func_sym, args);
 
             operation.committed = true;
             committed_operations.push_back(operation.clone());
             EventPublisher::operation_committed(
-                self.env, log.transaction_id, operation.operation_id, &operation.contract_type,
+                self.env,
+                log.transaction_id,
+                operation.operation_id,
+                &operation.contract_type,
             );
         }
 
@@ -105,7 +107,10 @@ impl<'a> TransactionManager<'a> {
     }
 
     /// Validate that all operations in a transaction are compatible
-    pub fn validate_transaction(&self, operations: &Vec<TransactionOperation>) -> Result<(), TransactionError> {
+    pub fn validate_transaction(
+        &self,
+        operations: &Vec<TransactionOperation>,
+    ) -> Result<(), TransactionError> {
         if operations.is_empty() {
             return Err(TransactionError::InvalidInput);
         }
@@ -113,7 +118,7 @@ impl<'a> TransactionManager<'a> {
         let mut operation_ids: Vec<u64> = Vec::new(self.env);
         for i in 0..operations.len() {
             let operation = operations.get(i).unwrap();
-            if operation_ids.contains(&operation.operation_id) {
+            if operation_ids.contains(operation.operation_id) {
                 return Err(TransactionError::InvalidInput);
             }
             operation_ids.push_back(operation.operation_id);
@@ -125,7 +130,7 @@ impl<'a> TransactionManager<'a> {
 
     /// Validate a single operation
     fn validate_operation(&self, operation: &TransactionOperation) -> Result<(), TransactionError> {
-        if operation.function_name.len() == 0 {
+        if operation.function_name.is_empty() {
             return Err(TransactionError::InvalidInput);
         }
         if operation.operation_id == 0 {
@@ -148,7 +153,11 @@ impl<'a> TransactionManager<'a> {
     }
 
     /// Get the status of a specific operation within a transaction
-    pub fn get_operation_status(&self, transaction_id: u64, operation_id: u64) -> Result<String, TransactionError> {
+    pub fn get_operation_status(
+        &self,
+        transaction_id: u64,
+        operation_id: u64,
+    ) -> Result<String, TransactionError> {
         let log = get_transaction_log(self.env, transaction_id)
             .ok_or(TransactionError::TransactionNotFound)?;
 
@@ -171,7 +180,10 @@ impl<'a> TransactionManager<'a> {
     }
 
     /// Get all operations that failed during prepare or commit phase
-    pub fn get_failed_operations(&self, transaction_id: u64) -> Result<Vec<TransactionOperation>, TransactionError> {
+    pub fn get_failed_operations(
+        &self,
+        transaction_id: u64,
+    ) -> Result<Vec<TransactionOperation>, TransactionError> {
         let log = get_transaction_log(self.env, transaction_id)
             .ok_or(TransactionError::TransactionNotFound)?;
 

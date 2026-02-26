@@ -228,11 +228,7 @@ impl SelectiveDisclosureVerifier {
     }
 
     /// Evaluate an InRange predicate: lower <= value <= upper.
-    pub fn evaluate_in_range(
-        value: &BytesN<32>,
-        lower: &BytesN<32>,
-        upper: &BytesN<32>,
-    ) -> bool {
+    pub fn evaluate_in_range(value: &BytesN<32>, lower: &BytesN<32>, upper: &BytesN<32>) -> bool {
         let v = bytes32_to_u64(value);
         let lo = bytes32_to_u64(lower);
         let hi = bytes32_to_u64(upper);
@@ -288,5 +284,7 @@ fn predicate_type_to_byte(pt: &PredicateType) -> u8 {
 /// Interpret the first 8 bytes of a BytesN<32> as a big-endian u64.
 fn bytes32_to_u64(b: &BytesN<32>) -> u64 {
     let arr = b.to_array();
-    u64::from_be_bytes([arr[0], arr[1], arr[2], arr[3], arr[4], arr[5], arr[6], arr[7]])
+    u64::from_be_bytes([
+        arr[0], arr[1], arr[2], arr[3], arr[4], arr[5], arr[6], arr[7],
+    ])
 }

@@ -5,7 +5,7 @@
 /// Given:
 /// * `root_v1` — the Merkle root published when the log had `size_v1` entries.
 /// * `root_v2` — the Merkle root published when the log had `size_v2` entries
-///               (`size_v2 ≥ size_v1`).
+///   (`size_v2 ≥ size_v1`).
 ///
 /// A **consistency proof** is a minimal set of Merkle hashes that lets a
 /// verifier confirm:
@@ -26,10 +26,9 @@
 /// # Time and Space Complexity
 ///
 /// | Operation         | Time      | Space     |
-/// |-------------------|-----------|-----------| 
+/// |-------------------|-----------|-----------|
 /// | `generate`        | O(n)      | O(log n)  |
 /// | `verify`          | O(log n)  | O(log n)  |
-
 use alloc::vec::Vec;
 
 use sha2::{Digest as Sha2Digest, Sha256};
@@ -220,12 +219,7 @@ fn collect_proof_hashes(leaves: &[Digest], old_size: usize, new_size: usize) -> 
 }
 
 /// Recursive helper — mirrors `verify_inner` exactly.
-fn collect_inner(
-    leaves: &[Digest],
-    n1: usize,
-    n2: usize,
-    proof: &mut Vec<Digest>,
-) {
+fn collect_inner(leaves: &[Digest], n1: usize, n2: usize, proof: &mut Vec<Digest>) {
     if n1 == n2 {
         // Shared complete sub-tree: emit its root as one hash.
         proof.push(sub_root(leaves, 0, n2));
@@ -300,11 +294,8 @@ impl ConsistencyProver {
             });
         }
 
-        let proof_hashes = collect_proof_hashes(
-            &self.leaf_hashes,
-            size_v1 as usize,
-            size_v2 as usize,
-        );
+        let proof_hashes =
+            collect_proof_hashes(&self.leaf_hashes, size_v1 as usize, size_v2 as usize);
 
         Ok(ConsistencyProof {
             size_v1,
@@ -356,20 +347,20 @@ impl LogHistory {
         old_idx: usize,
         new_idx: usize,
     ) -> Result<ConsistencyProof, AuditError> {
-        let (old_size, old_root) = self
-            .checkpoints
-            .get(old_idx)
-            .copied()
-            .ok_or(AuditError::EntryNotFound {
-                sequence: old_idx as u64,
-            })?;
-        let (new_size, _new_root) = self
-            .checkpoints
-            .get(new_idx)
-            .copied()
-            .ok_or(AuditError::EntryNotFound {
-                sequence: new_idx as u64,
-            })?;
+        let (old_size, old_root) =
+            self.checkpoints
+                .get(old_idx)
+                .copied()
+                .ok_or(AuditError::EntryNotFound {
+                    sequence: old_idx as u64,
+                })?;
+        let (new_size, _new_root) =
+            self.checkpoints
+                .get(new_idx)
+                .copied()
+                .ok_or(AuditError::EntryNotFound {
+                    sequence: new_idx as u64,
+                })?;
 
         if new_size < old_size {
             return Err(AuditError::InvalidConsistencyProof);

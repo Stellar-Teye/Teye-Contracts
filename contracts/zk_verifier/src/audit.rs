@@ -35,7 +35,13 @@ pub struct AuditTrail;
 impl AuditTrail {
     /// Logs a successful access verification event to persistent storage and emits an event.
     /// Each new record is chained to the previous one via `prev_hash`.
-    pub fn log_access(env: &Env, user: Address, resource_id: BytesN<32>, proof_hash: BytesN<32>, expires_at: u64) {
+    pub fn log_access(
+        env: &Env,
+        user: Address,
+        resource_id: BytesN<32>,
+        proof_hash: BytesN<32>,
+        expires_at: u64,
+    ) {
         let key = (&user, &resource_id);
         let mut chain: Vec<AuditRecord> = env
             .storage()
@@ -135,6 +141,7 @@ impl AuditTrail {
         env.storage()
             .persistent()
             .set(&("verification", proof_id), &record);
-        env.events().publish(("verification", proof_id), (submitter, verified));
+        env.events()
+            .publish(("verification", proof_id), (submitter, verified));
     }
 }

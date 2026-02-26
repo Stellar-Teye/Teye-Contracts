@@ -41,11 +41,10 @@
 /// | `gen_token`      | O(1)     | O(1)   |
 ///
 /// where k = number of keywords per entry, m = number of matching entries.
-
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use sha2::Sha256;
 use hmac::{Hmac, Mac};
+use sha2::Sha256;
 
 use crate::types::AuditError;
 
@@ -146,10 +145,7 @@ impl ForwardIndex {
     ///
     /// Complexity: O(log I + m) — one BTreeMap lookup + slice copy.
     pub fn search(&self, token: &SearchToken) -> Vec<u64> {
-        self.index
-            .get(token)
-            .cloned()
-            .unwrap_or_default()
+        self.index.get(token).cloned().unwrap_or_default()
     }
 
     /// Remove all index entries for sequences in `removed`.
@@ -195,8 +191,8 @@ impl Default for ForwardIndex {
 ///
 /// * `actor`  — indexed verbatim.
 /// * `action` — indexed verbatim and by its "verb" prefix up to the first `.`
-///              (e.g. `"record.create"` → tokens for both `"record.create"` and
-///              `"record"`).
+///   (e.g. `"record.create"` → tokens for both `"record.create"` and
+///   `"record"`).
 /// * `target` — indexed verbatim.
 /// * `result` — indexed verbatim.
 ///
@@ -309,8 +305,8 @@ impl SearchEngine {
 
 #[cfg(test)]
 mod tests {
-    use alloc::vec;
     use super::*;
+    use alloc::vec;
 
     fn engine() -> SearchEngine {
         SearchEngine::new(SearchKey::test_key())
@@ -359,7 +355,14 @@ mod tests {
     #[test]
     fn extra_keywords_are_indexed() {
         let mut eng = engine();
-        eng.index_entry(10, "sys", "boot", "node:A", "ok", &["datacenter:EU", "high-priority"]);
+        eng.index_entry(
+            10,
+            "sys",
+            "boot",
+            "node:A",
+            "ok",
+            &["datacenter:EU", "high-priority"],
+        );
 
         assert_eq!(eng.query("datacenter:EU"), vec![10]);
         assert_eq!(eng.query("high-priority"), vec![10]);

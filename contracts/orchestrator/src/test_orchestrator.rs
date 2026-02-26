@@ -1,11 +1,11 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{Address, Env, String, Vec};
-    use common::{
-        transaction::{TransactionOperation, TransactionPhase, TransactionStatus, TransactionError,
-                      ContractType, TransactionTimeoutConfig, get_default_timeout_config},
+    use common::transaction::{
+        get_default_timeout_config, ContractType, TransactionError, TransactionOperation,
+        TransactionPhase, TransactionStatus, TransactionTimeoutConfig,
     };
+    use soroban_sdk::{Address, Env, String, Vec};
 
     #[test]
     fn test_orchestrator_initialization() {
@@ -164,7 +164,9 @@ mod tests {
         let mut locks = Vec::new(&env);
         locks.push_back((String::from_str(&env, "resource_1"), 1));
         locks.push_back((String::from_str(&env, "resource_2"), 1));
-        env.storage().instance().set(&common::transaction::RESOURCE_LOCKS, &locks);
+        env.storage()
+            .instance()
+            .set(&common::transaction::RESOURCE_LOCKS, &locks);
 
         // Second transaction should detect potential deadlock
         assert!(deadlock_detector.would_cause_deadlock(&2, &operations2));
@@ -233,7 +235,11 @@ mod tests {
         };
 
         assert_eq!(
-            OrchestratorContract::update_timeout_config(env.clone(), admin.clone(), new_config.clone()),
+            OrchestratorContract::update_timeout_config(
+                env.clone(),
+                admin.clone(),
+                new_config.clone()
+            ),
             Ok(())
         );
 
@@ -505,7 +511,10 @@ mod tests {
             &env,
             &String::from_str(&env, "unauthorized_access"),
             &String::from_str(&env, "high"),
-            vec![&env, String::from_str(&env, "attempted transaction without authorization")],
+            vec![
+                &env,
+                String::from_str(&env, "attempted transaction without authorization"),
+            ],
         );
 
         EventPublisher::audit_trail(

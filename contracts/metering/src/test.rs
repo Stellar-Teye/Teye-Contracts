@@ -165,12 +165,7 @@ fn test_register_clinic_without_parent_fails() {
     let (env, client, admin) = setup();
     let fake_parent = Address::generate(&env);
     let clinic = Address::generate(&env);
-    let result = client.try_register_tenant(
-        &admin,
-        &clinic,
-        &TenantLevel::Clinic,
-        &fake_parent,
-    );
+    let result = client.try_register_tenant(&admin, &clinic, &TenantLevel::Clinic, &fake_parent);
     assert_eq!(result, Err(Ok(MeteringError::TenantNotFound)));
 }
 
@@ -604,7 +599,7 @@ fn test_prepaid_insufficient_balance_blocks_operation() {
     let org = register_org(&client, &admin, &env);
     client.set_billing_model(&admin, &org, &BillingModel::Prepaid);
     client.mint_gas_tokens(&admin, &org, &3u64); // only 3 units
-    // Write costs 5 — should be blocked.
+                                                 // Write costs 5 — should be blocked.
     let result = client.try_record_gas(&admin, &org, &OperationType::Write);
     assert_eq!(result, Err(Ok(MeteringError::InsufficientPrepaidBalance)));
 }
@@ -658,12 +653,8 @@ fn test_non_admin_cannot_register_tenant() {
     let (env, client, _admin) = setup();
     let not_admin = Address::generate(&env);
     let tenant = Address::generate(&env);
-    let result = client.try_register_tenant(
-        &not_admin,
-        &tenant,
-        &TenantLevel::Organization,
-        &tenant,
-    );
+    let result =
+        client.try_register_tenant(&not_admin, &tenant, &TenantLevel::Organization, &tenant);
     assert_eq!(result, Err(Ok(MeteringError::Unauthorized)));
 }
 

@@ -199,7 +199,13 @@ impl KeyManagerContract {
         Self::store_key_record(&env, &record);
         Self::store_key_version(&env, &record.id, 1, key_bytes, now);
 
-        Self::audit(&env, caller, symbol_short!("KEY_NEW"), Some(record.id.clone()), &record.id);
+        Self::audit(
+            &env,
+            caller,
+            symbol_short!("KEY_NEW"),
+            Some(record.id.clone()),
+            &record.id,
+        );
 
         Ok(record.id)
     }
@@ -286,7 +292,13 @@ impl KeyManagerContract {
         Self::store_key_record(&env, &record);
 
         let (key_bytes, _) = Self::load_key_version(&env, &key_id, record.current_version)?;
-        Self::audit(&env, caller, symbol_short!("KEY_USE"), Some(key_id), &key_bytes);
+        Self::audit(
+            &env,
+            caller,
+            symbol_short!("KEY_USE"),
+            Some(key_id),
+            &key_bytes,
+        );
         Ok(key_bytes)
     }
 
@@ -327,7 +339,8 @@ impl KeyManagerContract {
         Self::ensure_active(&record)?;
 
         let now = env.ledger().timestamp();
-        if record.rotation_interval > 0 && !rotation_due(now, record.last_rotated, record.rotation_interval)
+        if record.rotation_interval > 0
+            && !rotation_due(now, record.last_rotated, record.rotation_interval)
         {
             return Err(ContractError::RotationNotDue);
         }
@@ -341,7 +354,13 @@ impl KeyManagerContract {
         Self::store_key_record(&env, &record);
         Self::store_key_version(&env, &key_id, next_version, new_key, now);
 
-        Self::audit(&env, caller, symbol_short!("KEY_ROT"), Some(key_id), &record.id);
+        Self::audit(
+            &env,
+            caller,
+            symbol_short!("KEY_ROT"),
+            Some(key_id),
+            &record.id,
+        );
 
         Ok(next_version)
     }
@@ -352,7 +371,13 @@ impl KeyManagerContract {
         Self::require_owner_or_admin(&env, &caller, &record.owner)?;
         record.status = KeyStatus::Revoked;
         Self::store_key_record(&env, &record);
-        Self::audit(&env, caller, symbol_short!("KEY_RVK"), Some(key_id), &record.id);
+        Self::audit(
+            &env,
+            caller,
+            symbol_short!("KEY_RVK"),
+            Some(key_id),
+            &record.id,
+        );
         Ok(())
     }
 
@@ -392,7 +417,13 @@ impl KeyManagerContract {
         env.storage().persistent().set(&key, &request);
 
         let details = Self::hash_recovery_details(&env, &request, threshold);
-        Self::audit(&env, guardian, symbol_short!("REC_NEW"), Some(key_id), &details);
+        Self::audit(
+            &env,
+            guardian,
+            symbol_short!("REC_NEW"),
+            Some(key_id),
+            &details,
+        );
 
         Ok(())
     }
@@ -423,7 +454,13 @@ impl KeyManagerContract {
         env.storage().persistent().set(&key, &request);
 
         let details = Self::hash_recovery_details(&env, &request, threshold);
-        Self::audit(&env, guardian, symbol_short!("REC_APP"), Some(key_id), &details);
+        Self::audit(
+            &env,
+            guardian,
+            symbol_short!("REC_APP"),
+            Some(key_id),
+            &details,
+        );
 
         Ok(())
     }
@@ -477,14 +514,8 @@ impl KeyManagerContract {
         env.storage().persistent().get(&(KEY, key_id))
     }
 
-    pub fn get_key_version(
-        env: Env,
-        key_id: BytesN<32>,
-        version: u32,
-    ) -> Option<KeyVersion> {
-        env.storage()
-            .persistent()
-            .get(&(KEY_VER, key_id, version))
+    pub fn get_key_version(env: Env, key_id: BytesN<32>, version: u32) -> Option<KeyVersion> {
+        env.storage().persistent().get(&(KEY_VER, key_id, version))
     }
 
     pub fn get_audit_entry(env: Env, seq: u64) -> Option<AuditEntry> {
@@ -578,7 +609,12 @@ impl KeyManagerContract {
         env.crypto().sha256(&data).into()
     }
 
-    fn chain_code_from(env: &Env, key_bytes: &BytesN<32>, index: u32, hardened: bool) -> BytesN<32> {
+    fn chain_code_from(
+        env: &Env,
+        key_bytes: &BytesN<32>,
+        index: u32,
+        hardened: bool,
+    ) -> BytesN<32> {
         let mut data = Bytes::new(env);
         data.extend_from_array(&key_bytes.to_array());
         data.extend_from_array(&index.to_be_bytes());
@@ -638,10 +674,7 @@ impl KeyManagerContract {
         Ok((entry.key_bytes, entry.created_at))
     }
 
-    fn load_guardians(
-        env: &Env,
-        owner: &Address,
-    ) -> Result<(Vec<Address>, u32), ContractError> {
+    fn load_guardians(env: &Env, owner: &Address) -> Result<(Vec<Address>, u32), ContractError> {
         let identity_addr: Address = env
             .storage()
             .instance()
@@ -696,11 +729,7 @@ impl KeyManagerContract {
         env.crypto().sha256(&data).into()
     }
 
-    fn hash_recovery_details(
-        env: &Env,
-        request: &RecoveryRequest,
-        threshold: u32,
-    ) -> BytesN<32> {
+    fn hash_recovery_details(env: &Env, request: &RecoveryRequest, threshold: u32) -> BytesN<32> {
         let mut data = Bytes::new(env);
         data.extend_from_array(&request.key_id.to_array());
         data.extend_from_array(&request.new_key.to_array());

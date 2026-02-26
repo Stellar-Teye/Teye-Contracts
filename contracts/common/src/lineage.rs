@@ -35,6 +35,8 @@
 //! | `get_parents` / `get_children` | O(deg) | 0           |
 //! | `verify_node_integrity`    | O(depth)   | 0              |
 //! | `prune_summarised`         | O(n) amort | O(n)           |
+extern crate alloc;
+use alloc::string::ToString;
 
 use soroban_sdk::{contracttype, symbol_short, Address, Bytes, BytesN, Env, String, Symbol, Vec};
 
@@ -352,7 +354,9 @@ pub fn get_node(env: &Env, record_id: u64) -> Option<LineageNode> {
 
 /// Persists an updated node (e.g. after commitment extension or pruning).
 pub fn save_node(env: &Env, node: &LineageNode) {
-    env.storage().persistent().set(&node_key(node.record_id), node);
+    env.storage()
+        .persistent()
+        .set(&node_key(node.record_id), node);
     extend_node_ttl(env, node.record_id);
 }
 
@@ -386,9 +390,8 @@ pub fn add_edge(
     let edge_id = next_edge_id(env);
     let now = env.ledger().timestamp();
 
-    let edge_commitment = compute_edge_commitment(
-        env, source_id, target_id, &kind, &actor, now, edge_id,
-    );
+    let edge_commitment =
+        compute_edge_commitment(env, source_id, target_id, &kind, &actor, now, edge_id);
 
     let edge = LineageEdge {
         edge_id,
@@ -534,8 +537,13 @@ pub fn verify_node_integrity(env: &Env, record_id: u64, max_depth: u32) -> Verif
         if in_edges.is_empty() {
             // Genesis node — recompute the zero-parent commitment.
             let tag_std = node.record_type_tag.to_string();
-            let expected =
-                genesis_commitment(env, node.record_id, &node.creator, node.created_at, &tag_std);
+            let expected = genesis_commitment(
+                env,
+                node.record_id,
+                &node.creator,
+                node.created_at,
+                &tag_std,
+            );
             if expected != node.commitment {
                 return VerificationResult::Tampered(current_id);
             }
@@ -575,9 +583,7 @@ pub fn set_origin_contract(env: &Env, record_id: u64, contract_id: String) {
 
 /// Retrieves the originating contract id for a cross-contract record, if any.
 pub fn get_origin_contract(env: &Env, record_id: u64) -> Option<String> {
-    env.storage()
-        .persistent()
-        .get(&(LIN_CONTRACT, record_id))
+    env.storage().persistent().get(&(LIN_CONTRACT, record_id))
 }
 
 // ── Lineage pruning with provenance-preserving summarisation ────────────────
@@ -606,7 +612,9 @@ pub fn prune_summarise(env: &Env, record_id: u64, depth: u32) -> Option<LineageS
         return Some(LineageSummary {
             record_id,
             summarised_depth: depth,
-            summary_commitment: node.summary_commitment.unwrap_or_else(|| node.commitment.clone()),
+            summary_commitment: node
+                .summary_commitment
+                .unwrap_or_else(|| node.commitment.clone()),
             window_start: node.created_at,
             window_end: node.created_at,
         });
@@ -637,7 +645,7 @@ pub fn prune_summarise(env: &Env, record_id: u64, depth: u32) -> Option<LineageS
         current_id = edge.source_id;
     }
 
-    let summary_commitment: BytesN<32> = if accumulated.len() > 0 {
+    let summary_commitment: BytesN<32> = if !accumulated.is_empty() {
         env.crypto().sha256(&accumulated).into()
     } else {
         node.commitment.clone()
@@ -656,6 +664,10 @@ pub fn prune_summarise(env: &Env, record_id: u64, depth: u32) -> Option<LineageS
         } else {
             window_start
         },
-        window_end: if window_end == 0 { node.created_at } else { window_end },
+        window_end: if window_end == 0 {
+            node.created_at
+        } else {
+            window_end
+        },
     })
 }

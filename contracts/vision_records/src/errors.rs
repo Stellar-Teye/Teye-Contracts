@@ -126,6 +126,8 @@ pub enum ContractError {
     LineageAccessDenied = 43,
     /// The operation would create a cycle in the provenance DAG.
     LineageCycleDetected = 44,
+    UserAlreadyExists = 45,
+    InvalidPhase = 46,
 }
 
 impl ContractError {
@@ -147,6 +149,7 @@ impl ContractError {
             | ContractError::InvalidAttestation
             | ContractError::InvalidAppointmentTime
             | ContractError::InvalidAppointmentStatus
+            | ContractError::InvalidPhase
             | ContractError::AppointmentNotVerified
             | ContractError::MetaTxExpired => ErrorCategory::Validation,
             ContractError::VersionConflict | ContractError::ConflictQueued => {
@@ -167,6 +170,7 @@ impl ContractError {
             | ContractError::LineageNodeNotFound
             | ContractError::LineageAncestorMissing => ErrorCategory::NotFound,
             ContractError::ProviderAlreadyRegistered
+            | ContractError::UserAlreadyExists
             | ContractError::DuplicateRecord
             | ContractError::DelegationExpired
             | ContractError::NonceAlreadyUsed
@@ -199,10 +203,12 @@ impl ContractError {
             | ContractError::InvalidAttestation
             | ContractError::InvalidAppointmentTime
             | ContractError::InvalidAppointmentStatus
+            | ContractError::InvalidPhase
             | ContractError::UserNotFound
             | ContractError::RecordNotFound
             | ContractError::ProviderNotFound
             | ContractError::DuplicateRecord
+            | ContractError::UserAlreadyExists
             | ContractError::MetaTxExpired => ErrorSeverity::Low,
             ContractError::Unauthorized
             | ContractError::AccessDenied
@@ -248,10 +254,12 @@ impl ContractError {
             ContractError::AlreadyInitialized => "Contract is already initialized",
             ContractError::Unauthorized => "Caller is not authorized for this operation",
             ContractError::UserNotFound => "User not found in the system",
+            ContractError::UserAlreadyExists => "User already exists",
             ContractError::RecordNotFound => "Record not found",
             ContractError::InvalidInput => "Invalid input parameters provided",
             ContractError::AccessDenied => "Access denied to the requested resource",
             ContractError::Paused => "Contract operations are currently paused",
+            ContractError::InvalidPhase => "Invalid phase for operation",
             ContractError::ProviderNotFound => "Provider not found in the system",
             ContractError::ProviderAlreadyRegistered => "Provider is already registered",
             ContractError::InvalidVerificationStatus => "Invalid verification status provided",

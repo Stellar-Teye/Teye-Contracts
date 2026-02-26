@@ -84,8 +84,10 @@ impl AuditManager {
         };
 
         env.events().publish((symbol_short!("AUDIT"), actor), event_data);
+    }
+}
 
-use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol, Vec};
+
 
 // ── Storage keys ──────────────────────────────────────────────
 pub const AUDIT_CTR: Symbol = symbol_short!("AUD_CTR");
@@ -211,8 +213,8 @@ pub fn get_audit_entry(env: &Env, entry_id: u64) -> Option<AuditEntry> {
 }
 
 /// Gets all audit entries for a specific record
-pub fn get_record_audit_log(env: &Env, record_id: u64) -> Vec<AuditEntry> {
-    let mut entries = Vec::new(env);
+pub fn get_record_audit_log(env: &Env, record_id: u64) -> soroban_sdk::Vec<AuditEntry> {
+    let mut entries = soroban_sdk::Vec::new(env);
     let counter: u64 = env.storage().instance().get(&AUDIT_CTR).unwrap_or(0);
     if counter == 0 {
         return entries;
@@ -236,8 +238,8 @@ pub fn get_record_audit_log(env: &Env, record_id: u64) -> Vec<AuditEntry> {
 }
 
 /// Gets all audit entries for a specific user (actor)
-pub fn get_user_audit_log(env: &Env, user: &Address) -> Vec<AuditEntry> {
-    let mut entries = Vec::new(env);
+pub fn get_user_audit_log(env: &Env, user: &Address) -> soroban_sdk::Vec<AuditEntry> {
+    let mut entries = soroban_sdk::Vec::new(env);
     let counter: u64 = env.storage().instance().get(&AUDIT_CTR).unwrap_or(0);
     let start_id = if counter > 1000 { counter - 1000 } else { 1 };
 
@@ -258,8 +260,8 @@ pub fn get_user_audit_log(env: &Env, user: &Address) -> Vec<AuditEntry> {
 }
 
 /// Gets all audit entries for a specific patient
-pub fn get_patient_audit_log(env: &Env, patient: &Address) -> Vec<AuditEntry> {
-    let mut entries = Vec::new(env);
+pub fn get_patient_audit_log(env: &Env, patient: &Address) -> soroban_sdk::Vec<AuditEntry> {
+    let mut entries = soroban_sdk::Vec::new(env);
     let counter: u64 = env.storage().instance().get(&AUDIT_CTR).unwrap_or(0);
     let start_id = if counter > 1000 { counter - 1000 } else { 1 };
 
@@ -280,8 +282,8 @@ pub fn get_patient_audit_log(env: &Env, patient: &Address) -> Vec<AuditEntry> {
 }
 
 /// Gets audit entries filtered by action type
-pub fn get_audit_log_by_action(env: &Env, action: AccessAction) -> Vec<AuditEntry> {
-    let mut entries = Vec::new(env);
+pub fn get_audit_log_by_action(env: &Env, action: AccessAction) -> soroban_sdk::Vec<AuditEntry> {
+    let mut entries = soroban_sdk::Vec::new(env);
     let counter: u64 = env.storage().instance().get(&AUDIT_CTR).unwrap_or(0);
     let start_id = if counter > 1000 { counter - 1000 } else { 1 };
 
@@ -296,8 +298,8 @@ pub fn get_audit_log_by_action(env: &Env, action: AccessAction) -> Vec<AuditEntr
 }
 
 /// Gets audit entries filtered by result
-pub fn get_audit_log_by_result(env: &Env, result: AccessResult) -> Vec<AuditEntry> {
-    let mut entries = Vec::new(env);
+pub fn get_audit_log_by_result(env: &Env, result: AccessResult) -> soroban_sdk::Vec<AuditEntry> {
+    let mut entries = soroban_sdk::Vec::new(env);
     let counter: u64 = env.storage().instance().get(&AUDIT_CTR).unwrap_or(0);
     let start_id = if counter > 1000 { counter - 1000 } else { 1 };
 
@@ -312,8 +314,8 @@ pub fn get_audit_log_by_result(env: &Env, result: AccessResult) -> Vec<AuditEntr
 }
 
 /// Gets audit entries within a time range
-pub fn get_audit_log_by_time_range(env: &Env, start_time: u64, end_time: u64) -> Vec<AuditEntry> {
-    let mut entries = Vec::new(env);
+pub fn get_audit_log_by_time_range(env: &Env, start_time: u64, end_time: u64) -> soroban_sdk::Vec<AuditEntry> {
+    let mut entries = soroban_sdk::Vec::new(env);
     let counter: u64 = env.storage().instance().get(&AUDIT_CTR).unwrap_or(0);
     let start_id = if counter > 1000 { counter - 1000 } else { 1 };
 
@@ -328,8 +330,8 @@ pub fn get_audit_log_by_time_range(env: &Env, start_time: u64, end_time: u64) ->
 }
 
 /// Gets recent audit entries (last N entries)
-pub fn get_recent_audit_log(env: &Env, limit: u64) -> Vec<AuditEntry> {
-    let mut entries = Vec::new(env);
+pub fn get_recent_audit_log(env: &Env, limit: u64) -> soroban_sdk::Vec<AuditEntry> {
+    let mut entries = soroban_sdk::Vec::new(env);
     let counter: u64 = env.storage().instance().get(&AUDIT_CTR).unwrap_or(0);
     let start_id = if counter > limit { counter - limit } else { 1 };
 

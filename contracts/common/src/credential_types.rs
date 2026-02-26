@@ -4,7 +4,7 @@
 //! support selective disclosure, predicate proofs, and credential lifecycle
 //! management.
 
-use soroban_sdk::{contracttype, contracterror, Address, BytesN, Map, Symbol, Vec};
+use soroban_sdk::{contracterror, contracttype, Address, BytesN, Symbol, Vec};
 
 // ── Credential schema ───────────────────────────────────────────────────────
 

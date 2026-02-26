@@ -47,8 +47,7 @@ pub struct Proof {
     pub c: G1Point,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProofValidationError {
     ZeroedComponent,
     OversizedComponent,
@@ -171,7 +170,6 @@ impl ZkVerifier for Bn254Verifier {
     }
 
     /// Verify a Groth16 proof over BN254.
-<<<<<<< HEAD
     // TODO: post-quantum migration - The mock logic here or actual BN254 pairing checks
     // will be superseded by a new implementation validating collision-resistant hash paths
     // (for FRI) or LWE assertions (for Lattices).
@@ -181,9 +179,6 @@ impl ZkVerifier for Bn254Verifier {
         proof: &Proof,
         public_inputs: &Vec<BytesN<32>>,
     ) -> bool {
-=======
-    pub fn verify_proof(_env: &Env, proof: &Proof, public_inputs: &Vec<BytesN<32>>) -> bool {
->>>>>>> 8ac60fcc51b5991fb5c3c3a879dcb5daa5df7d74
         if public_inputs.is_empty() {
             return false;
         }

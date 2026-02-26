@@ -16,7 +16,7 @@ use crate::vk::VerificationKey;
 use soroban_sdk::{BytesN, Env, Vec};
 
 /// PLONK-specific verifier implementation.
-/// 
+///
 /// PLONK uses a different verification algorithm than Groth16, based on:
 /// - Polynomial commitment schemes (typically KZG)
 /// - Permutation arguments for wire constraints
@@ -25,7 +25,7 @@ pub struct PlonkVerifier;
 
 impl ZkVerifier for PlonkVerifier {
     /// Validates PLONK proof components for structural integrity.
-    /// 
+    ///
     /// PLONK proofs use the same point structure as Groth16 for compatibility,
     /// but the validation logic can be customized for PLONK-specific requirements.
     fn validate_proof_components(
@@ -85,13 +85,13 @@ impl ZkVerifier for PlonkVerifier {
     }
 
     /// Verifies a PLONK proof.
-    /// 
+    ///
     /// PLONK verification involves:
     /// 1. Reconstruct the public input polynomial
     /// 2. Verify the quotient polynomial evaluation
     /// 3. Batch verify all polynomial commitments
     /// 4. Check the permutation argument
-    /// 
+    ///
     /// This is a mock implementation for demonstration. A production implementation
     /// would use actual polynomial commitment verification (e.g., KZG10).
     fn verify_proof(

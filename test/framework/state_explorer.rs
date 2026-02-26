@@ -96,10 +96,7 @@ impl<'a> StateExplorer<'a> {
     }
 
     /// Create an explorer with default configuration and built-in invariants.
-    pub fn with_defaults(
-        harness: &'a StakingTestHarness<'a>,
-        users: Vec<Address>,
-    ) -> Self {
+    pub fn with_defaults(harness: &'a StakingTestHarness<'a>, users: Vec<Address>) -> Self {
         Self::new(
             harness,
             InvariantSet::staking_defaults(),
@@ -184,9 +181,7 @@ impl<'a> StateExplorer<'a> {
                 match self.harness.client.try_stake(user, amount) {
                     Ok(_) => ActionOutcome::Ok,
                     Err(Ok(e)) => ActionOutcome::ExpectedError(e as u32),
-                    Err(Err(e)) => {
-                        ActionOutcome::UnexpectedError(std::format!("{:?}", e))
-                    }
+                    Err(Err(e)) => ActionOutcome::UnexpectedError(std::format!("{:?}", e)),
                 }
             }
             StakingAction::RequestUnstake { user_index, amount } => {
@@ -197,9 +192,7 @@ impl<'a> StateExplorer<'a> {
                         ActionOutcome::Ok
                     }
                     Err(Ok(e)) => ActionOutcome::ExpectedError(e as u32),
-                    Err(Err(e)) => {
-                        ActionOutcome::UnexpectedError(std::format!("{:?}", e))
-                    }
+                    Err(Err(e)) => ActionOutcome::UnexpectedError(std::format!("{:?}", e)),
                 }
             }
             StakingAction::Withdraw {
@@ -210,9 +203,7 @@ impl<'a> StateExplorer<'a> {
                 match self.harness.client.try_withdraw(user, request_id) {
                     Ok(_) => ActionOutcome::Ok,
                     Err(Ok(e)) => ActionOutcome::ExpectedError(e as u32),
-                    Err(Err(e)) => {
-                        ActionOutcome::UnexpectedError(std::format!("{:?}", e))
-                    }
+                    Err(Err(e)) => ActionOutcome::UnexpectedError(std::format!("{:?}", e)),
                 }
             }
             StakingAction::ClaimRewards { user_index } => {
@@ -220,9 +211,7 @@ impl<'a> StateExplorer<'a> {
                 match self.harness.client.try_claim_rewards(user) {
                     Ok(_) => ActionOutcome::Ok,
                     Err(Ok(e)) => ActionOutcome::ExpectedError(e as u32),
-                    Err(Err(e)) => {
-                        ActionOutcome::UnexpectedError(std::format!("{:?}", e))
-                    }
+                    Err(Err(e)) => ActionOutcome::UnexpectedError(std::format!("{:?}", e)),
                 }
             }
             StakingAction::AdvanceTime { delta } => {
@@ -230,16 +219,14 @@ impl<'a> StateExplorer<'a> {
                 ActionOutcome::Ok
             }
             StakingAction::SetRewardRate { new_rate } => {
-                match self.harness.client.try_set_reward_rate(
-                    &self.harness.admin,
-                    new_rate,
-                    &0u64,
-                ) {
+                match self
+                    .harness
+                    .client
+                    .try_set_reward_rate(&self.harness.admin, new_rate, &0u64)
+                {
                     Ok(_) => ActionOutcome::Ok,
                     Err(Ok(e)) => ActionOutcome::ExpectedError(e as u32),
-                    Err(Err(e)) => {
-                        ActionOutcome::UnexpectedError(std::format!("{:?}", e))
-                    }
+                    Err(Err(e)) => ActionOutcome::UnexpectedError(std::format!("{:?}", e)),
                 }
             }
             StakingAction::SetLockPeriod { new_period } => {
@@ -250,29 +237,19 @@ impl<'a> StateExplorer<'a> {
                 ) {
                     Ok(_) => ActionOutcome::Ok,
                     Err(Ok(e)) => ActionOutcome::ExpectedError(e as u32),
-                    Err(Err(e)) => {
-                        ActionOutcome::UnexpectedError(std::format!("{:?}", e))
-                    }
+                    Err(Err(e)) => ActionOutcome::UnexpectedError(std::format!("{:?}", e)),
                 }
             }
-            StakingAction::Pause => {
-                match self.harness.client.try_pause(&self.harness.admin) {
-                    Ok(_) => ActionOutcome::Ok,
-                    Err(Ok(e)) => ActionOutcome::ExpectedError(e as u32),
-                    Err(Err(e)) => {
-                        ActionOutcome::UnexpectedError(std::format!("{:?}", e))
-                    }
-                }
-            }
-            StakingAction::Unpause => {
-                match self.harness.client.try_unpause(&self.harness.admin) {
-                    Ok(_) => ActionOutcome::Ok,
-                    Err(Ok(e)) => ActionOutcome::ExpectedError(e as u32),
-                    Err(Err(e)) => {
-                        ActionOutcome::UnexpectedError(std::format!("{:?}", e))
-                    }
-                }
-            }
+            StakingAction::Pause => match self.harness.client.try_pause(&self.harness.admin) {
+                Ok(_) => ActionOutcome::Ok,
+                Err(Ok(e)) => ActionOutcome::ExpectedError(e as u32),
+                Err(Err(e)) => ActionOutcome::UnexpectedError(std::format!("{:?}", e)),
+            },
+            StakingAction::Unpause => match self.harness.client.try_unpause(&self.harness.admin) {
+                Ok(_) => ActionOutcome::Ok,
+                Err(Ok(e)) => ActionOutcome::ExpectedError(e as u32),
+                Err(Err(e)) => ActionOutcome::UnexpectedError(std::format!("{:?}", e)),
+            },
         }
     }
 }

@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use super::*;
-use crate::settlement::{BatchRecordInput, RecordType};
+use crate::settlement::BatchRecordInput;
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     Address, BytesN, Env, Vec,

@@ -51,7 +51,7 @@ pub enum CycleStatus {
 pub struct BillingCycle {
     pub id: u64,
     pub started_at: u64,
-    pub ended_at: u64,   // 0 while still open
+    pub ended_at: u64, // 0 while still open
     pub status: CycleStatus,
 }
 
@@ -152,11 +152,7 @@ pub fn open_cycle(env: &Env) -> Result<u64, BillingError> {
     // If any cycle exists, verify it's closed before opening a new one.
     if current_id > 0 {
         let key = cycle_key(current_id);
-        if let Some(cycle) = env
-            .storage()
-            .persistent()
-            .get::<_, BillingCycle>(&key)
-        {
+        if let Some(cycle) = env.storage().persistent().get::<_, BillingCycle>(&key) {
             if cycle.status == CycleStatus::Open {
                 return Err(BillingError::CycleAlreadyOpen);
             }
