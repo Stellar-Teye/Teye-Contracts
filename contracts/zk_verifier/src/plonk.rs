@@ -157,7 +157,6 @@ impl PlonkVerifier {
     }
 
     fn validate_g2_limbs(point: &crate::verifier::G2Point) -> bool {
-        const LIMB_SIZE: usize = 32;
         let limbs = [
             &point.x.0.to_array(),
             &point.x.1.to_array(),
@@ -166,7 +165,7 @@ impl PlonkVerifier {
         ];
 
         for limb in &limbs {
-            if Self::bytes_all_zero(*limb) {
+            if Self::bytes_all_zero(&limb[..]) {
                 return false;
             }
         }
