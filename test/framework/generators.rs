@@ -32,7 +32,7 @@ pub fn amount_strategy() -> impl Strategy<Value = i128> {
         1 => Just(0i128),
         1 => Just(1i128),
         1 => Just(1_000_000_000_000_000i128),   // 10^15
-        7 => (1i128..=1_000_000_000_000_000i128),
+        7 => 1i128..=1_000_000_000_000_000i128,
     ]
 }
 
@@ -41,7 +41,7 @@ pub fn positive_amount_strategy() -> impl Strategy<Value = i128> {
     prop_oneof![
         1 => Just(1i128),
         1 => Just(1_000_000_000_000_000i128),
-        8 => (1i128..=1_000_000_000_000_000i128),
+        8 => 1i128..=1_000_000_000_000_000i128,
     ]
 }
 
@@ -49,7 +49,7 @@ pub fn positive_amount_strategy() -> impl Strategy<Value = i128> {
 pub fn invalid_amount_strategy() -> impl Strategy<Value = i128> {
     prop_oneof![
         5 => Just(0i128),
-        3 => (-1_000_000i128..=-1i128),
+        3 => -1_000_000i128..=-1i128,
         2 => Just(i128::MIN),
     ]
 }
@@ -59,8 +59,8 @@ pub fn reward_rate_strategy() -> impl Strategy<Value = i128> {
     prop_oneof![
         1 => Just(0i128),
         1 => Just(1i128),
-        2 => (1i128..=100i128),
-        3 => (1i128..=1_000_000i128),
+        2 => 1i128..=100i128,
+        3 => 1i128..=1_000_000i128,
         1 => Just(1_000_000_000i128),
     ]
 }
@@ -70,9 +70,9 @@ pub fn duration_strategy() -> impl Strategy<Value = u64> {
     prop_oneof![
         1 => Just(0u64),
         1 => Just(1u64),
-        2 => (1u64..=3_600u64),         // up to 1 hour
-        3 => (1u64..=86_400u64),        // up to 1 day
-        2 => (1u64..=604_800u64),       // up to 1 week
+        2 => 1u64..=3_600u64,           // up to 1 hour
+        3 => 1u64..=86_400u64,          // up to 1 day
+        2 => 1u64..=604_800u64,         // up to 1 week
         1 => Just(31_536_000u64),       // 1 year
     ]
 }
@@ -81,8 +81,8 @@ pub fn duration_strategy() -> impl Strategy<Value = u64> {
 pub fn lock_period_strategy() -> impl Strategy<Value = u64> {
     prop_oneof![
         2 => Just(0u64),
-        3 => (1u64..=86_400u64),
-        3 => (86_400u64..=604_800u64),
+        3 => 1u64..=86_400u64,
+        3 => 86_400u64..=604_800u64,
         2 => Just(2_592_000u64),        // 30 days
     ]
 }
@@ -91,7 +91,7 @@ pub fn lock_period_strategy() -> impl Strategy<Value = u64> {
 pub fn timestamp_strategy() -> impl Strategy<Value = u64> {
     prop_oneof![
         1 => Just(0u64),
-        8 => (0u64..=31_536_000u64),    // up to 1 year of seconds
+        8 => 0u64..=31_536_000u64,      // up to 1 year of seconds
         1 => Just(u64::MAX / 2),
     ]
 }

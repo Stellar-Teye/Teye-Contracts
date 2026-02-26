@@ -78,9 +78,7 @@ impl AuditManager {
             entry_hash: BytesN::from_array(env, &entry_hash),
         };
 
-        // Suppress the deprecation warning at the call site only.
-        // `#[contractevent]` cannot be used here because AuditLogEvent is defined
-        // in a non-contract helper module and requires IntoVal from #[contracttype].
+        // TODO: migrate to #[contractevent] macro when soroban-sdk ≥ 26 is adopted
         #[allow(deprecated)]
         env.events()
             .publish((symbol_short!("AUDIT"), actor), event_data);
