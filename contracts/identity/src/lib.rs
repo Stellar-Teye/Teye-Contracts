@@ -7,7 +7,7 @@ pub mod recovery;
 use credential::CredentialError;
 use recovery::{RecoveryError, RecoveryRequest};
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, String, Symbol, Vec,
+    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Symbol, Vec,
 };
 
 /// Preparation data for guardian addition
@@ -436,6 +436,7 @@ impl IdentityContract {
     /// Delegates verification to the configured `zk_verifier` contract via a
     /// cross-contract call. Only the verification result and a privacy-preserving
     /// event (user + resource hash) are recorded.
+    #[allow(clippy::too_many_arguments)]
     pub fn verify_zk_credential(
         env: Env,
         user: Address,

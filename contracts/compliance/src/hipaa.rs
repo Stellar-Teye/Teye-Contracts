@@ -130,7 +130,7 @@ fn breach_notification_rule() -> ComplianceRule {
             // After-hours PHI access.
             if ctx.sensitivity >= 2 {
                 let hour = (ctx.timestamp / 3600) % 24;
-                if hour < WORK_HOURS_START || hour >= WORK_HOURS_END {
+                if !(WORK_HOURS_START..WORK_HOURS_END).contains(&hour) {
                     // After-hours PHI access is flagged (but not blocked).
                     return false;
                 }
@@ -192,7 +192,7 @@ fn encryption_requirement_rule() -> ComplianceRule {
                 return ctx
                     .metadata
                     .get("encrypted")
-                    .map_or(false, |v| v == "true");
+                    .is_some_and(|v| v == "true");
             }
             true
         }),
@@ -327,7 +327,7 @@ mod tests {
         ctx.actor_role = "researcher".into();
         ctx.sensitivity = 1; // low sensitivity so HIPAA-001 passes
         ctx.action = "record.write".into();
-        let verdict = engine.evaluate(&ctx);
+        let _verdict = engine.evaluate(&ctx);
         // Researcher cannot write even at low sensitivity PHI
         // Actually sensitivity < 2 means HIPAA-004 allows it
         // Let's test with sensitivity 2

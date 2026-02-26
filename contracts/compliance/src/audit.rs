@@ -12,8 +12,6 @@
 //!   index automatically.
 //! * Expose a simplified `record` / `query` / `search` surface that matches
 //!   the ergonomics expected by compliance-layer callers.
-//! * Retain the old `AuditEntry` type (re-exported from `audit::types`) for
-//!   backward compatibility with any existing callers.
 //!
 //! ## Tamper evidence
 //!
@@ -67,7 +65,7 @@ pub struct ComplianceAuditLog {
 }
 
 #[derive(Debug, Clone)]
-pub struct AuditEntry {
+pub struct SimpleAuditEntry {
     pub actor: String,
     pub action: String,
     pub target: String,
@@ -198,14 +196,80 @@ impl ComplianceAuditLog {
     }
 }
 
-// ── Backward-compatibility alias ──────────────────────────────────────────────
+#[derive(Default)]
+pub struct AuditLog {
+    pub entries: Vec<SimpleAuditEntry>,
+}
 
-/// A single audit log record.
+impl AuditLog {
+    /// Records an audit entry. For key rotation, use action="rotate_master_secure" and target="master_key".
+    pub fn record(&mut self, actor: &str, action: &str, target: &str, now: u64) {
+        self.entries.push(SimpleAuditEntry {
+            actor: actor.to_string(),
+            action: action.to_string(),
+            target: target.to_string(),
+            timestamp: now,
+        });
+    }
+
+    pub fn query(&self) -> &[SimpleAuditEntry] {
+        &self.entries
+    }
+}
+
+// ── Compliance verdict logging ──────────────────────────────────────────────
+
+/// Bridges the rules-engine verdicts into the compliance audit log.
 ///
-/// This is an alias for the `LogEntry` from the `audit` crate, provided for
-/// backward compatibility with code that previously used
-/// `compliance::AuditEntry`.
-pub type AuditEntry = LogEntry;
+/// Each evaluated operation is recorded with its compliance score, verdict,
+/// and any violations — providing a tamper-evident evidence trail for audits.
+pub struct ComplianceVerdictLogger;
+
+impl ComplianceVerdictLogger {
+    /// Log a compliance verdict to the audit log.
+    ///
+    /// Records the operation context and verdict as a structured audit entry
+    /// with extra keywords for searchability (score, violation IDs, jurisdiction).
+    pub fn log_verdict(
+        log: &mut ComplianceAuditLog,
+        ctx: &crate::rules_engine::OperationContext,
+        verdict: &crate::rules_engine::ComplianceVerdict,
+    ) -> u64 {
+        let result = if verdict.allowed {
+            "allowed"
+        } else {
+            "blocked"
+        };
+        let score_tag = format!("score:{:.0}", verdict.score);
+        let jurisdiction_tag = format!("jurisdiction:{:?}", ctx.jurisdiction);
+
+        let mut extra_keywords: Vec<&str> = Vec::new();
+
+        // We need to hold the strings in a vec so references remain valid.
+        let score_str = score_tag.as_str();
+        let jurisdiction_str = jurisdiction_tag.as_str();
+        extra_keywords.push(score_str);
+        extra_keywords.push(jurisdiction_str);
+
+        // Collect violation IDs as keywords for searching.
+        let violation_tags: Vec<String> = verdict
+            .violations
+            .iter()
+            .map(|v| format!("violation:{}", v.rule_id))
+            .collect();
+        let violation_refs: Vec<&str> = violation_tags.iter().map(|s| s.as_str()).collect();
+        extra_keywords.extend(violation_refs);
+
+        log.record_with_keywords(
+            ctx.timestamp,
+            &ctx.actor,
+            &ctx.action,
+            &ctx.target,
+            result,
+            &extra_keywords,
+        )
+    }
+}
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -286,79 +350,5 @@ mod tests {
         );
         assert_eq!(log.search("datacenter:EU"), vec![1]);
         assert_eq!(log.search("sensitivity:high"), vec![1]);
-    }
-}
-
-pub struct AuditLog {
-    pub entries: Vec<AuditEntry>,
-}
-
-impl AuditLog {
-    /// Records an audit entry. For key rotation, use action="rotate_master_secure" and target="master_key".
-    pub fn record(&mut self, actor: &str, action: &str, target: &str, now: u64) {
-        self.entries.push(AuditEntry {
-            actor: actor.to_string(),
-            action: action.to_string(),
-            target: target.to_string(),
-            timestamp: now,
-        });
-    }
-
-    pub fn query(&self) -> &[AuditEntry] {
-        &self.entries
-    }
-}
-
-// ── Compliance verdict logging ──────────────────────────────────────────────
-
-/// Bridges the rules-engine verdicts into the compliance audit log.
-///
-/// Each evaluated operation is recorded with its compliance score, verdict,
-/// and any violations — providing a tamper-evident evidence trail for audits.
-pub struct ComplianceVerdictLogger;
-
-impl ComplianceVerdictLogger {
-    /// Log a compliance verdict to the audit log.
-    ///
-    /// Records the operation context and verdict as a structured audit entry
-    /// with extra keywords for searchability (score, violation IDs, jurisdiction).
-    pub fn log_verdict(
-        log: &mut ComplianceAuditLog,
-        ctx: &crate::rules_engine::OperationContext,
-        verdict: &crate::rules_engine::ComplianceVerdict,
-    ) -> u64 {
-        let result = if verdict.allowed {
-            "allowed"
-        } else {
-            "blocked"
-        };
-        let score_tag = format!("score:{:.0}", verdict.score);
-        let jurisdiction_tag = format!("jurisdiction:{:?}", ctx.jurisdiction);
-
-        let mut extra_keywords: Vec<&str> = Vec::new();
-
-        // We need to hold the strings in a vec so references remain valid.
-        let score_str = score_tag.as_str();
-        let jurisdiction_str = jurisdiction_tag.as_str();
-        extra_keywords.push(score_str);
-        extra_keywords.push(jurisdiction_str);
-
-        // Collect violation IDs as keywords for searching.
-        let violation_tags: Vec<String> = verdict
-            .violations
-            .iter()
-            .map(|v| format!("violation:{}", v.rule_id))
-            .collect();
-        let violation_refs: Vec<&str> = violation_tags.iter().map(|s| s.as_str()).collect();
-        extra_keywords.extend(violation_refs);
-
-        log.record_with_keywords(
-            ctx.timestamp,
-            &ctx.actor,
-            &ctx.action,
-            &ctx.target,
-            result,
-            &extra_keywords,
-        )
     }
 }

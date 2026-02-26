@@ -24,6 +24,7 @@ pub struct AuditLogEvent {
 
 impl AuditManager {
     /// Logs a tamper-evident audit event for the staking contract.
+    #[allow(deprecated)]
     pub fn log_event(env: &Env, actor: Address, action: &str, target: String, result: &str) {
         let mut sequence: u64 = env.storage().persistent().get(&AUDIT_SEQUENCE).unwrap_or(0);
         sequence += 1;

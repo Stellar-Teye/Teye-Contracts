@@ -23,6 +23,7 @@ pub fn get_zk_verifier(env: &Env) -> Option<Address> {
     env.storage().instance().get(&ZK_VERIFIER)
 }
 
+#[allow(clippy::too_many_arguments, unused_variables)]
 pub fn verify_zk_credential(
     env: &Env,
     user: &Address,
