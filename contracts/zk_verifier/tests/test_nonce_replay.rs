@@ -62,7 +62,6 @@ fn make_request(
         resource_id: BytesN::from_array(env, &[1u8; 32]),
         proof,
         public_inputs: inputs,
-        expires_at: env.ledger().timestamp() + 1_000,
         nonce,
         expires_at: env.ledger().timestamp().saturating_add(600),
     }
