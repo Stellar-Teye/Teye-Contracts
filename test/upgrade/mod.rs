@@ -1,3 +1,3 @@
-mod migration;
-mod backward_compatibility;
 mod authorization;
+mod backward_compatibility;
+mod migration;

@@ -1,6 +1,11 @@
 #![cfg(test)]
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, Vec};
+<<<<<<< HEAD
+=======
+use zk_verifier::verifier::{G1Point, G2Point};
+>>>>>>> upstream/master
 use zk_verifier::Proof;
 use zk_voting::merkle::{make_leaf, MerkleTree};
 use zk_voting::{ZkVoting, ZkVotingClient};
@@ -10,38 +15,87 @@ use zk_voting::{ZkVoting, ZkVotingClient};
 /// Build a valid Groth16 proof (matches Bn254Verifier mock rules:
 /// a[0]==1, c[0]==1, public_inputs[0][0]==1).
 fn valid_proof(env: &Env) -> (Proof, Vec<BytesN<32>>) {
+<<<<<<< HEAD
     let mut a = [0u8; 64];
     a[0] = 1;
     let mut b = [0u8; 128];
     let mut c = [0u8; 64];
     c[0] = 1;
+=======
+    // a is a G1Point: x=[1,0..], y=[0..]
+    let mut ax = [0u8; 32];
+    ax[0] = 1;
+    let ay = [0u8; 32];
+
+    // b is a G2Point: x=(x0,x1), y=(y0,y1) — all zeros is fine for the mock
+    let bx0 = [0u8; 32];
+    let bx1 = [0u8; 32];
+    let by0 = [0u8; 32];
+    let by1 = [0u8; 32];
+
+    // c is a G1Point: x=[1,0..], y=[0..]
+    let mut cx = [0u8; 32];
+    cx[0] = 1;
+    let cy = [0u8; 32];
+
+>>>>>>> upstream/master
     let mut pi = [0u8; 32];
     pi[0] = 1;
 
     let proof = Proof {
-        a: BytesN::from_array(env, &a),
-        b: BytesN::from_array(env, &b),
-        c: BytesN::from_array(env, &c),
+        a: G1Point {
+            x: BytesN::from_array(env, &ax),
+            y: BytesN::from_array(env, &ay),
+        },
+        b: G2Point {
+            x: (BytesN::from_array(env, &bx0), BytesN::from_array(env, &bx1)),
+            y: (BytesN::from_array(env, &by0), BytesN::from_array(env, &by1)),
+        },
+        c: G1Point {
+            x: BytesN::from_array(env, &cx),
+            y: BytesN::from_array(env, &cy),
+        },
     };
+
+    let mut pi = [0u8; 32];
+    pi[0] = 1;
+
     let mut inputs: Vec<BytesN<32>> = Vec::new(env);
     inputs.push_back(BytesN::from_array(env, &pi));
     (proof, inputs)
 }
 
-/// Build an invalid proof (a[0]==0 fails the mock verifier).
+/// Build an invalid proof (a.x[0]==0 fails the mock verifier).
 fn invalid_proof(env: &Env) -> (Proof, Vec<BytesN<32>>) {
+<<<<<<< HEAD
     let a = [0u8; 64];
     let b = [0u8; 128];
     let c = [0u8; 64];
     let pi = [0u8; 32];
+=======
+    // All-zero G1/G2 points — mock verifier rejects because a.x[0] != 1
+    let z32 = [0u8; 32];
+>>>>>>> upstream/master
 
     let proof = Proof {
-        a: BytesN::from_array(env, &a),
-        b: BytesN::from_array(env, &b),
-        c: BytesN::from_array(env, &c),
+        a: G1Point {
+            x: BytesN::from_array(env, &z32),
+            y: BytesN::from_array(env, &z32),
+        },
+        b: G2Point {
+            x: (BytesN::from_array(env, &z32), BytesN::from_array(env, &z32)),
+            y: (BytesN::from_array(env, &z32), BytesN::from_array(env, &z32)),
+        },
+        c: G1Point {
+            x: BytesN::from_array(env, &z32),
+            y: BytesN::from_array(env, &z32),
+        },
     };
+
+    let pi = [0u8; 32];
+
     let mut inputs: Vec<BytesN<32>> = Vec::new(env);
-    inputs.push_back(BytesN::from_array(env, &pi));
+    inputs.push_back(BytesN::from_array(env, &z32));
     (proof, inputs)
 }
 
@@ -57,7 +111,7 @@ fn setup() -> (Env, Address, ZkVotingClient<'static>, BytesN<32>) {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, ZkVoting);
+    let contract_id = env.register(ZkVoting, ());
     let client = ZkVotingClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
 
@@ -72,6 +126,32 @@ fn setup() -> (Env, Address, ZkVotingClient<'static>, BytesN<32>) {
     let root = tree.root();
 
     client.set_merkle_root(&admin, &root);
+
+    // Setup verification key
+    let g1 = zk_verifier::vk::G1Point {
+        x: BytesN::from_array(&env, &[0u8; 32]),
+        y: BytesN::from_array(&env, &[0u8; 32]),
+    };
+    let g2 = zk_verifier::vk::G2Point {
+        x: (
+            BytesN::from_array(&env, &[0u8; 32]),
+            BytesN::from_array(&env, &[0u8; 32]),
+        ),
+        y: (
+            BytesN::from_array(&env, &[0u8; 32]),
+            BytesN::from_array(&env, &[0u8; 32]),
+        ),
+    };
+    let mut ic = Vec::new(&env);
+    ic.push_back(g1.clone());
+    let vk = zk_verifier::vk::VerificationKey {
+        alpha_g1: g1.clone(),
+        beta_g2: g2.clone(),
+        gamma_g2: g2.clone(),
+        delta_g2: g2.clone(),
+        ic,
+    };
+    client.set_verification_key(&admin, &vk);
 
     (env, admin, client, root)
 }

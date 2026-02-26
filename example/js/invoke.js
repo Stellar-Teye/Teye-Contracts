@@ -1,7 +1,7 @@
 /**
  * Teye-Contracts: Node.js Integration Example
  * ----------------------------------------------
- * Demonstrates how to authenticate, simulate, and submit 
+ * Demonstrates how to authenticate, simulate, and submit
  * a transaction to a Teye-Contract.
  * * Install: npm install @stellar/stellar-sdk dotenv
  */
@@ -15,9 +15,9 @@ const RPC_URL = process.env.RPC_URL || "https://soroban-testnet.stellar.org";
 const NETWORK_PASSPHRASE = process.env.NETWORK_PASSPHRASE || Networks.TESTNET;
 const CONTRACT_ID = process.env.TEYE_CONTRACT_ID;
 
-// DO NOT commit your secret key to source control! 
+// DO NOT commit your secret key to source control!
 // Provide it via environment variables instead.
-const SECRET_KEY = process.env.SERVER_SECRET_KEY; 
+const SECRET_KEY = process.env.SERVER_SECRET_KEY;
 
 if (!CONTRACT_ID || !SECRET_KEY) {
     throw new Error("Missing required environment variables (TEYE_CONTRACT_ID or SERVER_SECRET_KEY). Please check your .env file.");
@@ -27,7 +27,7 @@ async function invokeTeyeContract() {
     console.log("Initializing connection...");
     const rpc = new SorobanRpc.Server(RPC_URL);
     const sourceKeypair = Keypair.fromSecret(SECRET_KEY);
-    
+
     // 1. Fetch account state
     const account = await rpc.getAccount(sourceKeypair.publicKey());
     const contract = new Contract(CONTRACT_ID);
@@ -35,7 +35,7 @@ async function invokeTeyeContract() {
     // 2. Build transaction
     console.log("Building transaction...");
     const tx = new TransactionBuilder(account, {
-        fee: "100", 
+        fee: "100",
         networkPassphrase: NETWORK_PASSPHRASE,
     })
     .addOperation(contract.call("create_record", nativeToScVal("Example Data")))
@@ -55,7 +55,7 @@ async function invokeTeyeContract() {
     // 5. Submit
     console.log("Submitting to network...");
     const response = await rpc.sendTransaction(assembledTx);
-    
+
     // FIX: Better error handling with XDR explanation
     if (response.status === "ERROR") {
         console.error(`❌ Submission failed. Raw Error XDR: ${response.errorResultXdr}`);
@@ -66,7 +66,7 @@ async function invokeTeyeContract() {
     // 6. Poll for success
     console.log(`Transaction sent! Hash: ${response.hash}. Polling...`);
     let txStatus = await rpc.getTransaction(response.hash);
-    
+
     // FIX: Bounded retry guard to prevent infinite looping
     const startTime = Date.now();
     const TIMEOUT_MS = 30000; // 30 seconds limit

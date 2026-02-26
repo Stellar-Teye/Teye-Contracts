@@ -6,7 +6,7 @@ use soroban_sdk::{
     Address, Env,
 };
 
-use crate::{ContractError, StakingContract, StakingContractClient};
+use crate::{rewards, ContractError, StakingContract, StakingContractClient};
 
 // ── Test helpers ─────────────────────────────────────────────────────────────
 
@@ -355,7 +355,7 @@ fn test_set_reward_rate_by_admin() {
 
     // Admin halves the rate at t=50.
     env.ledger().set_timestamp(50);
-    client.set_reward_rate(&admin, &5);
+    client.set_reward_rate(&admin, &5, &0);
     assert_eq!(client.get_reward_rate(), 5);
 
     // From t=0 to t=50: 10 × 50 = 500 earned at old rate.
@@ -370,7 +370,7 @@ fn test_set_reward_rate_by_non_admin_fails() {
     let (env, client, _admin, _stake_token, _) = setup(10, 0);
 
     let intruder = Address::generate(&env);
-    let result = client.try_set_reward_rate(&intruder, &999);
+    let result = client.try_set_reward_rate(&intruder, &999, &0);
     match result {
         Err(Ok(e)) => assert_eq!(e, ContractError::Unauthorized),
         _ => unreachable!("Expected Unauthorized error"),
@@ -381,7 +381,7 @@ fn test_set_reward_rate_by_non_admin_fails() {
 fn test_set_lock_period_by_admin() {
     let (_env, client, admin, _, _) = setup(10, 86_400);
 
-    client.set_lock_period(&admin, &172_800); // 2 days
+    client.set_lock_period(&admin, &172_800, &0); // 2 days
     assert_eq!(client.get_lock_period(), 172_800);
 }
 
@@ -397,11 +397,20 @@ fn test_rewards_after_rate_set_to_zero() {
 
     // Earn 10 × 50 = 500, then stop emissions.
     env.ledger().set_timestamp(50);
-    client.set_reward_rate(&admin, &0);
+    client.set_reward_rate(&admin, &0, &0);
 
     // Advance time — no further rewards should accrue.
     env.ledger().set_timestamp(1_000);
     assert_eq!(client.get_pending_rewards(&staker), 500);
+}
+
+#[test]
+fn test_reward_math_extreme_values_no_overflow() {
+    let rpt = rewards::compute_reward_per_token(0, i128::MAX, u64::MAX, 1);
+    assert_eq!(rpt, i128::MAX);
+
+    let earned = rewards::earned(1, rpt, 0, 0);
+    assert!(earned > 0);
 }
 
 // Input Validation Tests
@@ -475,7 +484,11 @@ fn test_delayed_reward_rate_proposal_and_apply() {
 
     // Propose a rate change at t=100; rate should remain unchanged.
     env.ledger().set_timestamp(100);
+<<<<<<< HEAD
     client.set_reward_rate(&admin, &20);
+=======
+    client.set_reward_rate(&admin, &20, &0);
+>>>>>>> upstream/master
     assert_eq!(client.get_reward_rate(), 10);
 
     // Verify proposal is stored.
@@ -496,7 +509,11 @@ fn test_apply_reward_rate_before_delay_fails() {
     client.set_rate_change_delay(&admin, &3_600);
 
     env.ledger().set_timestamp(100);
+<<<<<<< HEAD
     client.set_reward_rate(&admin, &20);
+=======
+    client.set_reward_rate(&admin, &20, &0);
+>>>>>>> upstream/master
 
     env.ledger().set_timestamp(3_699);
     let result = client.try_apply_reward_rate(&admin);
@@ -531,7 +548,11 @@ fn test_delayed_rate_change_rewards_are_correct() {
 
     // Propose rate increase at t=100.
     env.ledger().set_timestamp(100);
+<<<<<<< HEAD
     client.set_reward_rate(&admin, &20);
+=======
+    client.set_reward_rate(&admin, &20, &0);
+>>>>>>> upstream/master
 
     // Apply at t=3701. Old rate (10) active from t=0 to t=3701.
     env.ledger().set_timestamp(3_701);

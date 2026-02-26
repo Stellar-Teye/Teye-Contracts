@@ -167,7 +167,7 @@ fn test_contract_admin_can_set_reward_rate() {
     let contract_admin = Address::generate(&env);
 
     client.promote_admin(&admin, &contract_admin, &AdminTier::ContractAdmin);
-    client.set_reward_rate(&contract_admin, &20);
+    client.set_reward_rate(&contract_admin, &20, &0);
     assert_eq!(client.get_reward_rate(), 20);
 }
 
@@ -177,7 +177,7 @@ fn test_contract_admin_can_set_lock_period() {
     let contract_admin = Address::generate(&env);
 
     client.promote_admin(&admin, &contract_admin, &AdminTier::ContractAdmin);
-    client.set_lock_period(&contract_admin, &172_800);
+    client.set_lock_period(&contract_admin, &172_800, &0);
     assert_eq!(client.get_lock_period(), 172_800);
 }
 
@@ -186,7 +186,7 @@ fn test_contract_admin_can_set_lock_period() {
 #[test]
 fn test_super_admin_can_set_reward_rate() {
     let (_env, client, admin) = setup();
-    client.set_reward_rate(&admin, &50);
+    client.set_reward_rate(&admin, &50, &0);
     assert_eq!(client.get_reward_rate(), 50);
 }
 
@@ -199,7 +199,7 @@ fn test_operator_admin_cannot_set_reward_rate() {
 
     client.promote_admin(&admin, &operator, &AdminTier::OperatorAdmin);
 
-    let result = client.try_set_reward_rate(&operator, &99);
+    let result = client.try_set_reward_rate(&operator, &99, &0);
     match result {
         Err(Ok(e)) => assert_eq!(e, ContractError::Unauthorized),
         _ => unreachable!("Expected Unauthorized error"),
@@ -213,7 +213,7 @@ fn test_operator_admin_cannot_set_lock_period() {
 
     client.promote_admin(&admin, &operator, &AdminTier::OperatorAdmin);
 
-    let result = client.try_set_lock_period(&operator, &999);
+    let result = client.try_set_lock_period(&operator, &999, &0);
     match result {
         Err(Ok(e)) => assert_eq!(e, ContractError::Unauthorized),
         _ => unreachable!("Expected Unauthorized error"),
@@ -227,7 +227,7 @@ fn test_non_admin_cannot_set_reward_rate() {
     let (env, client, _admin) = setup();
     let intruder = Address::generate(&env);
 
-    let result = client.try_set_reward_rate(&intruder, &999);
+    let result = client.try_set_reward_rate(&intruder, &999, &0);
     match result {
         Err(Ok(e)) => assert_eq!(e, ContractError::Unauthorized),
         _ => unreachable!("Expected Unauthorized error"),

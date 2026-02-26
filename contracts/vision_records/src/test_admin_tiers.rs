@@ -1,7 +1,12 @@
 extern crate std;
 
+<<<<<<< HEAD
 use teye_common::admin_tiers::AdminTier;
 use soroban_sdk::{testutils::Address as _, Address, Env};
+=======
+use soroban_sdk::{testutils::Address as _, Address, Env};
+use teye_common::admin_tiers::AdminTier;
+>>>>>>> upstream/master
 
 use crate::{
     circuit_breaker::PauseScope, ContractError, VisionRecordsContract, VisionRecordsContractClient,
@@ -139,7 +144,7 @@ fn test_contract_admin_can_set_rate_limit() {
     let contract_admin = Address::generate(&env);
 
     client.promote_admin(&admin, &contract_admin, &AdminTier::ContractAdmin);
-    client.set_rate_limit_config(&contract_admin, &100, &3600);
+    client.set_rate_limit_config(&contract_admin, &100, &3600, &0u64);
 
     let config = client.get_rate_limit_config();
     assert_eq!(config, Some((100, 3600)));
@@ -185,7 +190,7 @@ fn test_contract_admin_can_remove_from_whitelist() {
 #[test]
 fn test_super_admin_can_set_rate_limit() {
     let (_env, client, admin) = setup();
-    client.set_rate_limit_config(&admin, &50, &1800);
+    client.set_rate_limit_config(&admin, &50, &1800, &0u64);
     let config = client.get_rate_limit_config();
     assert_eq!(config, Some((50, 1800)));
 }
@@ -223,7 +228,7 @@ fn test_operator_admin_cannot_set_rate_limit() {
 
     client.promote_admin(&admin, &operator, &AdminTier::OperatorAdmin);
 
-    let result = client.try_set_rate_limit_config(&operator, &100, &3600);
+    let result = client.try_set_rate_limit_config(&operator, &100, &3600, &0u64);
     match result {
         Err(Ok(e)) => assert_eq!(e, ContractError::Unauthorized),
         _ => unreachable!("Expected Unauthorized error"),
@@ -251,7 +256,7 @@ fn test_non_admin_cannot_set_rate_limit() {
     let (env, client, _admin) = setup();
     let intruder = Address::generate(&env);
 
-    let result = client.try_set_rate_limit_config(&intruder, &100, &3600);
+    let result = client.try_set_rate_limit_config(&intruder, &100, &3600, &0u64);
     match result {
         Err(Ok(e)) => assert_eq!(e, ContractError::Unauthorized),
         _ => unreachable!("Expected Unauthorized error"),
@@ -286,13 +291,13 @@ fn test_demoted_contract_admin_cannot_set_rate_limit() {
     let contract_admin = Address::generate(&env);
 
     client.promote_admin(&admin, &contract_admin, &AdminTier::ContractAdmin);
-    client.set_rate_limit_config(&contract_admin, &100, &3600);
+    client.set_rate_limit_config(&contract_admin, &100, &3600, &0u64);
 
     // Demote
     client.demote_admin(&admin, &contract_admin);
 
     // Should now fail
-    let result = client.try_set_rate_limit_config(&contract_admin, &200, &7200);
+    let result = client.try_set_rate_limit_config(&contract_admin, &200, &7200, &0u64);
     match result {
         Err(Ok(e)) => assert_eq!(e, ContractError::Unauthorized),
         _ => unreachable!("Expected Unauthorized error"),

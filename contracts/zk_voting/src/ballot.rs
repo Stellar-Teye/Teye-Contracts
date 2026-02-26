@@ -11,6 +11,7 @@ pub enum DataKey {
     Nullifier(BytesN<32>),
     Closed,
     MerkleRoot,
+    VerificationKey,
 }
 
 #[contracterror]

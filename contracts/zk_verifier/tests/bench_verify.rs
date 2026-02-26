@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::arithmetic_side_effects
+)]
 #![cfg(test)]
 
 //! Benchmark suite for ZK proof verification.
@@ -45,6 +49,7 @@ fn make_request(env: &Env, user: &Address, num_inputs: u32) -> AccessRequest {
         proof_b,
         proof_c,
         &pi_refs,
+        env.ledger().timestamp() + 1000,
     )
 }
 
@@ -71,7 +76,7 @@ fn bench_verify_access(
     request: &AccessRequest,
 ) {
     env.cost_estimate().budget().reset_default();
-    let _result = client.verify_access(request);
+    let _result = client.try_verify_access(request);
 
     let cpu = env.cost_estimate().budget().cpu_instruction_cost();
     let mem = env.cost_estimate().budget().memory_bytes_cost();
@@ -182,7 +187,7 @@ fn regression_single_input_cpu_budget() {
     let request = make_request(&env, &user, 1);
 
     env.cost_estimate().budget().reset_default();
-    let _result = client.verify_access(&request);
+    let _result = client.try_verify_access(&request);
 
     let cpu = env.cost_estimate().budget().cpu_instruction_cost();
     println!(
@@ -205,7 +210,7 @@ fn regression_max_inputs_cpu_budget() {
     let request = make_request(&env, &user, 16);
 
     env.cost_estimate().budget().reset_default();
-    let _result = client.verify_access(&request);
+    let _result = client.try_verify_access(&request);
 
     let cpu = env.cost_estimate().budget().cpu_instruction_cost();
     println!(
@@ -231,7 +236,7 @@ fn regression_max_inputs_memory_budget() {
     let request = make_request(&env, &user, 16);
 
     env.cost_estimate().budget().reset_default();
-    let _result = client.verify_access(&request);
+    let _result = client.try_verify_access(&request);
 
     let mem = env.cost_estimate().budget().memory_bytes_cost();
     println!(
@@ -256,13 +261,13 @@ fn regression_scaling_factor() {
     // Measure single-input cost.
     let req1 = make_request(&env, &user, 1);
     env.cost_estimate().budget().reset_default();
-    let _r1 = client.verify_access(&req1);
+    let _r1 = client.try_verify_access(&req1);
     let cpu1 = env.cost_estimate().budget().cpu_instruction_cost();
 
     // Measure max-input cost (16).
     let req16 = make_request(&env, &user, 16);
     env.cost_estimate().budget().reset_default();
-    let _r16 = client.verify_access(&req16);
+    let _r16 = client.try_verify_access(&req16);
     let cpu16 = env.cost_estimate().budget().cpu_instruction_cost();
 
     // Allow up to 4× linear scaling (generous margin).

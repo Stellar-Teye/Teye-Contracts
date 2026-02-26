@@ -8,6 +8,19 @@ pub const PRECISION: i128 = 1_000_000_000_000;
 
 // ── Core reward engine ──────────────────────────────────────────────────────
 
+fn saturating_mul_checked(a: i128, b: i128) -> i128 {
+    match a.checked_mul(b) {
+        Some(v) => v,
+        None => {
+            if (a >= 0) == (b >= 0) {
+                i128::MAX
+            } else {
+                i128::MIN
+            }
+        }
+    }
+}
+
 /// Recompute the global `reward_per_token_stored` value.
 ///
 /// This is the fundamental O(1) accumulation step:
@@ -38,10 +51,15 @@ pub fn compute_reward_per_token(
 
     // Widen to i128 — reward_rate and PRECISION fit comfortably.
     // elapsed is u64; cast to i128 is safe since u64::MAX < i128::MAX.
-    let delta = reward_rate
-        .saturating_mul(elapsed as i128)
-        .saturating_mul(PRECISION)
-        / total_staked;
+    let rate_mul = saturating_mul_checked(reward_rate, elapsed as i128);
+    let scaled = saturating_mul_checked(rate_mul, PRECISION);
+    let delta = scaled.checked_div(total_staked).unwrap_or({
+        if scaled >= 0 {
+            i128::MAX
+        } else {
+            i128::MIN
+        }
+    });
 
     stored.saturating_add(delta)
 }
@@ -63,7 +81,12 @@ pub fn compute_reward_per_token(
 /// * `user_earned`   – already-accumulated rewards not yet claimed
 #[allow(clippy::arithmetic_side_effects)]
 pub fn earned(staked: i128, current_rpt: i128, user_rpt_paid: i128, user_earned: i128) -> i128 {
-    let new_rewards = staked.saturating_mul(current_rpt.saturating_sub(user_rpt_paid)) / PRECISION;
+    let delta_rpt = current_rpt.saturating_sub(user_rpt_paid);
+    let numer = saturating_mul_checked(staked, delta_rpt);
+    let new_rewards =
+        numer
+            .checked_div(PRECISION)
+            .unwrap_or(if numer >= 0 { i128::MAX } else { i128::MIN });
 
     user_earned.saturating_add(new_rewards)
 }

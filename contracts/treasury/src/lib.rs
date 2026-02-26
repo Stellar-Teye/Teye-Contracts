@@ -13,6 +13,9 @@ const CONFIG: Symbol = symbol_short!("CONFIG");
 const PROPOSAL_CTR: Symbol = symbol_short!("PR_CTR");
 const PROPOSAL: Symbol = symbol_short!("PROPOSAL");
 const ALLOCATION: Symbol = symbol_short!("ALLOC");
+// Stores the registered Governor contract address that may authorise spends
+// without going through the normal multisig path.
+const GOVERNOR: Symbol = symbol_short!("GOVERNOR");
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -75,6 +78,9 @@ pub enum ContractError {
     ProposalNotPending = 10,
     ProposalExpired = 11,
     InsufficientApprovals = 12,
+    // Returned when a caller other than the registered Governor contract
+    // attempts to use the `governor_spend` entry-point.
+    NotAuthorizedCaller = 13,
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -160,6 +166,74 @@ impl TreasuryContract {
 
     pub fn get_config(env: Env) -> Result<TreasuryConfig, ContractError> {
         load_config(&env)
+    }
+
+    // ── Governor integration ──────────────────────────────────────────────────
+
+    /// Register the Governor DAO contract address.
+    ///
+    /// Once set, the Governor may call `governor_spend` directly without going
+    /// through the multisig path — the governance vote itself serves as the
+    /// multi-party approval.  Only the treasury admin may set this.
+    pub fn set_governor(env: Env, caller: Address, governor: Address) -> Result<(), ContractError> {
+        caller.require_auth();
+        let cfg = load_config(&env)?;
+        if caller != cfg.admin {
+            return Err(ContractError::NotAuthorizedCaller);
+        }
+        env.storage().instance().set(&GOVERNOR, &governor);
+        Ok(())
+    }
+
+    /// Return the registered Governor contract address, if any.
+    pub fn get_governor(env: Env) -> Option<Address> {
+        env.storage().instance().get(&GOVERNOR)
+    }
+
+    /// Execute a treasury spend authorised by the Governor DAO.
+    ///
+    /// Called by the Governor contract during proposal execution.  The caller
+    /// must be the registered Governor contract address set via `set_governor`.
+    ///
+    /// This bypasses the normal multisig path because the governance proposal
+    /// itself serves as the multi-party approval mechanism.  Spend amounts are
+    /// tracked under the `"GOVERN"` allocation category for reporting.
+    pub fn governor_spend(
+        env: Env,
+        caller: Address,
+        to: Address,
+        amount: i128,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+
+        // Only the registered governor may use this entry-point.
+        let governor: Address = env
+            .storage()
+            .instance()
+            .get(&GOVERNOR)
+            .ok_or(ContractError::NotAuthorizedCaller)?;
+        if caller != governor {
+            return Err(ContractError::NotAuthorizedCaller);
+        }
+
+        if amount <= 0 {
+            return Err(ContractError::PositiveAmountRequired);
+        }
+
+        let cfg = load_config(&env)?;
+        token::Client::new(&env, &cfg.token).transfer(
+            &env.current_contract_address(),
+            &to,
+            &amount,
+        );
+
+        // Track governance-initiated spends under their own allocation category.
+        let key = allocation_key(&symbol_short!("GOVERN"));
+        let mut spent: i128 = env.storage().instance().get(&key).unwrap_or(0);
+        spent = spent.saturating_add(amount);
+        env.storage().instance().set(&key, &spent);
+
+        Ok(())
     }
 
     // ── Proposal lifecycle ────────────────────────────────────────────────────

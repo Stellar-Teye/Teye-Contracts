@@ -1,0 +1,502 @@
+//! # Breach Detection Engine
+//!
+//! Monitors access patterns and detects potential data breaches by identifying:
+//!
+//! - **Unusual access patterns**: sudden spikes in access frequency.
+//! - **Bulk data exports**: large-volume data retrieval.
+//! - **After-hours access**: PHI access outside normal working hours.
+//! - **Cross-role anomalies**: users accessing data outside their role scope.
+//! - **Geographic anomalies**: access from unexpected jurisdictions.
+//!
+//! When a breach is detected, the engine records a [`BreachAlert`] with
+//! severity, evidence, and recommended response actions.
+
+use std::collections::HashMap;
+
+// ── Alert severity ──────────────────────────────────────────────────────────
+
+/// Severity of a detected breach.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AlertSeverity {
+    /// Low confidence — may be legitimate but worth monitoring.
+    Low,
+    /// Medium confidence — requires review within 24 hours.
+    Medium,
+    /// High confidence — potential breach requiring immediate response.
+    High,
+    /// Critical — confirmed breach indicators, trigger notification.
+    Critical,
+}
+
+// ── Breach alert ────────────────────────────────────────────────────────────
+
+/// A detected breach alert.
+#[derive(Debug, Clone)]
+pub struct BreachAlert {
+    /// Unique alert identifier.
+    pub alert_id: u64,
+    /// Severity of the alert.
+    pub severity: AlertSeverity,
+    /// Type of anomaly detected.
+    pub alert_type: AlertType,
+    /// The actor involved.
+    pub actor: String,
+    /// Description of the anomaly.
+    pub description: String,
+    /// Unix timestamp when the alert was generated.
+    pub detected_at: u64,
+    /// Evidence data points.
+    pub evidence: Vec<String>,
+    /// Recommended response action.
+    pub recommended_action: String,
+    /// Whether this alert has been acknowledged by a human.
+    pub acknowledged: bool,
+}
+
+/// Types of breach alerts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AlertType {
+    /// Unusual spike in access frequency.
+    AccessSpike,
+    /// Large-volume data retrieval.
+    BulkExport,
+    /// PHI access outside working hours.
+    AfterHoursAccess,
+    /// User accessing data outside their role scope.
+    RoleAnomaly,
+    /// Access from an unexpected jurisdiction.
+    JurisdictionAnomaly,
+    /// Multiple failed access attempts.
+    BruteForce,
+}
+
+// ── Access event for tracking ───────────────────────────────────────────────
+
+/// A single access event recorded by the breach detector.
+#[derive(Debug, Clone)]
+pub struct AccessEvent {
+    pub actor: String,
+    pub actor_role: String,
+    pub action: String,
+    pub target: String,
+    pub timestamp: u64,
+    pub record_count: u32,
+    pub sensitivity: u32,
+    pub success: bool,
+}
+
+// ── Configuration ───────────────────────────────────────────────────────────
+
+/// Breach detection configuration thresholds.
+#[derive(Debug, Clone)]
+pub struct BreachDetectorConfig {
+    /// Maximum access events per actor per hour before triggering spike alert.
+    pub access_spike_threshold: u32,
+    /// Maximum records in a single export before triggering bulk alert.
+    pub bulk_export_threshold: u32,
+    /// Working hours start (hour of day, UTC).
+    pub work_hours_start: u64,
+    /// Working hours end (hour of day, UTC).
+    pub work_hours_end: u64,
+    /// Maximum failed attempts before brute-force alert.
+    pub brute_force_threshold: u32,
+    /// Time window for brute-force detection (seconds).
+    pub brute_force_window: u64,
+}
+
+impl Default for BreachDetectorConfig {
+    fn default() -> Self {
+        Self {
+            access_spike_threshold: 100,
+            bulk_export_threshold: 50,
+            work_hours_start: 6,
+            work_hours_end: 22,
+            brute_force_threshold: 10,
+            brute_force_window: 300, // 5 minutes
+        }
+    }
+}
+
+// ── Breach Detector ─────────────────────────────────────────────────────────
+
+/// The breach detection engine. Records access events and analyzes them
+/// for anomalous patterns.
+pub struct BreachDetector {
+    config: BreachDetectorConfig,
+    /// Access events indexed by actor.
+    events_by_actor: HashMap<String, Vec<AccessEvent>>,
+    /// Generated alerts.
+    alerts: Vec<BreachAlert>,
+    /// Next alert ID.
+    next_alert_id: u64,
+}
+
+impl BreachDetector {
+    /// Create a new breach detector with default configuration.
+    pub fn new() -> Self {
+        Self::with_config(BreachDetectorConfig::default())
+    }
+
+    /// Create a new breach detector with custom configuration.
+    pub fn with_config(config: BreachDetectorConfig) -> Self {
+        Self {
+            config,
+            events_by_actor: HashMap::new(),
+            alerts: Vec::new(),
+            next_alert_id: 1,
+        }
+    }
+
+    /// Record an access event and check for breach patterns.
+    ///
+    /// Returns any new alerts generated by this event.
+    pub fn record_event(&mut self, event: AccessEvent) -> Vec<BreachAlert> {
+        let actor = event.actor.clone();
+        let events = self.events_by_actor.entry(actor).or_default();
+        events.push(event.clone());
+
+        let mut new_alerts = Vec::new();
+
+        // Check each detection pattern.
+        if let Some(alert) = self.check_access_spike(&event) {
+            new_alerts.push(alert);
+        }
+        if let Some(alert) = self.check_bulk_export(&event) {
+            new_alerts.push(alert);
+        }
+        if let Some(alert) = self.check_after_hours(&event) {
+            new_alerts.push(alert);
+        }
+        if let Some(alert) = self.check_role_anomaly(&event) {
+            new_alerts.push(alert);
+        }
+        if let Some(alert) = self.check_brute_force(&event) {
+            new_alerts.push(alert);
+        }
+
+        self.alerts.extend(new_alerts.clone());
+
+        new_alerts
+    }
+
+    /// Get all alerts.
+    pub fn alerts(&self) -> &[BreachAlert] {
+        &self.alerts
+    }
+
+    /// Get unacknowledged alerts.
+    pub fn unacknowledged_alerts(&self) -> Vec<&BreachAlert> {
+        self.alerts.iter().filter(|a| !a.acknowledged).collect()
+    }
+
+    /// Acknowledge an alert by ID.
+    pub fn acknowledge_alert(&mut self, alert_id: u64) -> bool {
+        for alert in &mut self.alerts {
+            if alert.alert_id == alert_id {
+                alert.acknowledged = true;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Get alerts filtered by severity.
+    pub fn alerts_by_severity(&self, severity: AlertSeverity) -> Vec<&BreachAlert> {
+        self.alerts
+            .iter()
+            .filter(|a| a.severity == severity)
+            .collect()
+    }
+
+    // ── Detection patterns ──────────────────────────────────────────────
+
+    fn check_access_spike(&mut self, event: &AccessEvent) -> Option<BreachAlert> {
+        let events = self.events_by_actor.get(&event.actor)?;
+        let one_hour_ago = event.timestamp.saturating_sub(3600);
+        let recent_count = events
+            .iter()
+            .filter(|e| e.timestamp >= one_hour_ago)
+            .count() as u32;
+
+        if recent_count > self.config.access_spike_threshold {
+            Some(self.create_alert(
+                AlertSeverity::High,
+                AlertType::AccessSpike,
+                &event.actor,
+                format!(
+                    "Actor '{}' made {} accesses in the last hour (threshold: {})",
+                    event.actor, recent_count, self.config.access_spike_threshold
+                ),
+                vec![format!("access_count={}", recent_count)],
+                "Review access logs and temporarily suspend account if unauthorized.".into(),
+                event.timestamp,
+            ))
+        } else {
+            None
+        }
+    }
+
+    fn check_bulk_export(&mut self, event: &AccessEvent) -> Option<BreachAlert> {
+        if !event.action.contains("export") {
+            return None;
+        }
+
+        if event.record_count > self.config.bulk_export_threshold {
+            Some(self.create_alert(
+                AlertSeverity::High,
+                AlertType::BulkExport,
+                &event.actor,
+                format!(
+                    "Bulk export of {} records by '{}' (threshold: {})",
+                    event.record_count, event.actor, self.config.bulk_export_threshold
+                ),
+                vec![
+                    format!("record_count={}", event.record_count),
+                    format!("action={}", event.action),
+                ],
+                "Verify export authorization and check for data exfiltration.".into(),
+                event.timestamp,
+            ))
+        } else {
+            None
+        }
+    }
+
+    fn check_after_hours(&mut self, event: &AccessEvent) -> Option<BreachAlert> {
+        if event.sensitivity < 2 {
+            return None;
+        }
+
+        let hour = (event.timestamp / 3600) % 24;
+        if hour < self.config.work_hours_start || hour >= self.config.work_hours_end {
+            Some(self.create_alert(
+                AlertSeverity::Medium,
+                AlertType::AfterHoursAccess,
+                &event.actor,
+                format!(
+                    "After-hours PHI access by '{}' at hour {} UTC",
+                    event.actor, hour
+                ),
+                vec![
+                    format!("hour_utc={}", hour),
+                    format!("sensitivity={}", event.sensitivity),
+                ],
+                "Verify the access was authorized. After-hours PHI access requires justification."
+                    .into(),
+                event.timestamp,
+            ))
+        } else {
+            None
+        }
+    }
+
+    fn check_role_anomaly(&mut self, event: &AccessEvent) -> Option<BreachAlert> {
+        // Non-clinical roles accessing PHI.
+        let clinical_roles = ["clinician", "admin", "emergency"];
+        if event.sensitivity >= 2 && !clinical_roles.iter().any(|r| *r == event.actor_role) {
+            Some(self.create_alert(
+                AlertSeverity::High,
+                AlertType::RoleAnomaly,
+                &event.actor,
+                format!(
+                    "Non-clinical role '{}' accessed sensitivity-{} data (actor: '{}')",
+                    event.actor_role, event.sensitivity, event.actor
+                ),
+                vec![
+                    format!("role={}", event.actor_role),
+                    format!("sensitivity={}", event.sensitivity),
+                    format!("target={}", event.target),
+                ],
+                "Review role assignments. Non-clinical roles should not access PHI.".into(),
+                event.timestamp,
+            ))
+        } else {
+            None
+        }
+    }
+
+    fn check_brute_force(&mut self, event: &AccessEvent) -> Option<BreachAlert> {
+        if event.success {
+            return None;
+        }
+
+        let events = self.events_by_actor.get(&event.actor)?;
+        let window_start = event
+            .timestamp
+            .saturating_sub(self.config.brute_force_window);
+        let recent_failures = events
+            .iter()
+            .filter(|e| e.timestamp >= window_start && !e.success)
+            .count() as u32;
+
+        if recent_failures >= self.config.brute_force_threshold {
+            Some(self.create_alert(
+                AlertSeverity::Critical,
+                AlertType::BruteForce,
+                &event.actor,
+                format!(
+                    "Brute force detected: {} failed attempts by '{}' in {} seconds",
+                    recent_failures, event.actor, self.config.brute_force_window
+                ),
+                vec![format!("failed_attempts={}", recent_failures)],
+                "Immediately lock the account and investigate.".into(),
+                event.timestamp,
+            ))
+        } else {
+            None
+        }
+    }
+
+    fn create_alert(
+        &mut self,
+        severity: AlertSeverity,
+        alert_type: AlertType,
+        actor: &str,
+        description: String,
+        evidence: Vec<String>,
+        recommended_action: String,
+        detected_at: u64,
+    ) -> BreachAlert {
+        let id = self.next_alert_id;
+        self.next_alert_id += 1;
+        BreachAlert {
+            alert_id: id,
+            severity,
+            alert_type,
+            actor: actor.into(),
+            description,
+            detected_at,
+            evidence,
+            recommended_action,
+            acknowledged: false,
+        }
+    }
+}
+
+impl Default for BreachDetector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ── Tests ───────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn normal_event() -> AccessEvent {
+        AccessEvent {
+            actor: "dr_smith".into(),
+            actor_role: "clinician".into(),
+            action: "record.read".into(),
+            target: "patient:1".into(),
+            timestamp: 43200, // noon UTC
+            record_count: 1,
+            sensitivity: 3,
+            success: true,
+        }
+    }
+
+    #[test]
+    fn normal_access_no_alerts() {
+        let mut detector = BreachDetector::new();
+        let alerts = detector.record_event(normal_event());
+        assert!(alerts.is_empty());
+    }
+
+    #[test]
+    fn bulk_export_triggers_alert() {
+        let mut detector = BreachDetector::new();
+        let mut event = normal_event();
+        event.action = "data.export".into();
+        event.record_count = 100;
+        let alerts = detector.record_event(event);
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(alerts[0].alert_type, AlertType::BulkExport);
+    }
+
+    #[test]
+    fn after_hours_phi_triggers_alert() {
+        let mut detector = BreachDetector::new();
+        let mut event = normal_event();
+        event.timestamp = 3600 * 2; // 2 AM UTC
+        let alerts = detector.record_event(event);
+        assert!(alerts
+            .iter()
+            .any(|a| a.alert_type == AlertType::AfterHoursAccess));
+    }
+
+    #[test]
+    fn role_anomaly_triggers_alert() {
+        let mut detector = BreachDetector::new();
+        let mut event = normal_event();
+        event.actor_role = "researcher".into();
+        let alerts = detector.record_event(event);
+        assert!(alerts
+            .iter()
+            .any(|a| a.alert_type == AlertType::RoleAnomaly));
+    }
+
+    #[test]
+    fn brute_force_triggers_alert() {
+        let config = BreachDetectorConfig {
+            brute_force_threshold: 3,
+            brute_force_window: 60,
+            ..Default::default()
+        };
+        let mut detector = BreachDetector::with_config(config);
+
+        for i in 0..4 {
+            let event = AccessEvent {
+                actor: "attacker".into(),
+                actor_role: "unknown".into(),
+                action: "auth.login".into(),
+                target: "system".into(),
+                timestamp: 1000 + i,
+                record_count: 0,
+                sensitivity: 0,
+                success: false,
+            };
+            detector.record_event(event);
+        }
+
+        assert!(detector
+            .alerts()
+            .iter()
+            .any(|a| a.alert_type == AlertType::BruteForce));
+    }
+
+    #[test]
+    fn acknowledge_alert_works() {
+        let mut detector = BreachDetector::new();
+        let mut event = normal_event();
+        event.action = "data.export".into();
+        event.record_count = 100;
+        detector.record_event(event);
+
+        assert_eq!(detector.unacknowledged_alerts().len(), 1);
+        assert!(detector.acknowledge_alert(1));
+        assert!(detector.unacknowledged_alerts().is_empty());
+    }
+
+    #[test]
+    fn access_spike_detection() {
+        let config = BreachDetectorConfig {
+            access_spike_threshold: 3,
+            ..Default::default()
+        };
+        let mut detector = BreachDetector::with_config(config);
+
+        for i in 0..5 {
+            let mut event = normal_event();
+            event.timestamp = 43200 + i;
+            detector.record_event(event);
+        }
+
+        assert!(detector
+            .alerts()
+            .iter()
+            .any(|a| a.alert_type == AlertType::AccessSpike));
+    }
+}

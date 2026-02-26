@@ -1,9 +1,16 @@
 #![no_std]
 
+pub mod bridge;
 pub mod events;
+pub mod merkle_tree;
+pub mod relay;
+
+pub use bridge::{BridgeError, ExportPackage};
+pub use merkle_tree::{FieldProof, MerkleProof};
+pub use relay::StateRootAnchor;
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Bytes, Env, String, Symbol,
+    contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, String, Symbol,
 };
 
 /// Storage keys
@@ -201,6 +208,42 @@ impl CrossChainContract {
         } else {
             Err(CrossChainError::UnsupportedAction)
         }
+    }
+
+    pub fn export_record(
+        env: Env,
+        record_id: BytesN<32>,
+        fields: Option<soroban_sdk::Vec<Symbol>>,
+    ) -> ExportPackage {
+        let _ = fields;
+
+        let record_data = Bytes::from_slice(&env, &record_id.to_array());
+        let all_fields: soroban_sdk::Vec<merkle_tree::FieldEntry> = soroban_sdk::Vec::new(&env);
+
+        bridge::export_record(
+            &env,
+            record_id,
+            record_data,
+            all_fields,
+            None,
+            symbol_short!("LOCAL"),
+        )
+    }
+
+    pub fn import_record(
+        env: Env,
+        package: ExportPackage,
+        anchored_root: BytesN<32>,
+    ) -> Result<(), BridgeError> {
+        bridge::import_record(&env, package, anchored_root, 0)
+    }
+
+    pub fn anchor_state_root(env: Env, root: BytesN<32>, chain_id: Symbol) {
+        relay::anchor_state_root(&env, root.to_array(), chain_id);
+    }
+
+    pub fn get_latest_root(env: Env, chain_id: Symbol) -> Option<StateRootAnchor> {
+        relay::get_latest_root(&env, chain_id)
     }
 }
 

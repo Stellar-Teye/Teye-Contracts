@@ -1,5 +1,3 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
 #[derive(Debug, Clone)]
 pub struct RetentionPolicy {
     pub id: String,
@@ -13,11 +11,7 @@ pub struct RetentionManager {
 }
 
 impl RetentionManager {
-    pub fn new() -> Self {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+    pub fn new(now: u64) -> Self {
         Self {
             policies: vec![],
             created_at: now,
@@ -31,13 +25,9 @@ impl RetentionManager {
         });
     }
 
-    pub fn should_purge(&self, created: u64, policy_id: &str) -> bool {
+    pub fn should_purge(&self, created: u64, policy_id: &str, now: u64) -> bool {
         if let Some(p) = self.policies.iter().find(|p| p.id == policy_id) {
-            return created.saturating_add(p.retention_seconds)
-                <= SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs();
+            return created.saturating_add(p.retention_seconds) <= now;
         }
         false
     }
