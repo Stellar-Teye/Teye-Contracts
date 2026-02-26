@@ -1,5 +1,6 @@
 use soroban_sdk::{Bytes, Env, Map, Symbol};
 
+// Import the migration logic from the sibling module
 use crate::migration::{
     lazy_read, lazy_write, set_stored_version, stored_version, MigrationError, SchemaVersion,
     CURRENT_VERSION,
@@ -36,6 +37,7 @@ pub fn write_record(
     mut data: Map<Symbol, Bytes>,
     from_ver: SchemaVersion,
 ) -> Result<(), MigrationError> {
+    // This ensures data is migrated to CURRENT_VERSION before saving
     let migrated_ver = lazy_write(env, &mut data, from_ver)?;
 
     let rk = record_key(env, record_id);
@@ -61,6 +63,7 @@ pub fn read_record(env: &Env, record_id: u64) -> Result<Option<VersionedRecord>,
     let record_ver: SchemaVersion = env.storage().persistent().get(&vk).unwrap_or(1u32);
 
     let mut migrated = data;
+    // This migrates old data on-the-fly when read from disk
     let new_ver = lazy_read(env, &mut migrated, record_ver)?;
 
     Ok(Some(VersionedRecord {

@@ -13,7 +13,6 @@ doctest = false
 
 [features]
 default = []
-std = []
 testutils = ["soroban-sdk/testutils"]
 
 [dependencies]

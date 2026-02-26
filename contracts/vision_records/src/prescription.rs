@@ -51,7 +51,19 @@ pub struct Prescription {
     pub metadata_hash: String,
 }
 
+// --- NEW HELPER FOR LIB.RS ---
+/// Fixes Error #12: Missing function add_to_patient_history
+/// This acts as a simplified entry point for the main contract logic.
+pub fn add_to_patient_history(env: &Env, _patient: Address, record: Prescription) {
+    save_prescription(env, &record, None);
+}
+
 /// Persists a prescription and initialises its lineage node.
+pub fn save_prescription(
+    env: &Env,
+    prescription: &Prescription,
+    exam_record_id: Option<u64>,
+) {
 ///
 /// If `derived_from_exam_id` is `Some(exam_id)`, a `DerivedFrom` edge is
 /// added linking this prescription back to the source examination.  This is
@@ -133,14 +145,6 @@ pub fn verify_prescription(env: &Env, id: u64, verifier: Address) -> bool {
     false
 }
 
-/// Performs a versioned (OCC) update of a prescription record.
-///
-/// The caller supplies the `expected_version` they read before making edits,
-/// a `node_id` for the vector clock, and a list of field-level changes.
-/// A `ModifiedBy` lineage edge is recorded for every successful update.
-///
-/// Returns [`UpdateOutcome`] indicating whether the update was applied,
-/// merged, or queued as a conflict.
 pub fn versioned_save_prescription(
     env: &Env,
     prescription: &Prescription,
@@ -164,7 +168,6 @@ pub fn versioned_save_prescription(
             env.storage().persistent().set(&key, prescription);
             concurrency::save_field_snapshot(env, prescription.id, changed_fields);
 
-            // Lineage: record a ModifiedBy edge for each successful mutation.
             lineage::add_edge(
                 env,
                 prescription.id,
@@ -174,15 +177,12 @@ pub fn versioned_save_prescription(
                 None,
             );
         }
-        UpdateOutcome::Conflicted(_) => {
-            // Prescription is not updated — conflict must be resolved first.
-        }
+        UpdateOutcome::Conflicted(_) => {}
     }
 
     outcome
 }
 
-/// Retrieves the current OCC version stamp for a prescription.
 pub fn get_prescription_version(env: &Env, id: u64) -> VersionStamp {
     concurrency::get_version_stamp(env, id)
 }
