@@ -166,7 +166,7 @@ impl PlonkVerifier {
         ];
 
         for limb in &limbs {
-            if Self::bytes_all_zero(limb) {
+            if Self::bytes_all_zero(*limb) {
                 return false;
             }
         }

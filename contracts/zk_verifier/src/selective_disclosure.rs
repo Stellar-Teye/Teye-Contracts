@@ -256,16 +256,10 @@ impl SelectiveDisclosureVerifier {
 /// Convert a Symbol to a deterministic 32-byte representation by hashing.
 fn symbol_to_bytes32(env: &Env, sym: &soroban_sdk::Symbol) -> BytesN<32> {
     let mut buf = Bytes::new(env);
-    // Symbols in Soroban are small strings; convert to fixed-size for hashing.
-    let sym_str = sym.to_string();
-    let len = sym_str.len();
-    let mut i: u32 = 0;
-    while i < len {
-        if let Some(byte) = sym_str.get(i) {
-            buf.push_back(byte as u8);
-        }
-        i += 1;
-    }
+    // Symbols in Soroban are represented as u64 values; convert to bytes for hashing.
+    let sym_val = sym.to_val();
+    let sym_u64 = sym_val.get_payload();
+    buf.extend_from_array(&sym_u64.to_be_bytes());
     // Pad and hash to get a consistent 32-byte output.
     env.crypto().keccak256(&buf).into()
 }
