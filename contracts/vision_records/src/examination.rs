@@ -2,7 +2,9 @@
 use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol, Vec};
 use teye_common::concurrency::{self, FieldChange, UpdateOutcome, VersionStamp};
 use teye_common::lineage::{self, RelationshipKind};
-use teye_common::state_machine::{self, EntityKind, LifecycleState, TransitionContext, TransitionRecord};
+use teye_common::state_machine::{
+    self, EntityKind, LifecycleState, TransitionContext, TransitionRecord,
+};
 
 const TTL_THRESHOLD: u32 = 5184000;
 const TTL_EXTEND_TO: u32 = 10368000;
@@ -137,13 +139,8 @@ pub fn set_examination(env: &Env, exam: &EyeExamination, provider: &Address) {
     extend_ttl_exam_key(env, &key);
 
     // Lineage: create or extend the provenance node for this examination.
-    let (_, is_new) = lineage::create_node(
-        env,
-        exam.record_id,
-        provider.clone(),
-        "Examination",
-        None,
-    );
+    let (_, is_new) =
+        lineage::create_node(env, exam.record_id, provider.clone(), "Examination", None);
 
     if is_new {
         // Genesis edge: Created(provider → record)

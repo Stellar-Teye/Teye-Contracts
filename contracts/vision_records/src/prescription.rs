@@ -1,7 +1,9 @@
 use soroban_sdk::{contracttype, Address, Env, String, Vec};
 use teye_common::concurrency::{self, FieldChange, UpdateOutcome, VersionStamp};
 use teye_common::lineage::{self, RelationshipKind};
-use teye_common::state_machine::{self, EntityKind, LifecycleState, TransitionContext, TransitionRecord};
+use teye_common::state_machine::{
+    self, EntityKind, LifecycleState, TransitionContext, TransitionRecord,
+};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -61,11 +63,7 @@ pub struct Prescription {
 /// # Parameters
 /// - `exam_record_id` — optional examination record that this prescription
 ///   was derived from.  Pass `None` for standalone prescriptions.
-pub fn save_prescription(
-    env: &Env,
-    prescription: &Prescription,
-    exam_record_id: Option<u64>,
-) {
+pub fn save_prescription(env: &Env, prescription: &Prescription, exam_record_id: Option<u64>) {
     let key = (soroban_sdk::symbol_short!("RX"), prescription.id);
     env.storage().persistent().set(&key, prescription);
 
@@ -105,8 +103,8 @@ pub fn save_prescription(
     if let Some(exam_id) = exam_record_id {
         lineage::add_edge(
             env,
-            exam_id,          // source: examination
-            prescription.id,  // target: prescription
+            exam_id,         // source: examination
+            prescription.id, // target: prescription
             RelationshipKind::DerivedFrom,
             prescription.provider.clone(),
             None,

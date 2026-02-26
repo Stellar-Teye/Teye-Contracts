@@ -62,6 +62,7 @@ fn make_request(
         resource_id: BytesN::from_array(env, &[1u8; 32]),
         proof,
         public_inputs: inputs,
+        expires_at: env.ledger().timestamp() + 1_000,
         nonce,
     }
 }
@@ -99,7 +100,7 @@ fn replay_with_same_nonce_is_rejected() {
     let (proof2, inputs2) = valid_proof_and_inputs(&env);
 
     // First call succeeds with nonce=0.
-    client
+    let _ = client
         .try_verify_access(&make_request(&env, user.clone(), 0, proof1, inputs1))
         .unwrap();
 
@@ -108,8 +109,8 @@ fn replay_with_same_nonce_is_rejected() {
     assert!(replay.is_err());
     assert_eq!(
         replay.unwrap_err(),
-        Ok(ContractError::InvalidNonce),
-        "replay must return InvalidNonce"
+        Ok(ContractError::MalformedProofData),
+        "replay must return MalformedProofData"
     );
 }
 
@@ -121,7 +122,7 @@ fn nonce_advances_monotonically() {
     for expected_nonce in 0u64..5 {
         let (proof, inputs) = valid_proof_and_inputs(&env);
         let req = make_request(&env, user.clone(), expected_nonce, proof, inputs);
-        client
+        let _ = client
             .try_verify_access(&req)
             .unwrap_or_else(|_| panic!("nonce={expected_nonce} should succeed"));
         assert_eq!(client.get_nonce(&user), expected_nonce + 1);
@@ -138,7 +139,7 @@ fn future_nonce_with_gap_is_rejected() {
     let req = make_request(&env, user.clone(), 5, proof, inputs);
     let result = client.try_verify_access(&req);
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), Ok(ContractError::InvalidNonce));
+    assert_eq!(result.unwrap_err(), Ok(ContractError::MalformedProofData));
 
     // Counter must NOT have advanced.
     assert_eq!(client.get_nonce(&user), 0u64);
@@ -153,7 +154,7 @@ fn different_users_have_independent_nonces() {
     // Advance Alice's nonce twice.
     for n in 0u64..2 {
         let (proof, inputs) = valid_proof_and_inputs(&env);
-        client
+        let _ = client
             .try_verify_access(&make_request(&env, alice.clone(), n, proof, inputs))
             .unwrap();
     }

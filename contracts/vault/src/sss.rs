@@ -61,7 +61,8 @@ pub fn split(secret: [u8; 32], threshold: u8, n: u8, seed: [u8; 32]) -> Vec<Shar
     while d < threshold.saturating_sub(1) {
         let mut i = 0usize;
         while i < 32 {
-            coeffs[d as usize][i] = seed[i] ^ (d.wrapping_add(1)).wrapping_mul((i as u8).wrapping_add(17));
+            coeffs[d as usize][i] =
+                seed[i] ^ (d.wrapping_add(1)).wrapping_mul((i as u8).wrapping_add(17));
             i += 1;
         }
         d += 1;

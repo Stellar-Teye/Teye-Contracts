@@ -1,6 +1,9 @@
 extern crate std;
 
-use soroban_sdk::{testutils::{Address as _, Ledger as _}, Address, BytesN, Env};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger as _},
+    Address, BytesN, Env,
+};
 
 use crate::{VaultContract, VaultContractClient};
 

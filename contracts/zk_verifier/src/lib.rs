@@ -39,7 +39,6 @@ const RATE_CFG: Symbol = symbol_short!("RATECFG");
 const RATE_TRACK: Symbol = symbol_short!("RLTRK");
 const NONCE: Symbol = symbol_short!("NONCE");
 
-
 /// Maximum number of public inputs accepted per proof verification.
 const MAX_PUBLIC_INPUTS: u32 = 16;
 

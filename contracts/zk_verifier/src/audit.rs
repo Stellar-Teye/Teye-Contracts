@@ -140,6 +140,7 @@ impl AuditTrail {
         true
     }
 
+    #[allow(deprecated)]
     pub fn log_verification(env: &Env, submitter: &Address, proof_id: u64, verified: bool) {
         let record = VerificationRecord {
             submitter: submitter.clone(),

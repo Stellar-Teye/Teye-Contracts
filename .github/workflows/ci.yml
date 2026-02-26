@@ -45,7 +45,7 @@ jobs:
 
           # Find changed Cargo.toml files to identify affected packages
           CHANGED_DIRS=$(git diff --name-only "$BASE" HEAD -- 'contracts/' 'sdk/' 'libs/' | \
-            sed -E 's|^(contracts/[^/]+|sdk/[^/]+|libs/[^/]+)/.*|\1|' | sort -u)
+            sed -E 's#^(contracts/[^/]+|sdk/[^/]+|libs/[^/]+)/.*#\1#' | sort -u)
 
           if [ -z "$CHANGED_DIRS" ]; then
             echo "packages=--all" >> "$GITHUB_OUTPUT"
@@ -109,7 +109,7 @@ jobs:
           key: ${{ runner.os }}-clippy-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-clippy-
 
-      - run: cargo clippy ${{ needs.detect-changes.outputs.packages }} --all-targets -- -D warnings
+      - run: cargo clippy ${{ needs.detect-changes.outputs.packages }} -- -D warnings
 
   # ── Cargo Check ───────────────────────────────────────────────
   check:

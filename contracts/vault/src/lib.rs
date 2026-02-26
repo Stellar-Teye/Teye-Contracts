@@ -14,7 +14,10 @@ mod test;
 use common::{VaultPolicy, VaultRecord, VaultShare};
 use identity::IdentityContractClient;
 use key_rotation::RotationEvent;
-use soroban_sdk::{contract, contracterror, contractimpl, contracttype, symbol_short, Address, BytesN, Env, String, Symbol, Vec};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, BytesN, Env,
+    String, Symbol, Vec,
+};
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
 const IDENTITY: Symbol = symbol_short!("IDENTITY");
@@ -50,7 +53,11 @@ pub struct VaultContract;
 
 #[contractimpl]
 impl VaultContract {
-    pub fn initialize(env: Env, admin: Address, identity_contract: Address) -> Result<(), VaultError> {
+    pub fn initialize(
+        env: Env,
+        admin: Address,
+        identity_contract: Address,
+    ) -> Result<(), VaultError> {
         if env.storage().instance().has(&INIT) {
             return Err(VaultError::AlreadyInitialized);
         }
@@ -83,7 +90,11 @@ impl VaultContract {
             return Err(VaultError::InvalidConfig);
         }
 
-        let identity: Address = env.storage().instance().get(&IDENTITY).ok_or(VaultError::NotInitialized)?;
+        let identity: Address = env
+            .storage()
+            .instance()
+            .get(&IDENTITY)
+            .ok_or(VaultError::NotInitialized)?;
         let id_client = IdentityContractClient::new(&env, &identity);
         let guardians = id_client.get_guardians(&owner);
         if guardians.len() < shard_count {
@@ -107,7 +118,9 @@ impl VaultContract {
             last_activity_at: now,
             deadman_release_at: now.saturating_add(inactivity_timeout_secs),
         };
-        env.storage().persistent().set(&(VAULT, owner.clone()), &record);
+        env.storage()
+            .persistent()
+            .set(&(VAULT, owner.clone()), &record);
 
         let shares = sss::split(
             secret_seed.to_array(),
@@ -125,11 +138,16 @@ impl VaultContract {
                 x: share.x as u32,
                 y: BytesN::from_array(&env, &share.y),
             };
-            env.storage().persistent().set(&(SHARE, owner.clone(), record.epoch, guardian.clone()), &s);
+            env.storage()
+                .persistent()
+                .set(&(SHARE, owner.clone(), record.epoch, guardian.clone()), &s);
             holders.push_back(guardian);
         }
 
-        Ok(VaultSnapshot { record, shard_holders: holders })
+        Ok(VaultSnapshot {
+            record,
+            shard_holders: holders,
+        })
     }
 
     pub fn reconstruct_key(
@@ -141,7 +159,11 @@ impl VaultContract {
         Self::require_init(&env)?;
         requester.require_auth();
 
-        let record: VaultRecord = env.storage().persistent().get(&(VAULT, owner.clone())).ok_or(VaultError::VaultNotFound)?;
+        let record: VaultRecord = env
+            .storage()
+            .persistent()
+            .get(&(VAULT, owner.clone()))
+            .ok_or(VaultError::VaultNotFound)?;
         if shares.len() < record.policy.threshold {
             return Err(VaultError::InsufficientShares);
         }
@@ -157,31 +179,56 @@ impl VaultContract {
             if stored.x != s.x || stored.y != s.y {
                 return Err(VaultError::InvalidShare);
             }
-            verified.push(sss::Share { x: s.x as u8, y: s.y.to_array() });
+            verified.push(sss::Share {
+                x: s.x as u8,
+                y: s.y.to_array(),
+            });
         }
 
-        let secret = sss::reconstruct(&verified, record.policy.threshold as u8).ok_or(VaultError::InsufficientShares)?;
+        let secret = sss::reconstruct(&verified, record.policy.threshold as u8)
+            .ok_or(VaultError::InsufficientShares)?;
         Ok(BytesN::from_array(&env, &secret))
     }
 
-    pub fn submit_emergency_approval(env: Env, guardian: Address, owner: Address) -> Result<(), VaultError> {
+    pub fn submit_emergency_approval(
+        env: Env,
+        guardian: Address,
+        owner: Address,
+    ) -> Result<(), VaultError> {
         Self::require_init(&env)?;
         guardian.require_auth();
 
-        let record: VaultRecord = env.storage().persistent().get(&(VAULT, owner.clone())).ok_or(VaultError::VaultNotFound)?;
-        let stored: Option<VaultShare> = env.storage().persistent().get(&(SHARE, owner.clone(), record.epoch, guardian.clone()));
+        let record: VaultRecord = env
+            .storage()
+            .persistent()
+            .get(&(VAULT, owner.clone()))
+            .ok_or(VaultError::VaultNotFound)?;
+        let stored: Option<VaultShare> =
+            env.storage()
+                .persistent()
+                .get(&(SHARE, owner.clone(), record.epoch, guardian.clone()));
         if stored.is_none() {
             return Err(VaultError::Unauthorized);
         }
-        env.storage().persistent().set(&(APR, owner, guardian), &true);
+        env.storage()
+            .persistent()
+            .set(&(APR, owner, guardian), &true);
         Ok(())
     }
 
     pub fn emergency_reconstruct(env: Env, owner: Address) -> Result<BytesN<32>, VaultError> {
         Self::require_init(&env)?;
 
-        let record: VaultRecord = env.storage().persistent().get(&(VAULT, owner.clone())).ok_or(VaultError::VaultNotFound)?;
-        let identity: Address = env.storage().instance().get(&IDENTITY).ok_or(VaultError::NotInitialized)?;
+        let record: VaultRecord = env
+            .storage()
+            .persistent()
+            .get(&(VAULT, owner.clone()))
+            .ok_or(VaultError::VaultNotFound)?;
+        let identity: Address = env
+            .storage()
+            .instance()
+            .get(&IDENTITY)
+            .ok_or(VaultError::NotInitialized)?;
         let id_client = IdentityContractClient::new(&env, &identity);
         let guardians = id_client.get_guardians(&owner);
 
@@ -189,11 +236,23 @@ impl VaultContract {
         let mut shares = StdVec::new();
         for i in 0..guardians.len() {
             if let Some(g) = guardians.get(i) {
-                let ok: bool = env.storage().persistent().get(&(APR, owner.clone(), g.clone())).unwrap_or(false);
+                let ok: bool = env
+                    .storage()
+                    .persistent()
+                    .get(&(APR, owner.clone(), g.clone()))
+                    .unwrap_or(false);
                 if ok {
                     approved = approved.saturating_add(1);
-                    if let Some(s) = env.storage().persistent().get::<_, VaultShare>(&(SHARE, owner.clone(), record.epoch, g.clone())) {
-                        shares.push(sss::Share { x: s.x as u8, y: s.y.to_array() });
+                    if let Some(s) = env.storage().persistent().get::<_, VaultShare>(&(
+                        SHARE,
+                        owner.clone(),
+                        record.epoch,
+                        g.clone(),
+                    )) {
+                        shares.push(sss::Share {
+                            x: s.x as u8,
+                            y: s.y.to_array(),
+                        });
                     }
                 }
             }
@@ -203,16 +262,29 @@ impl VaultContract {
             return Err(VaultError::EmergencyThresholdNotMet);
         }
 
-        let secret = sss::reconstruct(&shares, record.policy.threshold as u8).ok_or(VaultError::InsufficientShares)?;
+        let secret = sss::reconstruct(&shares, record.policy.threshold as u8)
+            .ok_or(VaultError::InsufficientShares)?;
         Ok(BytesN::from_array(&env, &secret))
     }
 
-    pub fn rotate_key(env: Env, owner: Address, new_seed: BytesN<32>) -> Result<RotationEvent, VaultError> {
+    pub fn rotate_key(
+        env: Env,
+        owner: Address,
+        new_seed: BytesN<32>,
+    ) -> Result<RotationEvent, VaultError> {
         Self::require_init(&env)?;
         owner.require_auth();
 
-        let mut record: VaultRecord = env.storage().persistent().get(&(VAULT, owner.clone())).ok_or(VaultError::VaultNotFound)?;
-        let identity: Address = env.storage().instance().get(&IDENTITY).ok_or(VaultError::NotInitialized)?;
+        let mut record: VaultRecord = env
+            .storage()
+            .persistent()
+            .get(&(VAULT, owner.clone()))
+            .ok_or(VaultError::VaultNotFound)?;
+        let identity: Address = env
+            .storage()
+            .instance()
+            .get(&IDENTITY)
+            .ok_or(VaultError::NotInitialized)?;
         let id_client = IdentityContractClient::new(&env, &identity);
         let guardians = id_client.get_guardians(&owner);
 
@@ -230,14 +302,22 @@ impl VaultContract {
             let share = shares.get(i as usize).ok_or(VaultError::InvalidConfig)?;
             env.storage().persistent().set(
                 &(SHARE, owner.clone(), new_epoch, g.clone()),
-                &VaultShare { guardian: g, x: share.x as u32, y: BytesN::from_array(&env, &share.y) },
+                &VaultShare {
+                    guardian: g,
+                    x: share.x as u32,
+                    y: BytesN::from_array(&env, &share.y),
+                },
             );
         }
 
         record.epoch = new_epoch;
         record.last_activity_at = env.ledger().timestamp();
-        record.deadman_release_at = record.last_activity_at.saturating_add(record.policy.inactivity_timeout_secs);
-        env.storage().persistent().set(&(VAULT, owner.clone()), &record);
+        record.deadman_release_at = record
+            .last_activity_at
+            .saturating_add(record.policy.inactivity_timeout_secs);
+        env.storage()
+            .persistent()
+            .set(&(VAULT, owner.clone()), &record);
 
         Ok(RotationEvent {
             owner,
@@ -249,15 +329,25 @@ impl VaultContract {
 
     pub fn touch_activity(env: Env, owner: Address) -> Result<(), VaultError> {
         owner.require_auth();
-        let mut record: VaultRecord = env.storage().persistent().get(&(VAULT, owner.clone())).ok_or(VaultError::VaultNotFound)?;
+        let mut record: VaultRecord = env
+            .storage()
+            .persistent()
+            .get(&(VAULT, owner.clone()))
+            .ok_or(VaultError::VaultNotFound)?;
         record.last_activity_at = env.ledger().timestamp();
-        record.deadman_release_at = record.last_activity_at.saturating_add(record.policy.inactivity_timeout_secs);
+        record.deadman_release_at = record
+            .last_activity_at
+            .saturating_add(record.policy.inactivity_timeout_secs);
         env.storage().persistent().set(&(VAULT, owner), &record);
         Ok(())
     }
 
     pub fn trigger_deadman_release(env: Env, owner: Address) -> Result<bool, VaultError> {
-        let record: VaultRecord = env.storage().persistent().get(&(VAULT, owner)).ok_or(VaultError::VaultNotFound)?;
+        let record: VaultRecord = env
+            .storage()
+            .persistent()
+            .get(&(VAULT, owner))
+            .ok_or(VaultError::VaultNotFound)?;
         if env.ledger().timestamp() < record.deadman_release_at {
             return Err(VaultError::DeadmanNotReady);
         }
@@ -265,7 +355,10 @@ impl VaultContract {
     }
 
     pub fn get_vault(env: Env, owner: Address) -> Result<VaultRecord, VaultError> {
-        env.storage().persistent().get(&(VAULT, owner)).ok_or(VaultError::VaultNotFound)
+        env.storage()
+            .persistent()
+            .get(&(VAULT, owner))
+            .ok_or(VaultError::VaultNotFound)
     }
 
     fn require_init(env: &Env) -> Result<(), VaultError> {

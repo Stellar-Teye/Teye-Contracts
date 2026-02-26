@@ -1,6 +1,8 @@
 #![allow(clippy::arithmetic_side_effects)]
 
-use soroban_sdk::{contracterror, contracttype, symbol_short, Address, Bytes, BytesN, Env, String, Symbol, Vec};
+use soroban_sdk::{
+    contracterror, contracttype, symbol_short, Address, Bytes, BytesN, Env, String, Symbol, Vec,
+};
 
 const SM_STATE: Symbol = symbol_short!("SM_STATE");
 const SM_LOG: Symbol = symbol_short!("SM_LOG");
@@ -82,7 +84,11 @@ fn log_key(machine_id: u32, kind: &EntityKind, entity_id: u64) -> (Symbol, u32, 
     (SM_LOG, machine_id, kind.clone(), entity_id)
 }
 
-fn last_hash_key(machine_id: u32, kind: &EntityKind, entity_id: u64) -> (Symbol, u32, EntityKind, u64) {
+fn last_hash_key(
+    machine_id: u32,
+    kind: &EntityKind,
+    entity_id: u64,
+) -> (Symbol, u32, EntityKind, u64) {
     (SM_LAST, machine_id, kind.clone(), entity_id)
 }
 
@@ -95,7 +101,10 @@ pub fn default_state(kind: &EntityKind) -> LifecycleState {
 
 pub fn get_state(env: &Env, machine_id: u32, kind: &EntityKind, entity_id: u64) -> LifecycleState {
     let key = state_key(machine_id, kind, entity_id);
-    env.storage().persistent().get(&key).unwrap_or(default_state(kind))
+    env.storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or(default_state(kind))
 }
 
 pub fn get_transition_log(
@@ -105,7 +114,10 @@ pub fn get_transition_log(
     entity_id: u64,
 ) -> Vec<TransitionRecord> {
     let key = log_key(machine_id, kind, entity_id);
-    env.storage().persistent().get(&key).unwrap_or(Vec::new(env))
+    env.storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or(Vec::new(env))
 }
 
 fn can_transition(
@@ -194,6 +206,7 @@ fn can_transition(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn hash_transition(
     env: &Env,
     kind: &EntityKind,
@@ -208,9 +221,18 @@ fn hash_transition(
     payload.append(&Bytes::from_slice(env, &entity_id.to_be_bytes()));
     payload.append(&Bytes::from_slice(env, &timestamp.to_be_bytes()));
     payload.append(&actor.to_string().to_bytes());
-    payload.append(&Bytes::from_slice(env, &serialize_state_tag(from).to_be_bytes()));
-    payload.append(&Bytes::from_slice(env, &serialize_state_tag(to).to_be_bytes()));
-    payload.append(&Bytes::from_slice(env, &serialize_kind_tag(kind).to_be_bytes()));
+    payload.append(&Bytes::from_slice(
+        env,
+        &serialize_state_tag(from).to_be_bytes(),
+    ));
+    payload.append(&Bytes::from_slice(
+        env,
+        &serialize_state_tag(to).to_be_bytes(),
+    ));
+    payload.append(&Bytes::from_slice(
+        env,
+        &serialize_kind_tag(kind).to_be_bytes(),
+    ));
     payload.append(&Bytes::from_slice(env, &prev_hash.to_array()));
     env.crypto().sha256(&payload).into()
 }
@@ -256,14 +278,7 @@ pub fn apply_transition(
         .unwrap_or(BytesN::from_array(env, &[0u8; 32]));
 
     let transition_hash = hash_transition(
-        env,
-        kind,
-        entity_id,
-        &from,
-        &to,
-        &ctx.actor,
-        ctx.now,
-        &prev_hash,
+        env, kind, entity_id, &from, &to, &ctx.actor, ctx.now, &prev_hash,
     );
 
     let record = TransitionRecord {
@@ -281,7 +296,11 @@ pub fn apply_transition(
     env.storage().persistent().set(&key, &to);
 
     let lkey = log_key(machine_id, kind, entity_id);
-    let mut logs: Vec<TransitionRecord> = env.storage().persistent().get(&lkey).unwrap_or(Vec::new(env));
+    let mut logs: Vec<TransitionRecord> = env
+        .storage()
+        .persistent()
+        .get(&lkey)
+        .unwrap_or(Vec::new(env));
     logs.push_back(record.clone());
     env.storage().persistent().set(&lkey, &logs);
 
