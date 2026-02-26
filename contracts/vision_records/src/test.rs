@@ -21,14 +21,9 @@ fn test_initialize() {
 
     assert!(client.is_initialized());
     assert_eq!(client.get_admin(), admin);
-    let our_events: soroban_sdk::Vec<(
-        soroban_sdk::Address,
-        soroban_sdk::Vec<soroban_sdk::Val>,
-        soroban_sdk::Val,
-    )> = events;
 
-    assert!(!our_events.is_empty());
-    let event = our_events.get(our_events.len() - 1).unwrap();
+    assert!(!events.is_empty());
+    let event = events.last().unwrap();
     assert_eq!(event.1, (symbol_short!("INIT"),).into_val(&env));
     let payload: events::InitializedEvent = event.2.try_into_val(&env).unwrap();
     assert_eq!(payload.admin, admin);

@@ -42,11 +42,41 @@ pub enum SensitivityLevel {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PolicyConditions {
-    pub required_role: Option<Role>,
+    pub required_role: OptionalRole,
     pub time_restriction: TimeRestriction,
     pub required_credential: CredentialType,
     pub min_sensitivity_level: SensitivityLevel,
     pub consent_required: bool,
+}
+
+/// Wrapper for `Option<Role>` that is compatible with `#[contracttype]` structs.
+///
+/// C-style Soroban enums cannot be used inside `Option<>` in contract-type
+/// structs because the SDK does not generate `From<EnumType> for ScVal`.
+/// This enum mirrors `Role` with an additional `NoRequirement` variant.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum OptionalRole {
+    NoRequirement = 0,
+    Patient = 1,
+    Staff = 2,
+    Optometrist = 3,
+    Ophthalmologist = 4,
+    Admin = 5,
+}
+
+impl OptionalRole {
+    /// Convert to `Option<Role>`, returning `None` for `NoRequirement`.
+    pub fn to_role(&self) -> Option<Role> {
+        match self {
+            OptionalRole::NoRequirement => None,
+            OptionalRole::Patient => Some(Role::Patient),
+            OptionalRole::Staff => Some(Role::Staff),
+            OptionalRole::Optometrist => Some(Role::Optometrist),
+            OptionalRole::Ophthalmologist => Some(Role::Ophthalmologist),
+            OptionalRole::Admin => Some(Role::Admin),
+        }
+    }
 }
 
 /// Access policy combining RBAC with attribute-based conditions
@@ -602,9 +632,9 @@ pub fn evaluate_policy(env: &Env, policy: &AccessPolicy, context: &PolicyContext
     let conditions = &policy.conditions;
 
     // Check role requirement
-    if let Some(required_role) = &conditions.required_role {
+    if let Some(required_role) = conditions.required_role.to_role() {
         if let Some(assignment) = get_active_assignment(env, &context.user) {
-            if assignment.role != *required_role {
+            if assignment.role != required_role {
                 return false;
             }
         } else {
