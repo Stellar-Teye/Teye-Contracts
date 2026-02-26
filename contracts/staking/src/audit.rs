@@ -83,6 +83,8 @@ impl AuditManager {
             entry_hash: BytesN::from_array(env, &entry_hash),
         };
 
+        // TODO: migrate to #[contractevent] macro when soroban-sdk ≥ 26 is adopted
+        #[allow(deprecated)]
         env.events()
             .publish((symbol_short!("AUDIT"), actor), event_data);
     }

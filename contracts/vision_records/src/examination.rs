@@ -136,13 +136,8 @@ pub fn set_examination(env: &Env, exam: &EyeExamination, provider: &Address) {
     extend_ttl_exam_key(env, &key);
 
     // Lineage: create or extend the provenance node for this examination.
-    let (_, is_new) = lineage::create_node(
-        env,
-        exam.record_id,
-        provider.clone(),
-        "Examination",
-        None,
-    );
+    let (_, is_new) =
+        lineage::create_node(env, exam.record_id, provider.clone(), "Examination", None);
 
     if is_new {
         // Genesis edge: Created(provider → record)
