@@ -1,10 +1,11 @@
 //! Shared credential types for the zero-knowledge credential presentation system.
+
 //!
 //! These types are used across `zk_verifier` and `identity` contracts to
 //! support selective disclosure, predicate proofs, and credential lifecycle
 //! management.
 
-use soroban_sdk::{contracttype, contracterror, Address, BytesN, Map, Symbol, Vec};
+use soroban_sdk::{contracttype, contracterror, Address, BytesN, Symbol, Vec};
 
 // ── Credential schema ───────────────────────────────────────────────────────
 

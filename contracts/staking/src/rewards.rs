@@ -53,9 +53,13 @@ pub fn compute_reward_per_token(
     // elapsed is u64; cast to i128 is safe since u64::MAX < i128::MAX.
     let rate_mul = saturating_mul_checked(reward_rate, elapsed as i128);
     let scaled = saturating_mul_checked(rate_mul, PRECISION);
-    let delta = scaled
-        .checked_div(total_staked)
-        .unwrap_or_else(|| if scaled >= 0 { i128::MAX } else { i128::MIN });
+    let delta = scaled.checked_div(total_staked).unwrap_or_else(|| {
+        if scaled >= 0 {
+            i128::MAX
+        } else {
+            i128::MIN
+        }
+    });
 
     stored.saturating_add(delta)
 }
@@ -79,9 +83,10 @@ pub fn compute_reward_per_token(
 pub fn earned(staked: i128, current_rpt: i128, user_rpt_paid: i128, user_earned: i128) -> i128 {
     let delta_rpt = current_rpt.saturating_sub(user_rpt_paid);
     let numer = saturating_mul_checked(staked, delta_rpt);
-    let new_rewards = numer
-        .checked_div(PRECISION)
-        .unwrap_or_else(|| if numer >= 0 { i128::MAX } else { i128::MIN });
+    let new_rewards =
+        numer
+            .checked_div(PRECISION)
+            .unwrap_or_else(|| if numer >= 0 { i128::MAX } else { i128::MIN });
 
     user_earned.saturating_add(new_rewards)
 }

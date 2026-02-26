@@ -1,5 +1,5 @@
-use soroban_sdk::{Env, Vec, String};
-use common::transaction::{TransactionOperation, TransactionError, DeadlockInfo, RESOURCE_LOCKS};
+use common::transaction::{DeadlockInfo, TransactionError, TransactionOperation, RESOURCE_LOCKS};
+use soroban_sdk::{Env, String, Vec};
 
 /// Deadlock detector for preventing and resolving transaction deadlocks
 pub struct DeadlockDetector<'a> {
@@ -12,16 +12,27 @@ impl<'a> DeadlockDetector<'a> {
     }
 
     /// Check if a new transaction would cause a deadlock
-    pub fn would_cause_deadlock(&self, transaction_id: &u64, operations: &Vec<TransactionOperation>) -> bool {
+    pub fn would_cause_deadlock(
+        &self,
+        transaction_id: &u64,
+        operations: &Vec<TransactionOperation>,
+    ) -> bool {
         let dependency_graph = self.build_dependency_graph(transaction_id, operations);
         self.has_cycles(&dependency_graph)
     }
 
     /// Build a dependency graph for the current transaction
-    fn build_dependency_graph(&self, transaction_id: &u64, operations: &Vec<TransactionOperation>) -> DependencyGraph<'_> {
+    fn build_dependency_graph(
+        &self,
+        transaction_id: &u64,
+        operations: &Vec<TransactionOperation>,
+    ) -> DependencyGraph<'_> {
         let mut graph = DependencyGraph::new(self.env);
 
-        let current_locks: Vec<(String, u64)> = self.env.storage().instance()
+        let current_locks: Vec<(String, u64)> = self
+            .env
+            .storage()
+            .instance()
             .get(&RESOURCE_LOCKS)
             .unwrap_or(Vec::new(self.env));
 
@@ -96,7 +107,10 @@ impl<'a> DeadlockDetector<'a> {
 
     /// Detect and resolve existing deadlocks
     pub fn detect_and_resolve_deadlocks(&self) -> Result<Vec<DeadlockInfo>, TransactionError> {
-        let current_locks: Vec<(String, u64)> = self.env.storage().instance()
+        let current_locks: Vec<(String, u64)> = self
+            .env
+            .storage()
+            .instance()
             .get(&RESOURCE_LOCKS)
             .unwrap_or(Vec::new(self.env));
 
@@ -109,7 +123,10 @@ impl<'a> DeadlockDetector<'a> {
 
     /// Get resources that are causing conflicts in a deadlock cycle
     fn get_conflicting_resources(&self, cycle: &Vec<u64>) -> Vec<String> {
-        let current_locks: Vec<(String, u64)> = self.env.storage().instance()
+        let current_locks: Vec<(String, u64)> = self
+            .env
+            .storage()
+            .instance()
             .get(&RESOURCE_LOCKS)
             .unwrap_or(Vec::new(self.env));
 
@@ -126,20 +143,32 @@ impl<'a> DeadlockDetector<'a> {
     }
 
     /// Get deadlock prevention suggestions
-    pub fn get_deadlock_prevention_suggestions(&self, operations: &Vec<TransactionOperation>) -> Vec<String> {
+    pub fn get_deadlock_prevention_suggestions(
+        &self,
+        operations: &Vec<TransactionOperation>,
+    ) -> Vec<String> {
         let mut suggestions: Vec<String> = Vec::new(self.env);
 
-        suggestions.push_back(String::from_str(self.env, "Acquire resources in consistent order"));
+        suggestions.push_back(String::from_str(
+            self.env,
+            "Acquire resources in consistent order",
+        ));
         suggestions.push_back(String::from_str(self.env, "Configure appropriate timeouts"));
 
         if operations.len() > 5 {
-            suggestions.push_back(String::from_str(self.env, "Break large transactions into smaller batches"));
+            suggestions.push_back(String::from_str(
+                self.env,
+                "Break large transactions into smaller batches",
+            ));
         }
 
         for i in 0..operations.len() {
             let operation = operations.get(i).unwrap();
             if operation.locked_resources.len() > 3 {
-                suggestions.push_back(String::from_str(self.env, "Use more granular resource locking"));
+                suggestions.push_back(String::from_str(
+                    self.env,
+                    "Use more granular resource locking",
+                ));
                 break;
             }
         }

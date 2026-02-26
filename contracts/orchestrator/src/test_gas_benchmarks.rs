@@ -1,10 +1,8 @@
 #[cfg(test)]
 mod gas_benchmarks {
     use super::*;
+    use common::transaction::{ContractType, TransactionOperation, TransactionTimeoutConfig};
     use soroban_sdk::{Address, Env, String, Vec};
-    use common::{
-        transaction::{TransactionOperation, ContractType, TransactionTimeoutConfig},
-    };
 
     #[test]
     #[ignore]
@@ -62,7 +60,7 @@ mod gas_benchmarks {
         // Test with increasing number of operations
         for op_count in [1, 3, 5, 10, 20] {
             let mut operations = Vec::new(&env);
-            
+
             for i in 1..=op_count {
                 operations.push_back(TransactionOperation {
                     operation_id: i,
@@ -75,7 +73,10 @@ mod gas_benchmarks {
                     contract_address: Address::generate(&env),
                     function_name: String::from_str(&env, "test_function"),
                     parameters: Vec::new(&env),
-                    locked_resources: vec![&env, String::from_str(&env, &format!("resource_{}", i))],
+                    locked_resources: vec![
+                        &env,
+                        String::from_str(&env, &format!("resource_{}", i)),
+                    ],
                     prepared: false,
                     committed: false,
                     error: None,
@@ -92,8 +93,12 @@ mod gas_benchmarks {
             );
             let total_gas = env.budget().consumed() - start_gas;
 
-            println!("Operations: {}, Gas: {}, Gas per op: {}", 
-                    op_count, total_gas, total_gas / op_count as u64);
+            println!(
+                "Operations: {}, Gas: {}, Gas per op: {}",
+                op_count,
+                total_gas,
+                total_gas / op_count as u64
+            );
         }
     }
 
@@ -111,7 +116,7 @@ mod gas_benchmarks {
         // Test deadlock detection with increasing resource contention
         for resource_count in [5, 10, 20, 50] {
             let mut operations = Vec::new(&env);
-            
+
             for i in 1..=resource_count {
                 operations.push_back(TransactionOperation {
                     operation_id: i,
@@ -120,7 +125,7 @@ mod gas_benchmarks {
                     function_name: String::from_str(&env, "test_function"),
                     parameters: Vec::new(&env),
                     locked_resources: vec![
-                        &env, 
+                        &env,
                         String::from_str(&env, &format!("resource_{}", i)),
                         String::from_str(&env, &format!("resource_{}", (i + 1) % resource_count)),
                     ],
@@ -134,7 +139,10 @@ mod gas_benchmarks {
             let _would_deadlock = deadlock_detector.would_cause_deadlock(&1, &operations);
             let detection_gas = env.budget().consumed() - start_gas;
 
-            println!("Resources: {}, Deadlock detection gas: {}", resource_count, detection_gas);
+            println!(
+                "Resources: {}, Deadlock detection gas: {}",
+                resource_count, detection_gas
+            );
         }
     }
 
@@ -152,7 +160,7 @@ mod gas_benchmarks {
         // Test rollback with increasing number of operations
         for op_count in [1, 3, 5, 10, 20] {
             let mut operations = Vec::new(&env);
-            
+
             for i in 1..=op_count {
                 operations.push_back(TransactionOperation {
                     operation_id: i,
@@ -184,8 +192,12 @@ mod gas_benchmarks {
             let _result = rollback_manager.rollback_transaction(&log);
             let rollback_gas = env.budget().consumed() - start_gas;
 
-            println!("Operations: {}, Rollback gas: {}, Gas per op: {}", 
-                    op_count, rollback_gas, rollback_gas / op_count as u64);
+            println!(
+                "Operations: {}, Rollback gas: {}, Gas per op: {}",
+                op_count,
+                rollback_gas,
+                rollback_gas / op_count as u64
+            );
         }
     }
 
@@ -205,8 +217,12 @@ mod gas_benchmarks {
         }
 
         let event_gas = env.budget().consumed() - start_gas;
-        println!("Events: {}, Total gas: {}, Gas per event: {}", 
-                event_count * 3, event_gas, event_gas / (event_count * 3) as u64);
+        println!(
+            "Events: {}, Total gas: {}, Gas per event: {}",
+            event_count * 3,
+            event_gas,
+            event_gas / (event_count * 3) as u64
+        );
     }
 
     #[test]
@@ -253,9 +269,9 @@ mod gas_benchmarks {
             let start_gas = env.budget().consumed();
             common::transaction::set_transaction_log(&env, &log);
             let storage_gas = env.budget().consumed() - start_gas;
-            
+
             transaction_ids.push_back(i);
-            
+
             if i <= 5 {
                 println!("Transaction {} storage gas: {}", i, storage_gas);
             }
@@ -267,9 +283,13 @@ mod gas_benchmarks {
             let _log = common::transaction::get_transaction_log(&env, tx_id);
         }
         let retrieval_gas = env.budget().consumed() - start_gas;
-        
-        println!("Retrieved {} transactions, Total gas: {}, Gas per retrieval: {}", 
-                transaction_count, retrieval_gas, retrieval_gas / transaction_count as u64);
+
+        println!(
+            "Retrieved {} transactions, Total gas: {}, Gas per retrieval: {}",
+            transaction_count,
+            retrieval_gas,
+            retrieval_gas / transaction_count as u64
+        );
     }
 
     #[test]
@@ -318,8 +338,12 @@ mod gas_benchmarks {
         let _timed_out = OrchestratorContract::process_timeouts(env.clone()).unwrap();
         let timeout_gas = env.budget().consumed() - start_gas;
 
-        println!("Processed {} transactions for timeouts, Gas: {}, Gas per tx: {}", 
-                transaction_count, timeout_gas, timeout_gas / transaction_count as u64);
+        println!(
+            "Processed {} transactions for timeouts, Gas: {}, Gas per tx: {}",
+            transaction_count,
+            timeout_gas,
+            timeout_gas / transaction_count as u64
+        );
     }
 
     #[test]

@@ -24,7 +24,6 @@
 /// | `query_range`       | O(k)      | O(k)       |
 ///
 /// where n is the total number of entries and k is the range width.
-
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 
 use sha2::{Digest as Sha2Digest, Sha256};
@@ -669,10 +668,7 @@ mod tests {
         log.append(500, "u", "a", "t", "ok");
         // now = 999 → retained_until = 500 + 1_000 = 1_500 > 999
         let err = log.compact(1, 1, 999, 0).unwrap_err();
-        assert!(matches!(
-            err,
-            AuditError::RetentionPolicyViolation { .. }
-        ));
+        assert!(matches!(err, AuditError::RetentionPolicyViolation { .. }));
     }
 
     #[test]

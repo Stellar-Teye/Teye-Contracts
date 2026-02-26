@@ -1,8 +1,8 @@
 extern crate alloc;
 use alloc::vec::Vec;
-use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env, String, Symbol};
-use audit::types::LogSegmentId;
 use audit::merkle_log::hash_leaf;
+use audit::types::LogSegmentId;
+use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env, String, Symbol};
 
 const AUDIT_LATEST_HASH: Symbol = symbol_short!("AUD_HASH");
 const AUDIT_SEQUENCE: Symbol = symbol_short!("AUD_SEQ");
@@ -24,17 +24,15 @@ pub struct AuditLogEvent {
 
 impl AuditManager {
     /// Logs a tamper-evident audit event for the staking contract.
-    pub fn log_event(
-        env: &Env,
-        actor: Address,
-        action: &str,
-        target: String,
-        result: &str,
-    ) {
+    pub fn log_event(env: &Env, actor: Address, action: &str, target: String, result: &str) {
         let mut sequence: u64 = env.storage().persistent().get(&AUDIT_SEQUENCE).unwrap_or(0);
         sequence += 1;
 
-        let prev_hash_bytes: [u8; 32] = env.storage().persistent().get(&AUDIT_LATEST_HASH).unwrap_or([0u8; 32]);
+        let prev_hash_bytes: [u8; 32] = env
+            .storage()
+            .persistent()
+            .get(&AUDIT_LATEST_HASH)
+            .unwrap_or([0u8; 32]);
         let timestamp = env.ledger().timestamp();
 
         // Use the segment "staking"
@@ -43,7 +41,7 @@ impl AuditManager {
         let mut buf = Vec::new();
         buf.extend_from_slice(&sequence.to_le_bytes());
         buf.extend_from_slice(&timestamp.to_le_bytes());
-        
+
         // Copy actor string to buffer
         let actor_str = actor.to_string();
         let mut actor_bytes = alloc::vec![0u8; actor_str.len() as usize];
@@ -68,7 +66,9 @@ impl AuditManager {
         let entry_hash = hash_leaf(&buf);
 
         // Update state
-        env.storage().persistent().set(&AUDIT_LATEST_HASH, &entry_hash);
+        env.storage()
+            .persistent()
+            .set(&AUDIT_LATEST_HASH, &entry_hash);
         env.storage().persistent().set(&AUDIT_SEQUENCE, &sequence);
 
         // Emit event
@@ -83,6 +83,7 @@ impl AuditManager {
             entry_hash: BytesN::from_array(env, &entry_hash),
         };
 
-        env.events().publish((symbol_short!("AUDIT"), actor), event_data);
+        env.events()
+            .publish((symbol_short!("AUDIT"), actor), event_data);
     }
 }

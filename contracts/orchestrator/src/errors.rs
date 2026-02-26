@@ -86,7 +86,7 @@ pub enum OrchestratorError {
     AlreadyInitialized = 1001,
     Unauthorized = 1002,
     Paused = 1003,
-    
+
     // Transaction errors (1100-1199)
     TransactionNotFound = 1100,
     TransactionExists = 1101,
@@ -94,19 +94,19 @@ pub enum OrchestratorError {
     TransactionTimeout = 1103,
     DeadlockDetected = 1104,
     RollbackFailed = 1105,
-    
+
     // Operation errors (1200-1299)
     OperationNotFound = 1200,
     InvalidInput = 1201,
     ContractCallFailed = 1202,
     ResourceLocked = 1203,
-    
+
     // Validation errors (1300-1399)
     ValidationError = 1300,
     InvalidAddress = 1301,
     InvalidTimeout = 1302,
     InvalidOperation = 1303,
-    
+
     // Storage errors (1400-1499)
     StorageError = 1400,
     SerializationError = 1401,
@@ -116,32 +116,32 @@ pub enum OrchestratorError {
 impl From<OrchestratorError> for ErrorCategory {
     fn from(error: OrchestratorError) -> Self {
         match error {
-            OrchestratorError::NotInitialized |
-            OrchestratorError::AlreadyInitialized |
-            OrchestratorError::Paused => ErrorCategory::System,
-            
+            OrchestratorError::NotInitialized
+            | OrchestratorError::AlreadyInitialized
+            | OrchestratorError::Paused => ErrorCategory::System,
+
             OrchestratorError::Unauthorized => ErrorCategory::Authorization,
-            
-            OrchestratorError::TransactionNotFound |
-            OrchestratorError::TransactionExists |
-            OrchestratorError::InvalidPhase |
-            OrchestratorError::TransactionTimeout |
-            OrchestratorError::DeadlockDetected |
-            OrchestratorError::RollbackFailed => ErrorCategory::StateConflict,
-            
-            OrchestratorError::OperationNotFound |
-            OrchestratorError::ContractCallFailed |
-            OrchestratorError::ResourceLocked => ErrorCategory::StateConflict,
-            
-            OrchestratorError::InvalidInput |
-            OrchestratorError::InvalidAddress |
-            OrchestratorError::InvalidTimeout |
-            OrchestratorError::InvalidOperation |
-            OrchestratorError::ValidationError => ErrorCategory::Validation,
-            
-            OrchestratorError::StorageError |
-            OrchestratorError::SerializationError |
-            OrchestratorError::DeserializationError => ErrorCategory::Storage,
+
+            OrchestratorError::TransactionNotFound
+            | OrchestratorError::TransactionExists
+            | OrchestratorError::InvalidPhase
+            | OrchestratorError::TransactionTimeout
+            | OrchestratorError::DeadlockDetected
+            | OrchestratorError::RollbackFailed => ErrorCategory::StateConflict,
+
+            OrchestratorError::OperationNotFound
+            | OrchestratorError::ContractCallFailed
+            | OrchestratorError::ResourceLocked => ErrorCategory::StateConflict,
+
+            OrchestratorError::InvalidInput
+            | OrchestratorError::InvalidAddress
+            | OrchestratorError::InvalidTimeout
+            | OrchestratorError::InvalidOperation
+            | OrchestratorError::ValidationError => ErrorCategory::Validation,
+
+            OrchestratorError::StorageError
+            | OrchestratorError::SerializationError
+            | OrchestratorError::DeserializationError => ErrorCategory::Storage,
         }
     }
 }
@@ -149,30 +149,30 @@ impl From<OrchestratorError> for ErrorCategory {
 impl From<OrchestratorError> for ErrorSeverity {
     fn from(error: OrchestratorError) -> Self {
         match error {
-            OrchestratorError::NotInitialized |
-            OrchestratorError::AlreadyInitialized |
-            OrchestratorError::Unauthorized |
-            OrchestratorError::InvalidInput |
-            OrchestratorError::InvalidAddress |
-            OrchestratorError::InvalidTimeout |
-            OrchestratorError::InvalidOperation => ErrorSeverity::Medium,
-            
-            OrchestratorError::TransactionNotFound |
-            OrchestratorError::TransactionExists |
-            OrchestratorError::OperationNotFound |
-            OrchestratorError::ResourceLocked |
-            OrchestratorError::ValidationError |
-            OrchestratorError::StorageError |
-            OrchestratorError::SerializationError |
-            OrchestratorError::DeserializationError => ErrorSeverity::Low,
-            
-            OrchestratorError::InvalidPhase |
-            OrchestratorError::ContractCallFailed |
-            OrchestratorError::Paused => ErrorSeverity::High,
-            
-            OrchestratorError::TransactionTimeout |
-            OrchestratorError::DeadlockDetected |
-            OrchestratorError::RollbackFailed => ErrorSeverity::Critical,
+            OrchestratorError::NotInitialized
+            | OrchestratorError::AlreadyInitialized
+            | OrchestratorError::Unauthorized
+            | OrchestratorError::InvalidInput
+            | OrchestratorError::InvalidAddress
+            | OrchestratorError::InvalidTimeout
+            | OrchestratorError::InvalidOperation => ErrorSeverity::Medium,
+
+            OrchestratorError::TransactionNotFound
+            | OrchestratorError::TransactionExists
+            | OrchestratorError::OperationNotFound
+            | OrchestratorError::ResourceLocked
+            | OrchestratorError::ValidationError
+            | OrchestratorError::StorageError
+            | OrchestratorError::SerializationError
+            | OrchestratorError::DeserializationError => ErrorSeverity::Low,
+
+            OrchestratorError::InvalidPhase
+            | OrchestratorError::ContractCallFailed
+            | OrchestratorError::Paused => ErrorSeverity::High,
+
+            OrchestratorError::TransactionTimeout
+            | OrchestratorError::DeadlockDetected
+            | OrchestratorError::RollbackFailed => ErrorSeverity::Critical,
         }
     }
 }
@@ -232,34 +232,34 @@ pub fn log_error(
     contract_function: Option<String>,
 ) {
     let context = create_error_context(env, error, user_address, resource_id.clone());
-    
+
     let mut final_context = context;
     if let Some(func) = contract_function {
         final_context.contract_function = Some(func);
     }
-    
+
     let log_entry = ErrorLogEntry {
         context: final_context,
         stack_trace: Vec::new(env),
         recovery_attempted: false,
         recovery_successful: false,
     };
-    
+
     // Store error log entry
     let error_count: u32 = env.storage().instance().get(&ERROR_COUNT_KEY).unwrap_or(0);
     let new_count = error_count.saturating_add(1);
     env.storage().instance().set(&ERROR_COUNT_KEY, &new_count);
-    
+
     let error_key = (ERROR_LOG_KEY, new_count);
     env.storage().persistent().set(&error_key, &log_entry);
-    
+
     // Extend TTL for error storage
     env.storage()
         .persistent()
         .extend_ttl(&error_key, TTL_THRESHOLD, TTL_EXTEND_TO);
-    
+
     extend_ttl_instance(env);
-    
+
     // Clean up old error logs if we exceed the maximum
     if new_count > MAX_ERROR_LOG_SIZE {
         let oldest_key = (ERROR_LOG_KEY, new_count.saturating_sub(MAX_ERROR_LOG_SIZE));
@@ -280,15 +280,19 @@ pub fn get_recent_errors(env: &Env, count: u32) -> Vec<ErrorLogEntry> {
     } else {
         1
     };
-    
+
     let mut errors = Vec::new(env);
     for i in start_index..=total_count {
         let error_key = (ERROR_LOG_KEY, i);
-        if let Some(entry) = env.storage().persistent().get::<_, ErrorLogEntry>(&error_key) {
+        if let Some(entry) = env
+            .storage()
+            .persistent()
+            .get::<_, ErrorLogEntry>(&error_key)
+        {
             errors.push_back(entry);
         }
     }
-    
+
     errors
 }
 

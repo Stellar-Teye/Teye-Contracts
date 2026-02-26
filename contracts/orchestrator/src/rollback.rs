@@ -1,8 +1,7 @@
-use soroban_sdk::{Env, Vec, String, Symbol, Val, IntoVal};
 use common::transaction::{
-    TransactionLog, TransactionOperation, TransactionError, RollbackInfo,
-    get_transaction_log,
+    get_transaction_log, RollbackInfo, TransactionError, TransactionLog, TransactionOperation,
 };
+use soroban_sdk::{Env, IntoVal, String, Symbol, Val, Vec};
 
 use super::events::EventPublisher;
 
@@ -29,13 +28,18 @@ impl<'a> RollbackManager<'a> {
                 match self.rollback_operation(&operation) {
                     Ok(_) => {
                         EventPublisher::operation_rolled_back(
-                            self.env, log.transaction_id, operation.operation_id, &operation.contract_type,
+                            self.env,
+                            log.transaction_id,
+                            operation.operation_id,
+                            &operation.contract_type,
                         );
                     }
                     Err(_) => {
                         rollback_failed = true;
                         EventPublisher::rollback_failed(
-                            self.env, log.transaction_id, operation.operation_id,
+                            self.env,
+                            log.transaction_id,
+                            operation.operation_id,
                             &operation.contract_type,
                             &String::from_str(self.env, "Rollback failed"),
                         );
@@ -52,7 +56,10 @@ impl<'a> RollbackManager<'a> {
     }
 
     /// Rollback a single operation via cross-contract invocation
-    pub fn rollback_operation(&self, operation: &TransactionOperation) -> Result<RollbackInfo, TransactionError> {
+    pub fn rollback_operation(
+        &self,
+        operation: &TransactionOperation,
+    ) -> Result<RollbackInfo, TransactionError> {
         let func_sym = Symbol::new(self.env, "rollback_");
 
         let mut rollback_info = RollbackInfo {
@@ -72,11 +79,9 @@ impl<'a> RollbackManager<'a> {
         }
 
         // Invoke rollback — panics on failure which Soroban runtime catches
-        let _result: Val = self.env.invoke_contract(
-            &operation.contract_address,
-            &func_sym,
-            args,
-        );
+        let _result: Val = self
+            .env
+            .invoke_contract(&operation.contract_address, &func_sym, args);
 
         rollback_info.rollback_successful = true;
         Ok(rollback_info)
@@ -88,7 +93,10 @@ impl<'a> RollbackManager<'a> {
     }
 
     /// Get rollback status for a transaction
-    pub fn get_rollback_status(&self, transaction_id: u64) -> Result<Vec<RollbackInfo>, TransactionError> {
+    pub fn get_rollback_status(
+        &self,
+        transaction_id: u64,
+    ) -> Result<Vec<RollbackInfo>, TransactionError> {
         let log = get_transaction_log(self.env, transaction_id)
             .ok_or(TransactionError::TransactionNotFound)?;
 
@@ -112,7 +120,11 @@ impl<'a> RollbackManager<'a> {
     }
 
     /// Perform a partial rollback of specific operations
-    pub fn partial_rollback(&self, transaction_id: u64, operation_ids: Vec<u64>) -> Result<(), TransactionError> {
+    pub fn partial_rollback(
+        &self,
+        transaction_id: u64,
+        operation_ids: Vec<u64>,
+    ) -> Result<(), TransactionError> {
         let log = get_transaction_log(self.env, transaction_id)
             .ok_or(TransactionError::TransactionNotFound)?;
 
@@ -132,12 +144,17 @@ impl<'a> RollbackManager<'a> {
                     match self.rollback_operation(&operation) {
                         Ok(_) => {
                             EventPublisher::operation_rolled_back(
-                                self.env, transaction_id, operation_id, &operation.contract_type,
+                                self.env,
+                                transaction_id,
+                                operation_id,
+                                &operation.contract_type,
                             );
                         }
                         Err(_) => {
                             EventPublisher::rollback_failed(
-                                self.env, transaction_id, operation_id,
+                                self.env,
+                                transaction_id,
+                                operation_id,
                                 &operation.contract_type,
                                 &String::from_str(self.env, "Partial rollback failed"),
                             );

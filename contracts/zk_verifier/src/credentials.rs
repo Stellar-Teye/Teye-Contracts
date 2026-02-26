@@ -21,10 +21,8 @@ use common::credential_types::{
     ChainedIssuanceRequest, Credential, CredentialContractError, CredentialPresentation,
     CredentialSchema, CredentialStatus, RevocationWitness,
 };
-use soroban_sdk::{Address, Bytes, BytesN, Env, Symbol, Vec};
+use soroban_sdk::{Address, BytesN, Env, Symbol, Vec};
 
-use crate::revocation::RevocationRegistryManager;
-use crate::selective_disclosure::SelectiveDisclosureVerifier;
 use crate::verifier::PoseidonHasher;
 
 // ── Storage key prefixes ────────────────────────────────────────────────────
@@ -47,10 +45,7 @@ impl CredentialManager {
         env: &Env,
         schema: &CredentialSchema,
     ) -> Result<(), CredentialContractError> {
-        let key = (
-            Symbol::new(env, SCHEMA_PREFIX),
-            schema.schema_id.clone(),
-        );
+        let key = (Symbol::new(env, SCHEMA_PREFIX), schema.schema_id.clone());
 
         if env.storage().persistent().has(&key) {
             return Err(CredentialContractError::DuplicateSchema);

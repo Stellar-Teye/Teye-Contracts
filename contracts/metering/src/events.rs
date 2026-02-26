@@ -8,8 +8,10 @@ use crate::{OperationType, TenantLevel};
 
 fn emit<T: soroban_sdk::IntoVal<Env, soroban_sdk::Val>>(env: &Env, topic: &str, data: T) {
     #[allow(deprecated)]
-    env.events()
-        .publish((symbol_short!("METER"), soroban_sdk::Symbol::new(env, topic)), data);
+    env.events().publish(
+        (symbol_short!("METER"), soroban_sdk::Symbol::new(env, topic)),
+        data,
+    );
 }
 
 // ── Event structs ─────────────────────────────────────────────────────────────

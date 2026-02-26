@@ -229,7 +229,10 @@ impl SparseMerkleTree {
     /// The restored tree is assumed to be a full-depth (`TREE_DEPTH`) tree.
     /// For field sub-trees (which are never persisted), use [`with_depth`].
     pub fn from_state(state: TreeState) -> Self {
-        Self { state, depth: TREE_DEPTH }
+        Self {
+            state,
+            depth: TREE_DEPTH,
+        }
     }
 
     /// Consume the wrapper and return the inner [`TreeState`] ready for
@@ -413,7 +416,13 @@ impl SparseMerkleTree {
     /// The depth is inferred from `proof.siblings.len()`, so the same function
     /// handles both full-depth proofs (256 siblings) and field sub-tree proofs
     /// (fewer siblings), as long as `root` matches the corresponding tree root.
-    pub fn verify(env: &Env, root: &BytesN<32>, key: &[u8], value: &[u8], proof: &MerkleProof) -> bool {
+    pub fn verify(
+        env: &Env,
+        root: &BytesN<32>,
+        key: &[u8],
+        value: &[u8],
+        proof: &MerkleProof,
+    ) -> bool {
         let depth = proof.siblings.len() as usize;
         if depth == 0 || depth > TREE_DEPTH {
             return false;
@@ -711,7 +720,7 @@ fn bytes_to_key_array(key: &Bytes, field_depth: u32) -> [u8; 32] {
 
 #[cfg(test)]
 #[allow(deprecated)] // env.budget() is deprecated in SDK v25; tests use it to
-                      // disable metered limits for integration-style assertions.
+                     // disable metered limits for integration-style assertions.
 mod tests {
     use super::*;
     use soroban_sdk::Env;

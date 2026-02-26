@@ -29,7 +29,7 @@
 
 #![allow(unused_imports)]
 
-use soroban_sdk::{contracttype, symbol_short, BytesN, Bytes, Env, Symbol};
+use soroban_sdk::{contracttype, symbol_short, Bytes, BytesN, Env, Symbol};
 
 use crate::merkle_tree::{FieldEntry, FieldProof, MerkleProof, SparseMerkleTree, TreeState};
 
@@ -384,7 +384,8 @@ pub fn import_record(
             .anchored_at
             .checked_add(finality_depth)
             .map(|required| required > current_ledger)
-            .unwrap_or(true) // overflow → treat as not final
+            .unwrap_or(true)
+        // overflow → treat as not final
         {
             return Err(BridgeError::ChainReorgDetected);
         }
@@ -468,8 +469,8 @@ pub fn get_import_timestamp(env: &Env, record_id: BytesN<32>) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{contract, contractimpl, testutils::Ledger, Env};
     use crate::merkle_tree::FieldEntry;
+    use soroban_sdk::{contract, contractimpl, testutils::Ledger, Env};
 
     // A minimal contract used solely to provide a contract context for
     // storage operations; bridge functions are standalone helpers.
@@ -555,7 +556,14 @@ mod tests {
             value: Bytes::from_slice(&env, b"-2.50/-1.75"),
         });
 
-        let pkg = export_record(&env, rid.clone(), data.clone(), fields, None, symbol_short!("SOL"));
+        let pkg = export_record(
+            &env,
+            rid.clone(),
+            data.clone(),
+            fields,
+            None,
+            symbol_short!("SOL"),
+        );
 
         assert_eq!(pkg.record_id, rid);
         assert_eq!(pkg.record_data, data);
@@ -625,7 +633,14 @@ mod tests {
         let mut selected: soroban_sdk::Vec<Bytes> = soroban_sdk::Vec::new(&env);
         selected.push_back(Bytes::from_slice(&env, b"nonexistent_field"));
 
-        let result = try_export_record(&env, rid, data, fields, Some(selected), symbol_short!("SOL"));
+        let result = try_export_record(
+            &env,
+            rid,
+            data,
+            fields,
+            Some(selected),
+            symbol_short!("SOL"),
+        );
         assert_eq!(result, Err(BridgeError::FieldNotFound));
     }
 
@@ -650,7 +665,12 @@ mod tests {
 
         // Export (pure computation — no contract context needed)
         let pkg = export_record(
-            &env, rid.clone(), data.clone(), fields, None, symbol_short!("ETH"),
+            &env,
+            rid.clone(),
+            data.clone(),
+            fields,
+            None,
+            symbol_short!("ETH"),
         );
         let exported_root = pkg.state_root.clone();
 
@@ -765,7 +785,11 @@ mod tests {
             // Anchor and import in the same ledger — finality_depth=0 skips check
             anchor_root(&env, root.clone(), symbol_short!("ETH"));
             let result = import_record(&env, pkg.clone(), root.clone(), 0);
-            assert!(result.is_ok(), "expected Ok with finality_depth=0, got {:?}", result);
+            assert!(
+                result.is_ok(),
+                "expected Ok with finality_depth=0, got {:?}",
+                result
+            );
         });
     }
 
@@ -801,7 +825,11 @@ mod tests {
 
         env.as_contract(&cid, || {
             let result = import_record(&env, pkg.clone(), root.clone(), 20);
-            assert!(result.is_ok(), "import with field proofs failed: {:?}", result);
+            assert!(
+                result.is_ok(),
+                "import with field proofs failed: {:?}",
+                result
+            );
         });
     }
 }

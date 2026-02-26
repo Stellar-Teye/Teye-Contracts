@@ -4,8 +4,8 @@ extern crate std;
 use soroban_sdk::{symbol_short, testutils::Address as _, Address, Env, Vec};
 
 use crate::{
-    AnalyticsContract, AnalyticsContractClient, MetricDimensions, MetricValue, TrendPoint,
     homomorphic::{PaillierPrivateKey, PaillierPublicKey},
+    AnalyticsContract, AnalyticsContractClient, MetricDimensions, MetricValue, TrendPoint,
 };
 
 fn setup() -> (Env, AnalyticsContractClient<'static>, Address, Address) {
@@ -19,7 +19,11 @@ fn setup() -> (Env, AnalyticsContractClient<'static>, Address, Address) {
     let aggregator = Address::generate(&env);
 
     // Generate keys: n=33 (p=3, q=11), nn=1089, g=34, lambda=20, mu=5
-    let pub_key = PaillierPublicKey { n: 33, nn: 1089, g: 34 };
+    let pub_key = PaillierPublicKey {
+        n: 33,
+        nn: 1089,
+        g: 34,
+    };
     let priv_key = PaillierPrivateKey { lambda: 20, mu: 5 };
 
     client.initialize(&admin, &aggregator, &pub_key, &Some(priv_key));
@@ -53,7 +57,11 @@ fn test_initialize_and_getters() {
     let new_admin = Address::generate(&env);
     let new_aggregator = Address::generate(&env);
     // Note: initialize now takes 5 arguments
-    let pub_key = PaillierPublicKey { n: 33, nn: 1089, g: 34 };
+    let pub_key = PaillierPublicKey {
+        n: 33,
+        nn: 1089,
+        g: 34,
+    };
     let result = client.try_initialize(&new_admin, &new_aggregator, &pub_key, &None);
     assert!(result.is_err());
 }
@@ -77,7 +85,7 @@ fn test_aggregate_records() {
     // Encrypt some records
     let c1 = client.encrypt(&10);
     let c2 = client.encrypt(&5);
-    
+
     let mut records = Vec::new(&env);
     records.push_back(c1);
     records.push_back(c2);
@@ -89,7 +97,7 @@ fn test_aggregate_records() {
     assert_eq!(value.count, 2);
     // Since our DP noise is simple seed-based, we can check if it's within a range if needed,
     // but for the sake of this test, we check if it's at least positive.
-    assert!(value.sum > 0); 
+    assert!(value.sum > 0);
 }
 
 #[test]

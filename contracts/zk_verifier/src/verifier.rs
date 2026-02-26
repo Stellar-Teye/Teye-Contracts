@@ -30,7 +30,6 @@ pub struct Proof {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProofValidationError {
     ZeroedComponent,
     OversizedComponent,

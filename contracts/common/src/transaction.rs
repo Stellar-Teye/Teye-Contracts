@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, Symbol, String, Vec, Env, symbol_short};
+use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol, Vec};
 
 /// Transaction phases for two-phase commit protocol
 #[contracttype]
@@ -213,7 +213,11 @@ pub enum TransactionError {
 
 /// Helper functions for transaction management
 pub fn generate_transaction_id(env: &Env) -> u64 {
-    let counter: u64 = env.storage().instance().get(&TRANSACTION_COUNTER).unwrap_or(0);
+    let counter: u64 = env
+        .storage()
+        .instance()
+        .get(&TRANSACTION_COUNTER)
+        .unwrap_or(0);
     let new_id = counter + 1;
     env.storage().instance().set(&TRANSACTION_COUNTER, &new_id);
     new_id
@@ -233,10 +237,14 @@ pub fn get_transaction_log(env: &Env, transaction_id: u64) -> Option<Transaction
 pub fn set_transaction_log(env: &Env, log: &TransactionLog) {
     let key = (TRANSACTION_LOG, log.transaction_id);
     env.storage().persistent().set(&key, log);
-    
+
     // Update the active transactions list
-    let mut active: Vec<u64> = env.storage().instance().get(&ACTIVE_TRANSACTIONS).unwrap_or(Vec::new(env));
-    if !active.contains(&log.transaction_id) {
+    let mut active: Vec<u64> = env
+        .storage()
+        .instance()
+        .get(&ACTIVE_TRANSACTIONS)
+        .unwrap_or(Vec::new(env));
+    if !active.contains(log.transaction_id) {
         active.push_back(log.transaction_id);
         env.storage().instance().set(&ACTIVE_TRANSACTIONS, &active);
     }
@@ -245,9 +253,13 @@ pub fn set_transaction_log(env: &Env, log: &TransactionLog) {
 pub fn remove_transaction_log(env: &Env, transaction_id: u64) {
     let key = (TRANSACTION_LOG, transaction_id);
     env.storage().persistent().remove(&key);
-    
+
     // Remove from active transactions list
-    let active: Vec<u64> = env.storage().instance().get(&ACTIVE_TRANSACTIONS).unwrap_or(Vec::new(env));
+    let active: Vec<u64> = env
+        .storage()
+        .instance()
+        .get(&ACTIVE_TRANSACTIONS)
+        .unwrap_or(Vec::new(env));
     let mut new_active = Vec::new(env);
     for i in 0..active.len() {
         if let Some(id) = active.get(i) {
@@ -256,7 +268,9 @@ pub fn remove_transaction_log(env: &Env, transaction_id: u64) {
             }
         }
     }
-    env.storage().instance().set(&ACTIVE_TRANSACTIONS, &new_active);
+    env.storage()
+        .instance()
+        .set(&ACTIVE_TRANSACTIONS, &new_active);
 }
 
 pub fn get_default_timeout_config(env: &Env) -> TransactionTimeoutConfig {

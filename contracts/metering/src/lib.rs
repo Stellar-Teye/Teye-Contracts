@@ -242,11 +242,7 @@ impl MeteringContract {
     // ── Gas cost configuration ────────────────────────────────────────────────
 
     /// Update the per-operation gas costs. Admin only.
-    pub fn set_gas_costs(
-        env: Env,
-        caller: Address,
-        costs: GasCosts,
-    ) -> Result<(), MeteringError> {
+    pub fn set_gas_costs(env: Env, caller: Address, costs: GasCosts) -> Result<(), MeteringError> {
         caller.require_auth();
         Self::require_admin(&env, &caller)?;
         env.storage().instance().set(&GAS_COSTS, &costs);
@@ -379,11 +375,7 @@ impl MeteringContract {
     }
 
     /// Remove the quota for a tenant (reverts to unlimited).
-    pub fn remove_quota(
-        env: Env,
-        caller: Address,
-        tenant: Address,
-    ) -> Result<(), MeteringError> {
+    pub fn remove_quota(env: Env, caller: Address, tenant: Address) -> Result<(), MeteringError> {
         caller.require_auth();
         Self::require_admin(&env, &caller)?;
         quota::remove_quota(&env, &tenant);
@@ -438,11 +430,10 @@ impl MeteringContract {
         let units = costs.cost_for(&op_type);
 
         // Enforce quota for the direct tenant.
-        quota::check_quota(&env, &tenant, &op_type, units)
-            .map_err(|e| {
-                events::publish_quota_exceeded(&env, tenant.clone(), op_type.clone());
-                map_quota_error(e)
-            })?;
+        quota::check_quota(&env, &tenant, &op_type, units).map_err(|e| {
+            events::publish_quota_exceeded(&env, tenant.clone(), op_type.clone());
+            map_quota_error(e)
+        })?;
 
         // Prepaid: debit gas tokens.
         let model = billing::get_billing_model(&env, &tenant);
@@ -478,13 +469,7 @@ impl MeteringContract {
     }
 
     /// Walk up the tenant tree and apply usage to every ancestor.
-    fn rollup_gas(
-        env: &Env,
-        child: &Tenant,
-        op_type: &OperationType,
-        units: u64,
-        cycle_id: u64,
-    ) {
+    fn rollup_gas(env: &Env, child: &Tenant, op_type: &OperationType, units: u64, cycle_id: u64) {
         // Stop if child is an org (root) or parent == child.
         if child.level == TenantLevel::Organization || child.parent == child.address {
             return;
@@ -503,10 +488,8 @@ impl MeteringContract {
         Self::maybe_emit_alert(env, &parent_addr);
 
         // Recurse.
-        let parent_record: Option<Tenant> = env
-            .storage()
-            .persistent()
-            .get(&tenant_key(&parent_addr));
+        let parent_record: Option<Tenant> =
+            env.storage().persistent().get(&tenant_key(&parent_addr));
         if let Some(pr) = parent_record {
             Self::rollup_gas(env, &pr, op_type, units, cycle_id);
         }
@@ -663,11 +646,7 @@ impl MeteringContract {
     }
 
     /// Settle a postpaid invoice.  The tenant must call this themselves.
-    pub fn settle_invoice(
-        env: Env,
-        caller: Address,
-        cycle_id: u64,
-    ) -> Result<(), MeteringError> {
+    pub fn settle_invoice(env: Env, caller: Address, cycle_id: u64) -> Result<(), MeteringError> {
         caller.require_auth();
         billing::settle_invoice(&env, &caller, cycle_id).map_err(map_billing_error)?;
         events::publish_invoice_settled(&env, caller, cycle_id);

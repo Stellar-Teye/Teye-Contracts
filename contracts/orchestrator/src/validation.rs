@@ -1,5 +1,7 @@
+use common::transaction::{
+    TransactionError, TransactionOperation, TransactionPhase, TransactionTimeoutConfig,
+};
 use soroban_sdk::{String, Vec};
-use common::transaction::{TransactionError, TransactionPhase, TransactionTimeoutConfig, TransactionOperation};
 
 const MIN_TIMEOUT_SECONDS: u64 = 30;
 const MAX_TIMEOUT_SECONDS: u64 = 86400 * 7; // 7 days
@@ -102,18 +104,21 @@ pub fn validate_phase_transition(
     to_phase: &TransactionPhase,
 ) -> Result<(), TransactionError> {
     match (from_phase, to_phase) {
-        (TransactionPhase::Preparing, TransactionPhase::Prepared) |
-        (TransactionPhase::Prepared, TransactionPhase::Committed) |
-        (TransactionPhase::Prepared, TransactionPhase::RolledBack) |
-        (TransactionPhase::Preparing, TransactionPhase::RolledBack) |
-        (TransactionPhase::Preparing, TransactionPhase::TimedOut) |
-        (TransactionPhase::Prepared, TransactionPhase::TimedOut) => Ok(()),
+        (TransactionPhase::Preparing, TransactionPhase::Prepared)
+        | (TransactionPhase::Prepared, TransactionPhase::Committed)
+        | (TransactionPhase::Prepared, TransactionPhase::RolledBack)
+        | (TransactionPhase::Preparing, TransactionPhase::RolledBack)
+        | (TransactionPhase::Preparing, TransactionPhase::TimedOut)
+        | (TransactionPhase::Prepared, TransactionPhase::TimedOut) => Ok(()),
         _ => Err(TransactionError::InvalidPhase),
     }
 }
 
 /// Validates rollback operation
-pub fn validate_rollback_operation(prepared: bool, committed: bool) -> Result<(), TransactionError> {
+pub fn validate_rollback_operation(
+    prepared: bool,
+    committed: bool,
+) -> Result<(), TransactionError> {
     if !prepared || committed {
         Err(TransactionError::InvalidPhase)
     } else {

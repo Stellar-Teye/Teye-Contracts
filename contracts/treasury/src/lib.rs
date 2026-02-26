@@ -175,11 +175,7 @@ impl TreasuryContract {
     /// Once set, the Governor may call `governor_spend` directly without going
     /// through the multisig path — the governance vote itself serves as the
     /// multi-party approval.  Only the treasury admin may set this.
-    pub fn set_governor(
-        env: Env,
-        caller: Address,
-        governor: Address,
-    ) -> Result<(), ContractError> {
+    pub fn set_governor(env: Env, caller: Address, governor: Address) -> Result<(), ContractError> {
         caller.require_auth();
         let cfg = load_config(&env)?;
         if caller != cfg.admin {

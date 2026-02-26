@@ -10,8 +10,7 @@ pub use merkle_tree::{FieldProof, MerkleProof};
 pub use relay::StateRootAnchor;
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, String,
-    Symbol,
+    contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, String, Symbol,
 };
 
 /// Storage keys

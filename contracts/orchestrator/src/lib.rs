@@ -1,24 +1,24 @@
 #![no_std]
 
-pub mod transaction;
-pub mod rollback;
 pub mod deadlock;
-pub mod events;
 pub mod errors;
+pub mod events;
+pub mod rollback;
+pub mod transaction;
 pub mod validation;
 
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, String, Vec, Symbol};
 use common::transaction::{
-    TransactionLog, TransactionPhase, TransactionStatus, TransactionOperation, TransactionError,
-    TransactionTimeoutConfig, generate_transaction_id, get_transaction_log, set_transaction_log,
-    is_transaction_expired, get_default_timeout_config,
-    TRANSACTION_COUNTER, TIMEOUT_CONFIG, ACTIVE_TRANSACTIONS, RESOURCE_LOCKS,
+    generate_transaction_id, get_default_timeout_config, get_transaction_log,
+    is_transaction_expired, set_transaction_log, TransactionError, TransactionLog,
+    TransactionOperation, TransactionPhase, TransactionStatus, TransactionTimeoutConfig,
+    ACTIVE_TRANSACTIONS, RESOURCE_LOCKS, TIMEOUT_CONFIG, TRANSACTION_COUNTER,
 };
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, String, Symbol, Vec};
 
-use transaction::TransactionManager;
-use rollback::RollbackManager;
 use deadlock::DeadlockDetector;
 use events::EventPublisher;
+use rollback::RollbackManager;
+use transaction::TransactionManager;
 
 /// Storage keys for the orchestrator contract
 const ADMIN: Symbol = symbol_short!("ADMIN");
@@ -31,20 +31,24 @@ pub struct OrchestratorContract;
 #[contractimpl]
 impl OrchestratorContract {
     /// Initialize the orchestrator with admin address and timeout configuration
-    pub fn initialize(env: Env, admin: Address, timeout_config: Option<TransactionTimeoutConfig>) -> Result<(), TransactionError> {
+    pub fn initialize(
+        env: Env,
+        admin: Address,
+        timeout_config: Option<TransactionTimeoutConfig>,
+    ) -> Result<(), TransactionError> {
         if env.storage().instance().has(&INITIALIZED) {
             return Err(TransactionError::TransactionExists);
         }
 
         env.storage().instance().set(&ADMIN, &admin);
         env.storage().instance().set(&INITIALIZED, &true);
-        
+
         let config = timeout_config.unwrap_or_else(|| get_default_timeout_config(&env));
         env.storage().instance().set(&TIMEOUT_CONFIG, &config);
-        
+
         // Initialize transaction counter
         env.storage().instance().set(&TRANSACTION_COUNTER, &0u64);
-        
+
         Ok(())
     }
 
@@ -57,14 +61,17 @@ impl OrchestratorContract {
         metadata: Vec<String>,
     ) -> Result<u64, TransactionError> {
         Self::require_initialized(&env)?;
-        
+
         let transaction_id = generate_transaction_id(&env);
         let now = env.ledger().timestamp();
-        
+
         // Get timeout configuration
-        let config: TransactionTimeoutConfig = env.storage().instance().get(&TIMEOUT_CONFIG)
+        let config: TransactionTimeoutConfig = env
+            .storage()
+            .instance()
+            .get(&TIMEOUT_CONFIG)
             .unwrap_or_else(|| get_default_timeout_config(&env));
-        
+
         let timeout = timeout_seconds.unwrap_or(config.default_timeout);
         if timeout > config.max_timeout {
             return Err(TransactionError::InvalidInput);
@@ -109,10 +116,10 @@ impl OrchestratorContract {
                         log.phase = TransactionPhase::Committed;
                         log.status = TransactionStatus::Completed;
                         log.updated_at = env.ledger().timestamp();
-                        
+
                         set_transaction_log(&env, &log);
                         Self::release_resource_locks(&env, transaction_id)?;
-                        
+
                         EventPublisher::transaction_committed(&env, &log);
                         Ok(transaction_id)
                     }
@@ -120,18 +127,21 @@ impl OrchestratorContract {
                         // Commit failed, rollback
                         let rollback_manager = RollbackManager::new(&env);
                         if let Err(_rollback_err) = rollback_manager.rollback_transaction(&log) {
-                            log.error = Some(String::from_str(&env, "Commit failed; rollback also failed"));
+                            log.error = Some(String::from_str(
+                                &env,
+                                "Commit failed; rollback also failed",
+                            ));
                         } else {
                             log.error = Some(String::from_str(&env, "Commit failed; rolled back"));
                         }
-                        
+
                         log.phase = TransactionPhase::RolledBack;
                         log.status = TransactionStatus::Failed;
                         log.updated_at = env.ledger().timestamp();
-                        
+
                         set_transaction_log(&env, &log);
                         Self::release_resource_locks(&env, transaction_id)?;
-                        
+
                         EventPublisher::transaction_rolled_back(&env, &log);
                         Err(e)
                     }
@@ -141,18 +151,21 @@ impl OrchestratorContract {
                 // Prepare failed, rollback
                 let rollback_manager = RollbackManager::new(&env);
                 if let Err(_rollback_err) = rollback_manager.rollback_transaction(&log) {
-                    log.error = Some(String::from_str(&env, "Prepare failed; rollback also failed"));
+                    log.error = Some(String::from_str(
+                        &env,
+                        "Prepare failed; rollback also failed",
+                    ));
                 } else {
                     log.error = Some(String::from_str(&env, "Prepare failed; rolled back"));
                 }
-                
+
                 log.phase = TransactionPhase::RolledBack;
                 log.status = TransactionStatus::Failed;
                 log.updated_at = env.ledger().timestamp();
-                
+
                 set_transaction_log(&env, &log);
                 Self::release_resource_locks(&env, transaction_id)?;
-                
+
                 EventPublisher::transaction_rolled_back(&env, &log);
                 Err(e)
             }
@@ -160,44 +173,53 @@ impl OrchestratorContract {
     }
 
     /// Get transaction details by ID
-    pub fn get_transaction(env: Env, transaction_id: u64) -> Result<TransactionLog, TransactionError> {
+    pub fn get_transaction(
+        env: Env,
+        transaction_id: u64,
+    ) -> Result<TransactionLog, TransactionError> {
         Self::require_initialized(&env)?;
-        
-        get_transaction_log(&env, transaction_id)
-            .ok_or(TransactionError::TransactionNotFound)
+
+        get_transaction_log(&env, transaction_id).ok_or(TransactionError::TransactionNotFound)
     }
 
     /// Get all active transactions
     pub fn get_active_transactions(env: Env) -> Result<Vec<u64>, TransactionError> {
         Self::require_initialized(&env)?;
-        
-        let active: Vec<u64> = env.storage().instance().get(&ACTIVE_TRANSACTIONS)
+
+        let active: Vec<u64> = env
+            .storage()
+            .instance()
+            .get(&ACTIVE_TRANSACTIONS)
             .unwrap_or(Vec::new(&env));
         Ok(active)
     }
 
     /// Manually rollback a transaction (admin only)
-    pub fn rollback_transaction(env: Env, admin: Address, transaction_id: u64) -> Result<(), TransactionError> {
+    pub fn rollback_transaction(
+        env: Env,
+        admin: Address,
+        transaction_id: u64,
+    ) -> Result<(), TransactionError> {
         Self::require_admin(&env, &admin)?;
         Self::require_initialized(&env)?;
-        
+
         let mut log = get_transaction_log(&env, transaction_id)
             .ok_or(TransactionError::TransactionNotFound)?;
-        
+
         if log.phase == TransactionPhase::Committed {
             return Err(TransactionError::InvalidPhase);
         }
 
         let rollback_manager = RollbackManager::new(&env);
         rollback_manager.rollback_transaction(&log)?;
-        
+
         log.phase = TransactionPhase::RolledBack;
         log.status = TransactionStatus::Cancelled;
         log.updated_at = env.ledger().timestamp();
-        
+
         set_transaction_log(&env, &log);
         Self::release_resource_locks(&env, transaction_id)?;
-        
+
         EventPublisher::transaction_rolled_back(&env, &log);
         Ok(())
     }
@@ -205,13 +227,16 @@ impl OrchestratorContract {
     /// Check and timeout expired transactions
     pub fn process_timeouts(env: Env) -> Result<Vec<u64>, TransactionError> {
         Self::require_initialized(&env)?;
-        
-        let active: Vec<u64> = env.storage().instance().get(&ACTIVE_TRANSACTIONS)
+
+        let active: Vec<u64> = env
+            .storage()
+            .instance()
+            .get(&ACTIVE_TRANSACTIONS)
             .unwrap_or(Vec::new(&env));
-        
+
         let mut timed_out = Vec::new(&env);
         let rollback_manager = RollbackManager::new(&env);
-        
+
         for i in 0..active.len() {
             let transaction_id = active.get(i).unwrap();
             if let Some(log) = get_transaction_log(&env, transaction_id) {
@@ -232,19 +257,23 @@ impl OrchestratorContract {
                 }
             }
         }
-        
+
         Ok(timed_out)
     }
 
     /// Update timeout configuration (admin only)
-    pub fn update_timeout_config(env: Env, admin: Address, config: TransactionTimeoutConfig) -> Result<(), TransactionError> {
+    pub fn update_timeout_config(
+        env: Env,
+        admin: Address,
+        config: TransactionTimeoutConfig,
+    ) -> Result<(), TransactionError> {
         Self::require_admin(&env, &admin)?;
         Self::require_initialized(&env)?;
-        
+
         if config.default_timeout > config.max_timeout {
             return Err(TransactionError::InvalidInput);
         }
-        
+
         env.storage().instance().set(&TIMEOUT_CONFIG, &config);
         Ok(())
     }
@@ -252,14 +281,17 @@ impl OrchestratorContract {
     /// Get current timeout configuration
     pub fn get_timeout_config(env: Env) -> Result<TransactionTimeoutConfig, TransactionError> {
         Self::require_initialized(&env)?;
-        
-        let config: TransactionTimeoutConfig = env.storage().instance().get(&TIMEOUT_CONFIG)
+
+        let config: TransactionTimeoutConfig = env
+            .storage()
+            .instance()
+            .get(&TIMEOUT_CONFIG)
             .unwrap_or_else(|| get_default_timeout_config(&env));
         Ok(config)
     }
 
     // Helper functions
-    
+
     fn require_initialized(env: &Env) -> Result<(), TransactionError> {
         if !env.storage().instance().has(&INITIALIZED) {
             Err(TransactionError::Unauthorized)
@@ -269,9 +301,12 @@ impl OrchestratorContract {
     }
 
     fn require_admin(env: &Env, caller: &Address) -> Result<(), TransactionError> {
-        let admin: Address = env.storage().instance().get(&ADMIN)
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&ADMIN)
             .ok_or(TransactionError::Unauthorized)?;
-        
+
         if admin == *caller {
             Ok(())
         } else {
@@ -279,8 +314,15 @@ impl OrchestratorContract {
         }
     }
 
-    fn acquire_resource_locks(env: &Env, transaction_id: &u64, operations: &Vec<TransactionOperation>) -> Result<(), TransactionError> {
-        let mut locks: Vec<(String, u64)> = env.storage().instance().get(&RESOURCE_LOCKS)
+    fn acquire_resource_locks(
+        env: &Env,
+        transaction_id: &u64,
+        operations: &Vec<TransactionOperation>,
+    ) -> Result<(), TransactionError> {
+        let mut locks: Vec<(String, u64)> = env
+            .storage()
+            .instance()
+            .get(&RESOURCE_LOCKS)
             .unwrap_or(Vec::new(env));
 
         for op_idx in 0..operations.len() {
@@ -304,7 +346,10 @@ impl OrchestratorContract {
     }
 
     fn release_resource_locks(env: &Env, transaction_id: u64) -> Result<(), TransactionError> {
-        let locks: Vec<(String, u64)> = env.storage().instance().get(&RESOURCE_LOCKS)
+        let locks: Vec<(String, u64)> = env
+            .storage()
+            .instance()
+            .get(&RESOURCE_LOCKS)
             .unwrap_or(Vec::new(env));
 
         let mut new_locks: Vec<(String, u64)> = Vec::new(env);

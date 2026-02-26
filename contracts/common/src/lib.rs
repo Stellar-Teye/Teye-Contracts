@@ -36,11 +36,11 @@ pub mod policy_dsl;
 pub mod progressive_auth;
 pub mod rate_limit;
 pub mod reentrancy_guard;
-pub mod session;
 pub mod risk_engine;
+pub mod session;
+pub mod transaction;
 pub mod vector_clock;
 pub mod whitelist;
-pub mod transaction;
 
 pub mod credential_types;
 
@@ -48,6 +48,7 @@ pub use admin_tiers::*;
 pub use concurrency::*;
 #[cfg(feature = "std")]
 pub use consent::*;
+pub use credential_types::*;
 pub use keys::*;
 pub use meta_tx::*;
 pub use metering::*;
@@ -55,11 +56,10 @@ pub use multisig::*;
 pub use nonce::*;
 pub use rate_limit::*;
 pub use reentrancy_guard::*;
-pub use session::*;
 pub use risk_engine::*;
+pub use session::*;
 pub use vector_clock::*;
 pub use whitelist::*;
-pub use credential_types::*;
 
 // ── Shared error enum ────────────────────────────────────────────────────────
 
