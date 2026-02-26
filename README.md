@@ -28,6 +28,7 @@ The platform provides a comprehensive solution for modern vision care data manag
 - [Helpful Links](#-helpful-links)
 - [Contribution Guidelines](#-contribution-guidelines)
 - [License](#-license)
+- [Compliance Documentation](docs/compliance/) - HIPAA compliance and regulatory requirements
 - [Support](#-support)
 
 ---
