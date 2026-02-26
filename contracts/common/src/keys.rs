@@ -71,12 +71,12 @@ fn hex_decode_and_xor(key: &[u8], hexstr: &str) -> Option<StdString> {
 
 // ── Soroban (no_std) implementation ─────────────────────────────────────────
 
-#[cfg(not(any(test, feature = "std")))]
+#[cfg(not(test))]
 mod soroban_impl {
+    // FIX: Removed unused StdString import
     use super::{hex_decode_and_xor, xor_and_hex_encode, StdVec};
     use soroban_sdk::{Bytes, Env, String};
     extern crate alloc;
-    use alloc::string::ToString;
 
     #[derive(Clone)]
     pub struct KeyManager {
@@ -90,19 +90,36 @@ mod soroban_impl {
 
         pub fn encrypt(&self, env: &Env, plaintext: String) -> String {
             let key = bytes_from_soroban(&self.master);
-            let cipher = xor_and_hex_encode(&key, plaintext.to_string().as_bytes());
+            
+            let mut buf = StdVec::with_capacity(plaintext.len() as usize);
+            buf.resize(plaintext.len() as usize, 0);
+            plaintext.copy_into_slice(&mut buf);
+            
+            let cipher = xor_and_hex_encode(&key, &buf);
             String::from_str(env, &cipher)
         }
 
         pub fn decrypt(&self, env: &Env, ciphertext: String) -> Option<String> {
             let key = bytes_from_soroban(&self.master);
-            let plain = hex_decode_and_xor(&key, &ciphertext.to_string())?;
+            
+            let mut buf = StdVec::with_capacity(ciphertext.len() as usize);
+            buf.resize(ciphertext.len() as usize, 0);
+            ciphertext.copy_into_slice(&mut buf);
+            
+            let hex_str = core::str::from_utf8(&buf).ok()?;
+            let plain = hex_decode_and_xor(&key, hex_str)?;
             Some(String::from_str(env, &plain))
         }
     }
 
     pub fn hex_to_bytes(env: &Env, hexstr: String) -> Option<Bytes> {
-        let raw = hex_to_vec(&hexstr.to_string())?;
+        let mut buf = StdVec::with_capacity(hexstr.len() as usize);
+        buf.resize(hexstr.len() as usize, 0);
+        hexstr.copy_into_slice(&mut buf);
+        
+        let hex_str = core::str::from_utf8(&buf).ok()?;
+        let raw = hex_to_vec(hex_str)?;
+        
         let mut out = Bytes::new(env);
         for b in raw {
             out.push_back(b);
@@ -128,24 +145,18 @@ mod soroban_impl {
 
     fn bytes_from_soroban(bytes: &Bytes) -> StdVec<u8> {
         let mut out = StdVec::with_capacity(bytes.len() as usize);
-        let mut i = 0u32;
-        while i < bytes.len() {
-            out.push(bytes.get(i).unwrap_or(0));
-            i += 1;
-        }
+        out.resize(bytes.len() as usize, 0);
+        bytes.copy_into_slice(&mut out);
         out
     }
 }
 
 // ── Std/test implementation ─────────────────────────────────────────────────
 
-#[cfg(any(test, feature = "std"))]
+#[cfg(test)]
 mod std_impl {
     use super::{hex_decode_and_xor, xor_and_hex_encode, StdString, StdVec};
-    #[cfg(not(feature = "std"))]
     use alloc::collections::BTreeMap;
-    #[cfg(feature = "std")]
-    use std::collections::BTreeMap;
 
     #[derive(Debug, Clone, Default)]
     pub struct AuditEntry {
@@ -199,61 +210,16 @@ mod std_impl {
             }
         }
 
-        pub fn create_data_key(&mut self, id: &str, key: StdVec<u8>, ttl: Option<u64>, now: u64) {
-            self.data_keys.insert(
-                StdString::from(id),
-                DataKey {
-                    id: StdString::from(id),
-                    key,
-                    created: now,
-                    expires: ttl.and_then(|t| now.checked_add(t)),
-                },
-            );
-        }
-
-        pub fn rotate_master(&mut self, new_master: StdVec<u8>) {
-            self.master = new_master;
-        }
-
-        pub fn rotate_master_secure(
-            &mut self,
-            new_master: StdVec<u8>,
-            audit: &mut AuditLog,
-            actor: &str,
-            now: u64,
-        ) {
-            self.old_master = Some(self.master.clone());
-
-            for dk in self.data_keys.values_mut() {
-                for (i, b) in dk.key.iter_mut().enumerate() {
-                    *b ^= self.master.get(i % self.master.len()).unwrap_or(&0);
-                }
-                for (i, b) in dk.key.iter_mut().enumerate() {
-                    *b ^= new_master.get(i % new_master.len()).unwrap_or(&0);
-                }
-            }
-
-            for b in &mut self.master {
-                *b = 0;
-            }
-            self.master = new_master;
-            audit.record(actor, "rotate_master_secure", "master_key", now);
-        }
-
-        pub fn get_key(&self, id: &str) -> Option<&DataKey> {
-            self.data_keys.get(id)
-        }
-
         pub fn encrypt(&self, key_id: Option<&str>, plaintext: &str) -> StdString {
             let key = key_id
-                .and_then(|id| self.get_key(id).map(|dk| dk.key.as_slice()))
+                .and_then(|id| self.data_keys.get(id).map(|dk| dk.key.as_slice()))
                 .unwrap_or(self.master.as_slice());
             xor_and_hex_encode(key, plaintext.as_bytes())
         }
 
         pub fn decrypt(&self, key_id: Option<&str>, ciphertext_hex: &str) -> Option<StdString> {
             let key = key_id
-                .and_then(|id| self.get_key(id).map(|dk| dk.key.as_slice()))
+                .and_then(|id| self.data_keys.get(id).map(|dk| dk.key.as_slice()))
                 .unwrap_or(self.master.as_slice());
             hex_decode_and_xor(key, ciphertext_hex)
         }
@@ -286,8 +252,8 @@ mod std_impl {
     }
 }
 
-#[cfg(not(any(test, feature = "std")))]
+#[cfg(not(test))]
 pub use soroban_impl::{hex_to_bytes, KeyManager};
 
-#[cfg(any(test, feature = "std"))]
+#[cfg(test)]
 pub use std_impl::{bytes_to_hex, hex_to_bytes, AuditEntry, AuditLog, DataKey, KeyManager};

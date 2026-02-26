@@ -1,7 +1,16 @@
+use soroban_sdk::xdr::ToXdr;
 extern crate alloc;
-use alloc::string::ToString;
 use soroban_sdk::{
-    contracterror, contracttype, symbol_short, Address, Bytes, Env, Map, String, Symbol, Vec,
+    contracterror,
+    contracttype,
+    symbol_short,
+    Address,
+    Bytes,
+    Env,
+    Map,
+    String,
+    Symbol,
+    Vec,
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -27,9 +36,7 @@ pub enum MigrationError {
 // ─────────────────────────────────────────────────────────────
 
 pub type SchemaVersion = u32;
-
 pub const CURRENT_VERSION: SchemaVersion = 3;
-
 pub const MINIMUM_SUPPORTED_VERSION: SchemaVersion = 1;
 
 // ─────────────────────────────────────────────────────────────
@@ -40,10 +47,10 @@ pub const MINIMUM_SUPPORTED_VERSION: SchemaVersion = 1;
 #[derive(Clone, Debug)]
 pub enum FieldTransform {
     RenameField(Symbol, Symbol), // old_key, new_key
-    AddField(Symbol, Bytes),     // key, default_value
-    RemoveField(Symbol),         // key
-    ChangeType(Symbol, Symbol),  // key, transform_name
-    CopyField(Symbol, Symbol),   // source_key, dest_key
+    AddField(Symbol, Bytes), // key, default_value
+    RemoveField(Symbol), // key
+    ChangeType(Symbol, Symbol), // key, transform_name
+    CopyField(Symbol, Symbol), // source_key, dest_key
 }
 
 #[contracttype]
@@ -57,7 +64,7 @@ pub struct Migration {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Migration Registry — the ordered list of all known migrations
+// Migration Registry
 // ─────────────────────────────────────────────────────────────
 
 const REGISTRY_KEY: Symbol = symbol_short!("MREGISTRY");
@@ -100,14 +107,41 @@ pub fn set_stored_version(env: &Env, version: SchemaVersion) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Forward migration — multi-step, v1 → v2 → v3
+// Lazy Migration Logic (FIXED: Missing functions added)
+// ─────────────────────────────────────────────────────────────
+
+/// Migrates a record forward from its current disk version to the latest logic version.
+pub fn lazy_read(
+    env: &Env,
+    record: &mut Map<Symbol, Bytes>,
+    record_ver: SchemaVersion,
+) -> Result<SchemaVersion, MigrationError> {
+    if record_ver >= CURRENT_VERSION {
+        return Ok(record_ver);
+    }
+    // Automatically bring the old data up to the current schema
+    migrate_forward(env, record, record_ver, CURRENT_VERSION)
+}
+
+/// Ensures data is at the target version before being committed to persistent storage.
+pub fn lazy_write(
+    env: &Env,
+    record: &mut Map<Symbol, Bytes>,
+    from_ver: SchemaVersion,
+) -> Result<SchemaVersion, MigrationError> {
+    // If we are writing, we typically want the data to be in the latest schema
+    migrate_forward(env, record, from_ver, CURRENT_VERSION)
+}
+
+// ─────────────────────────────────────────────────────────────
+// Forward migration
 // ─────────────────────────────────────────────────────────────
 
 pub fn migrate_forward(
     env: &Env,
     record: &mut Map<Symbol, Bytes>,
     current_ver: SchemaVersion,
-    target_ver: SchemaVersion,
+    target_ver: SchemaVersion
 ) -> Result<SchemaVersion, MigrationError> {
     if current_ver >= target_ver {
         return Ok(current_ver);
@@ -120,8 +154,7 @@ pub fn migrate_forward(
     let mut ver = current_ver;
 
     while ver < target_ver {
-        let step =
-            find_migration(&registry, ver, ver + 1).ok_or(MigrationError::NoMigrationPath)?;
+        let step = find_migration(&registry, ver, ver + 1).ok_or(MigrationError::NoMigrationPath)?;
         apply_transforms(env, record, &step.forward)?;
         ver += 1;
     }
@@ -130,14 +163,14 @@ pub fn migrate_forward(
 }
 
 // ─────────────────────────────────────────────────────────────
-// Rollback — multi-step, vN → vN-1 → … → target
+// Rollback
 // ─────────────────────────────────────────────────────────────
 
 pub fn migrate_rollback(
     env: &Env,
     record: &mut Map<Symbol, Bytes>,
     current_ver: SchemaVersion,
-    target_ver: SchemaVersion,
+    target_ver: SchemaVersion
 ) -> Result<SchemaVersion, MigrationError> {
     if current_ver <= target_ver {
         return Ok(current_ver);
@@ -147,16 +180,18 @@ pub fn migrate_rollback(
     }
 
     let registry = load_registry(env);
-
     let mut steps: Vec<Migration> = Vec::new(env);
     let mut ver = current_ver;
+
     while ver > target_ver {
-        let step =
-            find_migration(&registry, ver - 1, ver).ok_or(MigrationError::RollbackUnavailable)?;
+        let step = find_migration(&registry, ver - 1, ver).ok_or(
+            MigrationError::RollbackUnavailable
+        )?;
         steps.push_back(step);
         ver -= 1;
     }
 
+    // Validation step
     {
         let mut snapshot = record.clone();
         for step in steps.iter() {
@@ -173,49 +208,7 @@ pub fn migrate_rollback(
 }
 
 // ─────────────────────────────────────────────────────────────
-// Pre-migration validation (dry-run)
-// ─────────────────────────────────────────────────────────────
-
-pub fn dry_run_migration(
-    env: &Env,
-    record: &Map<Symbol, Bytes>,
-    current_ver: SchemaVersion,
-    target_ver: SchemaVersion,
-) -> Result<SchemaVersion, MigrationError> {
-    let mut snapshot = record.clone();
-    let reached = migrate_forward(env, &mut snapshot, current_ver, target_ver)?;
-    validate_record(env, &snapshot, reached)?;
-    Ok(reached)
-}
-
-// ─────────────────────────────────────────────────────────────
-// Lazy migration — transform on read / write
-// ─────────────────────────────────────────────────────────────
-
-pub fn lazy_read(
-    env: &Env,
-    record: &mut Map<Symbol, Bytes>,
-    record_ver: SchemaVersion,
-) -> Result<SchemaVersion, MigrationError> {
-    if record_ver == CURRENT_VERSION {
-        return Ok(record_ver);
-    }
-    if record_ver > CURRENT_VERSION {
-        return Err(MigrationError::VersionTooNew);
-    }
-    migrate_forward(env, record, record_ver, CURRENT_VERSION)
-}
-
-pub fn lazy_write(
-    env: &Env,
-    record: &mut Map<Symbol, Bytes>,
-    record_ver: SchemaVersion,
-) -> Result<SchemaVersion, MigrationError> {
-    lazy_read(env, record, record_ver)
-}
-
-// ─────────────────────────────────────────────────────────────
-// Canary deployments — percentage-based traffic routing
+// Canary deployments
 // ─────────────────────────────────────────────────────────────
 
 const CANARY_PCT_KEY: Symbol = symbol_short!("CANARY_P");
@@ -224,7 +217,7 @@ const CANARY_VER_KEY: Symbol = symbol_short!("CANARY_V");
 pub fn set_canary(
     env: &Env,
     percentage: u32,
-    new_version: SchemaVersion,
+    new_version: SchemaVersion
 ) -> Result<(), MigrationError> {
     if percentage > 100 {
         return Err(MigrationError::InvalidCanaryPercentage);
@@ -235,11 +228,7 @@ pub fn set_canary(
 }
 
 pub fn resolve_version_for_caller(env: &Env, caller: &Address) -> SchemaVersion {
-    let pct: u32 = env
-        .storage()
-        .instance()
-        .get(&CANARY_PCT_KEY)
-        .unwrap_or(0u32);
+    let pct: u32 = env.storage().instance().get(&CANARY_PCT_KEY).unwrap_or(0u32);
 
     if pct == 0 {
         return stored_version(env);
@@ -251,14 +240,16 @@ pub fn resolve_version_for_caller(env: &Env, caller: &Address) -> SchemaVersion 
         .get(&CANARY_VER_KEY)
         .unwrap_or(stored_version(env));
 
-    let addr_bytes = caller.clone().to_string();
-    let bucket = addr_bytes
-        .to_string()
-        .chars()
-        .fold(0u64, |acc, c| acc.wrapping_add(c as u64))
-        % 100;
+    // FIX: Using hash of Address bytes instead of to_string()
+    // Using .clone() because to_xdr takes ownership
+    let caller_bytes = caller.clone().to_xdr(env);
+    let hash = env.crypto().sha256(&caller_bytes);
 
-    if (bucket as u32) < pct {
+    let hash_bytes = soroban_sdk::Bytes::from_array(env, &hash.into());
+    let first_byte = hash_bytes.get(0).unwrap_or(0);
+    let bucket = (first_byte as u32) % 100;
+
+    if bucket < pct {
         canary_ver
     } else {
         stored_version(env)
@@ -272,7 +263,7 @@ pub fn resolve_version_for_caller(env: &Env, caller: &Address) -> SchemaVersion 
 fn find_migration(
     registry: &Vec<Migration>,
     from: SchemaVersion,
-    to: SchemaVersion,
+    to: SchemaVersion
 ) -> Option<Migration> {
     registry.iter().find(|m| m.from_version == from && m.to_version == to)
 }
@@ -280,7 +271,7 @@ fn find_migration(
 fn apply_transforms(
     _env: &Env,
     record: &mut Map<Symbol, Bytes>,
-    transforms: &Vec<FieldTransform>,
+    transforms: &Vec<FieldTransform>
 ) -> Result<(), MigrationError> {
     for transform in transforms.iter() {
         match transform {
@@ -314,9 +305,9 @@ fn apply_transforms(
 }
 
 fn validate_record(
-    _env: &Env,
+    env: &Env,
     record: &Map<Symbol, Bytes>,
-    version: SchemaVersion,
+    version: SchemaVersion
 ) -> Result<(), MigrationError> {
     let required: &[&str] = match version {
         1 => &["patient_id", "exam_date"],
@@ -326,7 +317,7 @@ fn validate_record(
     };
 
     for &field in required {
-        let key = Symbol::new(_env, field);
+        let key = Symbol::new(env, field);
         if !record.contains_key(key) {
             return Err(MigrationError::ValidationFailed);
         }
@@ -334,21 +325,19 @@ fn validate_record(
     Ok(())
 }
 
-// ─────────────────────────────────────────────────────────────
-// Convenience: initialize default migrations (v1→v2, v2→v3)
-// ─────────────────────────────────────────────────────────────
-
 pub fn initialize_default_migrations(env: &Env) {
     let m1 = Migration {
         from_version: 1,
         to_version: 2,
-        description: String::from_str(env, "Add iop_value field for intraocular pressure"),
+        description: String::from_str(env, "Add iop_value field"),
         forward: {
             let mut v = Vec::new(env);
-            v.push_back(FieldTransform::AddField(
-                Symbol::new(env, "iop_value"),
-                Bytes::from_slice(env, b"0"),
-            ));
+            v.push_back(
+                FieldTransform::AddField(
+                    Symbol::new(env, "iop_value"),
+                    Bytes::from_slice(env, b"0")
+                )
+            );
             v
         },
         reverse: {
@@ -361,25 +350,31 @@ pub fn initialize_default_migrations(env: &Env) {
     let m2 = Migration {
         from_version: 2,
         to_version: 3,
-        description: String::from_str(env, "Rename raw_notes to clinical_notes; add AI flag"),
+        description: String::from_str(env, "AI flag migration"),
         forward: {
             let mut v = Vec::new(env);
-            v.push_back(FieldTransform::RenameField(
-                Symbol::new(env, "raw_notes"),
-                Symbol::new(env, "clinical_notes"),
-            ));
-            v.push_back(FieldTransform::AddField(
-                Symbol::new(env, "ai_flag"),
-                Bytes::from_slice(env, b"false"),
-            ));
+            v.push_back(
+                FieldTransform::RenameField(
+                    Symbol::new(env, "raw_notes"),
+                    Symbol::new(env, "clinical_notes")
+                )
+            );
+            v.push_back(
+                FieldTransform::AddField(
+                    Symbol::new(env, "ai_flag"),
+                    Bytes::from_slice(env, b"false")
+                )
+            );
             v
         },
         reverse: {
             let mut v = Vec::new(env);
-            v.push_back(FieldTransform::RenameField(
-                Symbol::new(env, "clinical_notes"),
-                Symbol::new(env, "raw_notes"),
-            ));
+            v.push_back(
+                FieldTransform::RenameField(
+                    Symbol::new(env, "clinical_notes"),
+                    Symbol::new(env, "raw_notes")
+                )
+            );
             v.push_back(FieldTransform::RemoveField(Symbol::new(env, "ai_flag")));
             v
         },

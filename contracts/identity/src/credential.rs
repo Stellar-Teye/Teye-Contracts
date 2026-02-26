@@ -1,5 +1,7 @@
 #![allow(deprecated)]
 use soroban_sdk::{symbol_short, Address, BytesN, Env, Symbol, Vec, Bytes};
+
+// Define types for clarity
 type VkG1Point = Bytes;
 type VkG2Point = Bytes;
 
@@ -24,15 +26,17 @@ pub fn get_zk_verifier(env: &Env) -> Option<Address> {
 }
 
 pub fn verify_zk_credential(
-    env: &Env,
-    user: &Address,
-    resource_id: BytesN<32>,
-    proof_a: VkG1Point,
-    proof_b: VkG2Point,
-    proof_c: VkG1Point,
-    public_inputs: Vec<BytesN<32>>,
-    expires_at: u64,
-    nonce: u64,
+    _env: &Env,
+    _user: &Address,
+    _resource_id: BytesN<32>,
+    _proof_a: VkG1Point,
+    _proof_b: VkG2Point,
+    _proof_c: VkG1Point,
+    _public_inputs: Vec<BytesN<32>>,
+    _expires_at: u64,
+    _nonce: u64,
 ) -> Result<bool, CredentialError> {
+    // Logic currently returns true by default; 
+    // variables are prefixed with _ to clear compiler warnings.
     Ok(true)
 }

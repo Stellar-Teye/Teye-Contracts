@@ -32,10 +32,16 @@ edition = "2021"
 repository = "https://github.com/Stellar-Teye/Teye-Contracts"
 rust-version = "1.78"
 
+
 [workspace.dependencies]
-soroban-sdk = "25.0.0"
-proptest = "1"
-proptest-derive = "0.4"
+soroban-sdk = "25.1.1"
+
+# The Fix: default-features = false prevents the 'imp' error
+proptest = { version = "1.0.0", default-features = false, features = ["alloc"] }
+proptest-derive = { version = "0.4.0", default-features = false }
+
+# Ensure getrandom is also set for WASM
+getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [profile.release]
 opt-level = "z"

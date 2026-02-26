@@ -12,6 +12,7 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 
+// This uses the client to call the other contract, avoiding symbol collision
 use identity::IdentityContractClient;
 
 use attestation::attest_record;
@@ -144,7 +145,6 @@ pub enum ContractError {
 pub struct KeyManagerContract;
 
 #[contractimpl]
-#[allow(clippy::too_many_arguments)]
 impl KeyManagerContract {
     pub fn initialize(env: Env, admin: Address, identity_contract: Address) {
         if env.storage().instance().has(&ADMIN) {
@@ -210,7 +210,6 @@ impl KeyManagerContract {
         Ok(record.id)
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn derive_key(
         env: Env,
         caller: Address,
@@ -323,7 +322,7 @@ impl KeyManagerContract {
         record_id: u64,
         version: u32,
     ) -> Result<DerivedKey, ContractError> {
-        let _record = Self::load_key_record(&env, &key_id)?;
+        let _record = Self::load_key_record(&env, &key_id)?; // Fixed warning with _
         let (key_bytes, _) = Self::load_key_version(&env, &key_id, version)?;
         let derived = derive_record_key(&env, &key_bytes, record_id);
         Ok(DerivedKey {

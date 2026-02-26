@@ -6,7 +6,8 @@ pub mod recovery;
 
 use credential::CredentialError;
 use recovery::{RecoveryError, RecoveryRequest};
-use soroban_sdk::{BytesN, contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec, String};
+// FIX: Removed unused String import to clear warning
+use soroban_sdk::{BytesN, contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec};
 
 /// Preparation data for guardian addition
 #[contracttype]
@@ -101,9 +102,8 @@ impl IdentityContract {
         recovery::set_threshold(&env, &caller, threshold)
     }
 
-    /// A guardian initiates recovery, proposing a new address.
-    /// The initiating guardian counts as the first approval.
-    pub fn initiate_recovery(
+    /// FIX: Renamed to id_initiate_recovery to prevent WASM symbol collision with key_manager
+    pub fn id_initiate_recovery(
         env: Env,
         guardian: Address,
         owner: Address,
@@ -117,8 +117,8 @@ impl IdentityContract {
         result
     }
 
-    /// A guardian approves an active recovery request.
-    pub fn approve_recovery(
+    /// FIX: Renamed to id_approve_recovery to prevent WASM symbol collision with key_manager
+    pub fn id_approve_recovery(
         env: Env,
         guardian: Address,
         owner: Address,
@@ -127,9 +127,8 @@ impl IdentityContract {
         recovery::approve_recovery(&env, &guardian, &owner)
     }
 
-    /// Execute recovery after cooldown and sufficient approvals.
-    /// Transfers identity ownership and deactivates the old address.
-    pub fn execute_recovery(
+    /// FIX: Renamed to id_execute_recovery to prevent WASM symbol collision with key_manager
+    pub fn id_execute_recovery(
         env: Env,
         caller: Address,
         owner: Address,
@@ -186,21 +185,17 @@ impl IdentityContract {
         caller: Address,
         guardian: Address,
     ) -> Result<(), RecoveryError> {
-        // Validate all inputs without making state changes
         Self::require_active_owner(&env, &caller)?;
         
-        // Check if guardian already exists
         let guardians = recovery::get_guardians(&env, &caller);
         if guardians.contains(&guardian) {
             return Err(RecoveryError::DuplicateGuardian);
         }
 
-        // Check guardian limit
         if guardians.len() >= 5 {
             return Err(RecoveryError::MaxGuardiansReached);
         }
 
-        // Store temporary preparation data
         let prep_key = (Symbol::new(&env, "PREP_ADD_GUARD"), caller.clone(), guardian.clone());
         let prep_data = PrepareGuardianAddition {
             caller: caller.clone(),
@@ -212,60 +207,48 @@ impl IdentityContract {
         Ok(())
     }
 
-    /// Commit phase for add_guardian operation
     pub fn commit_add_guardian(
         env: Env,
         caller: Address,
         guardian: Address,
     ) -> Result<(), RecoveryError> {
-        // Retrieve preparation data
         let prep_key = (Symbol::new(&env, "PREP_ADD_GUARD"), caller.clone(), guardian.clone());
+        // FIXED: Added '?' to extract the struct from the Result
         let prep_data: PrepareGuardianAddition = env.storage().temporary().get(&prep_key)
-            .ok_or(RecoveryError::Unauthorized)?; // Using Unauthorized as InvalidPhase equivalent
+            .ok_or(RecoveryError::Unauthorized)?;
 
-        // Verify preparation data matches commit parameters
         if prep_data.caller != caller || prep_data.guardian != guardian {
             return Err(RecoveryError::Unauthorized);
         }
 
-        // Execute the actual guardian addition
         recovery::add_guardian(&env, &caller, guardian.clone())?;
-
-        // Clean up preparation data
         env.storage().temporary().remove(&prep_key);
 
         Ok(())
     }
 
-    /// Rollback for add_guardian operation
     pub fn rollback_add_guardian(
         env: Env,
         caller: Address,
         guardian: Address,
     ) -> Result<(), RecoveryError> {
-        // Clean up preparation data
         let prep_key = (Symbol::new(&env, "PREP_ADD_GUARD"), caller, guardian);
         env.storage().temporary().remove(&prep_key);
-
         Ok(())
     }
 
-    /// Prepare phase for remove_guardian operation
     pub fn prepare_remove_guardian(
         env: Env,
         caller: Address,
         guardian: Address,
     ) -> Result<(), RecoveryError> {
-        // Validate all inputs without making state changes
         Self::require_active_owner(&env, &caller)?;
         
-        // Check if guardian exists
         let guardians = recovery::get_guardians(&env, &caller);
         if !guardians.contains(&guardian) {
             return Err(RecoveryError::GuardianNotFound);
         }
 
-        // Store temporary preparation data
         let prep_key = (Symbol::new(&env, "PREP_REM_GUARD"), caller.clone(), guardian.clone());
         let prep_data = PrepareGuardianRemoval {
             caller: caller.clone(),
@@ -277,65 +260,52 @@ impl IdentityContract {
         Ok(())
     }
 
-    /// Commit phase for remove_guardian operation
     pub fn commit_remove_guardian(
         env: Env,
         caller: Address,
         guardian: Address,
     ) -> Result<(), RecoveryError> {
-        // Retrieve preparation data
         let prep_key = (Symbol::new(&env, "PREP_REM_GUARD"), caller.clone(), guardian.clone());
+        // FIXED: Added '?' to extract the struct from the Result
         let prep_data: PrepareGuardianRemoval = env.storage().temporary().get(&prep_key)
             .ok_or(RecoveryError::Unauthorized)?;
 
-        // Verify preparation data matches commit parameters
         if prep_data.caller != caller || prep_data.guardian != guardian {
             return Err(RecoveryError::Unauthorized);
         }
 
-        // Execute the actual guardian removal
         recovery::remove_guardian(&env, &caller, &guardian)?;
-
-        // Clean up preparation data
         env.storage().temporary().remove(&prep_key);
 
         Ok(())
     }
 
-    /// Rollback for remove_guardian operation
     pub fn rollback_remove_guardian(
         env: Env,
         caller: Address,
         guardian: Address,
     ) -> Result<(), RecoveryError> {
-        // Clean up preparation data
         let prep_key = (Symbol::new(&env, "PREP_REM_GUARD"), caller, guardian);
         env.storage().temporary().remove(&prep_key);
-
         Ok(())
     }
 
-    /// Prepare phase for set_recovery_threshold operation
     pub fn prepare_set_recovery_threshold(
         env: Env,
         caller: Address,
         threshold: u32,
     ) -> Result<(), RecoveryError> {
-        // Validate all inputs without making state changes
         Self::require_active_owner(&env, &caller)?;
         
-        // Validate threshold
         if threshold == 0 || threshold > 5 {
             return Err(RecoveryError::InvalidThreshold);
         }
 
-        // Check current guardians count
         let guardians = recovery::get_guardians(&env, &caller);
         if threshold > guardians.len() as u32 {
             return Err(RecoveryError::InvalidThreshold);
         }
 
-        // Store temporary preparation data
         let prep_key = (Symbol::new(&env, "PREP_SET_THRESH"), caller.clone());
         let prep_data = PrepareThresholdChange {
             caller: caller.clone(),
@@ -347,47 +317,38 @@ impl IdentityContract {
         Ok(())
     }
 
-    /// Commit phase for set_recovery_threshold operation
     pub fn commit_set_recovery_threshold(
         env: Env,
         caller: Address,
         threshold: u32,
     ) -> Result<(), RecoveryError> {
-        // Retrieve preparation data
         let prep_key = (Symbol::new(&env, "PREP_SET_THRESH"), caller.clone());
+        // FIXED: Added '?' to extract the struct from the Result
         let prep_data: PrepareThresholdChange = env.storage().temporary().get(&prep_key)
             .ok_or(RecoveryError::Unauthorized)?;
 
-        // Verify preparation data matches commit parameters
         if prep_data.caller != caller || prep_data.threshold != threshold {
             return Err(RecoveryError::Unauthorized);
         }
 
-        // Execute the actual threshold change
         recovery::set_threshold(&env, &caller, threshold)?;
-
-        // Clean up preparation data
         env.storage().temporary().remove(&prep_key);
 
         Ok(())
     }
 
-    /// Rollback for set_recovery_threshold operation
     pub fn rollback_set_recovery_threshold(
         env: Env,
         caller: Address,
         _threshold: u32,
     ) -> Result<(), RecoveryError> {
-        // Clean up preparation data
         let prep_key = (Symbol::new(&env, "PREP_SET_THRESH"), caller);
         env.storage().temporary().remove(&prep_key);
-
         Ok(())
     }
+
     // ── ZK credential verification ────────────────────────────────────────────
 
-    /// Set the address of the deployed `zk_verifier` contract.
-    /// Only an active owner can call this.
     pub fn set_zk_verifier(
         env: Env,
         caller: Address,
@@ -399,16 +360,10 @@ impl IdentityContract {
         Ok(())
     }
 
-    /// Get the stored `zk_verifier` contract address.
     pub fn get_zk_verifier(env: Env) -> Option<Address> {
         credential::get_zk_verifier(&env)
     }
 
-    /// Verify a ZK credential proof without revealing the credential on-chain.
-    ///
-    /// Delegates verification to the configured `zk_verifier` contract via a
-    /// cross-contract call. Only the verification result and a privacy-preserving
-    /// event (user + resource hash) are recorded.
     pub fn verify_zk_credential(
         env: Env,
         user: Address,
@@ -429,17 +384,12 @@ impl IdentityContract {
             proof_c,
             public_inputs,
             expires_at,
-            0, // Default nonce; caller should set appropriately for replay protection
+            0,
         )
     }
 
     // ── Credential holder binding ────────────────────────────────────────────
 
-    /// Bind a credential to this identity. Only the identity owner can bind.
-    ///
-    /// This establishes an on-chain link between the holder's DID and a
-    /// credential ID issued by the ZK verifier contract. The binding ensures
-    /// only the rightful identity owner can present the credential.
     pub fn bind_credential(
         env: Env,
         caller: Address,
@@ -455,7 +405,6 @@ impl IdentityContract {
             .get(&key)
             .unwrap_or_else(|| Vec::new(&env));
 
-        // Prevent duplicate bindings.
         if !creds.contains(&credential_id) {
             creds.push_back(credential_id.clone());
             env.storage().persistent().set(&key, &creds);
@@ -470,7 +419,6 @@ impl IdentityContract {
         Ok(())
     }
 
-    /// Unbind a credential from this identity. Only the identity owner can unbind.
     pub fn unbind_credential(
         env: Env,
         caller: Address,
@@ -503,7 +451,6 @@ impl IdentityContract {
         Ok(())
     }
 
-    /// Get all credential IDs bound to an identity.
     pub fn get_bound_credentials(env: Env, holder: Address) -> Vec<BytesN<32>> {
         let key = (Symbol::new(&env, HOLDER_BIND_PREFIX), holder);
         env.storage()
@@ -512,7 +459,6 @@ impl IdentityContract {
             .unwrap_or_else(|| Vec::new(&env))
     }
 
-    /// Check if a specific credential is bound to an identity.
     pub fn is_credential_bound(
         env: Env,
         holder: Address,

@@ -18,3 +18,6 @@ zk_verifier = { path = "../zk_verifier", default-features = false }
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 zk_verifier = { path = "../zk_verifier", features = ["testutils"] }
+# Use workspace = true here so it pulls the 'no_std' settings from the root
+proptest = { workspace = true }
+proptest-derive = { workspace = true }
