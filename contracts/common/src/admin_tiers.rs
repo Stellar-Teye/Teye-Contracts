@@ -21,6 +21,7 @@ const TTL_EXTEND_TO: u32 = 10368000;
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
+#[allow(clippy::enum_variant_names)]
 pub enum AdminTier {
     OperatorAdmin = 1,
     ContractAdmin = 2,

@@ -1,5 +1,5 @@
 #![allow(deprecated)]
-use soroban_sdk::{symbol_short, Address, Bytes, BytesN, Env, Symbol, Vec};
+use soroban_sdk::{symbol_short, Address, BytesN, Env, Symbol, Vec, Bytes};
 type VkG1Point = Bytes;
 type VkG2Point = Bytes;
 

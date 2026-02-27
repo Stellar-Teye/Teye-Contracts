@@ -122,6 +122,7 @@ impl<'a> DeadlockDetector<'a> {
     }
 
     /// Get resources that are causing conflicts in a deadlock cycle
+    #[allow(dead_code)]
     fn get_conflicting_resources(&self, cycle: &Vec<u64>) -> Vec<String> {
         let current_locks: Vec<(String, u64)> = self
             .env

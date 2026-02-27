@@ -1,8 +1,20 @@
 #[cfg(test)]
 mod gas_benchmarks {
-    use super::*;
-    use common::transaction::{ContractType, TransactionOperation, TransactionTimeoutConfig};
-    use soroban_sdk::{Address, Env, String, Vec};
+    use crate::{
+        deadlock::DeadlockDetector, events::EventPublisher, rollback::RollbackManager,
+        OrchestratorContract,
+    };
+    use common::transaction::{
+        self, ContractType, TransactionLog, TransactionOperation, TransactionPhase,
+        TransactionStatus,
+    };
+    use soroban_sdk::{testutils::Address as _, vec, Address, Env, String, Vec};
+
+    macro_rules! println {
+        ($($arg:tt)*) => {
+            let _ = core::format_args!($($arg)*);
+        };
+    }
 
     #[test]
     #[ignore]
@@ -31,7 +43,7 @@ mod gas_benchmarks {
         let operations = vec![&env, single_operation];
 
         // Measure gas for orchestrated transaction
-        let start_gas = env.budget().consumed();
+        env.cost_estimate().budget().reset_default();
         let _result = OrchestratorContract::start_transaction(
             env.clone(),
             initiator.clone(),
@@ -39,7 +51,7 @@ mod gas_benchmarks {
             Some(300),
             Vec::new(&env),
         );
-        let orchestrated_gas = env.budget().consumed() - start_gas;
+        let orchestrated_gas = env.cost_estimate().budget().cpu_instruction_cost();
 
         println!("Orchestrated transaction gas: {}", orchestrated_gas);
 
@@ -73,17 +85,14 @@ mod gas_benchmarks {
                     contract_address: Address::generate(&env),
                     function_name: String::from_str(&env, "test_function"),
                     parameters: Vec::new(&env),
-                    locked_resources: vec![
-                        &env,
-                        String::from_str(&env, &format!("resource_{}", i)),
-                    ],
+                    locked_resources: vec![&env, String::from_str(&env, "resource")],
                     prepared: false,
                     committed: false,
                     error: None,
                 });
             }
 
-            let start_gas = env.budget().consumed();
+            env.cost_estimate().budget().reset_default();
             let _result = OrchestratorContract::start_transaction(
                 env.clone(),
                 initiator.clone(),
@@ -91,13 +100,13 @@ mod gas_benchmarks {
                 Some(300),
                 Vec::new(&env),
             );
-            let total_gas = env.budget().consumed() - start_gas;
+            let total_gas = env.cost_estimate().budget().cpu_instruction_cost();
 
             println!(
                 "Operations: {}, Gas: {}, Gas per op: {}",
                 op_count,
                 total_gas,
-                total_gas / op_count as u64
+                total_gas / op_count
             );
         }
     }
@@ -126,8 +135,8 @@ mod gas_benchmarks {
                     parameters: Vec::new(&env),
                     locked_resources: vec![
                         &env,
-                        String::from_str(&env, &format!("resource_{}", i)),
-                        String::from_str(&env, &format!("resource_{}", (i + 1) % resource_count)),
+                        String::from_str(&env, "resource_a"),
+                        String::from_str(&env, "resource_b"),
                     ],
                     prepared: false,
                     committed: false,
@@ -135,9 +144,9 @@ mod gas_benchmarks {
                 });
             }
 
-            let start_gas = env.budget().consumed();
+            env.cost_estimate().budget().reset_default();
             let _would_deadlock = deadlock_detector.would_cause_deadlock(&1, &operations);
-            let detection_gas = env.budget().consumed() - start_gas;
+            let detection_gas = env.cost_estimate().budget().cpu_instruction_cost();
 
             println!(
                 "Resources: {}, Deadlock detection gas: {}",
@@ -188,15 +197,15 @@ mod gas_benchmarks {
                 metadata: Vec::new(&env),
             };
 
-            let start_gas = env.budget().consumed();
+            env.cost_estimate().budget().reset_default();
             let _result = rollback_manager.rollback_transaction(&log);
-            let rollback_gas = env.budget().consumed() - start_gas;
+            let rollback_gas = env.cost_estimate().budget().cpu_instruction_cost();
 
             println!(
                 "Operations: {}, Rollback gas: {}, Gas per op: {}",
                 op_count,
                 rollback_gas,
-                rollback_gas / op_count as u64
+                rollback_gas / op_count
             );
         }
     }
@@ -208,7 +217,7 @@ mod gas_benchmarks {
 
         // Test event publishing overhead
         let event_count = 100;
-        let start_gas = env.budget().consumed();
+        env.cost_estimate().budget().reset_default();
 
         for i in 1..=event_count {
             EventPublisher::operation_prepared(&env, i, i, &ContractType::VisionRecords);
@@ -216,12 +225,12 @@ mod gas_benchmarks {
             EventPublisher::gas_consumption(&env, i, i, 1000);
         }
 
-        let event_gas = env.budget().consumed() - start_gas;
+        let event_gas = env.cost_estimate().budget().cpu_instruction_cost();
         println!(
             "Events: {}, Total gas: {}, Gas per event: {}",
             event_count * 3,
             event_gas,
-            event_gas / (event_count * 3) as u64
+            event_gas / (event_count * 3)
         );
     }
 
@@ -266,9 +275,9 @@ mod gas_benchmarks {
                 metadata: Vec::new(&env),
             };
 
-            let start_gas = env.budget().consumed();
-            common::transaction::set_transaction_log(&env, &log);
-            let storage_gas = env.budget().consumed() - start_gas;
+            env.cost_estimate().budget().reset_default();
+            transaction::set_transaction_log(&env, &log);
+            let storage_gas = env.cost_estimate().budget().cpu_instruction_cost();
 
             transaction_ids.push_back(i);
 
@@ -278,17 +287,17 @@ mod gas_benchmarks {
         }
 
         // Benchmark retrieval
-        let start_gas = env.budget().consumed();
+        env.cost_estimate().budget().reset_default();
         for tx_id in transaction_ids {
-            let _log = common::transaction::get_transaction_log(&env, tx_id);
+            let _log = transaction::get_transaction_log(&env, tx_id);
         }
-        let retrieval_gas = env.budget().consumed() - start_gas;
+        let retrieval_gas = env.cost_estimate().budget().cpu_instruction_cost();
 
         println!(
             "Retrieved {} transactions, Total gas: {}, Gas per retrieval: {}",
             transaction_count,
             retrieval_gas,
-            retrieval_gas / transaction_count as u64
+            retrieval_gas / transaction_count
         );
     }
 
@@ -330,19 +339,19 @@ mod gas_benchmarks {
                 metadata: Vec::new(&env),
             };
 
-            common::transaction::set_transaction_log(&env, &log);
+            transaction::set_transaction_log(&env, &log);
         }
 
         // Benchmark timeout processing
-        let start_gas = env.budget().consumed();
+        env.cost_estimate().budget().reset_default();
         let _timed_out = OrchestratorContract::process_timeouts(env.clone()).unwrap();
-        let timeout_gas = env.budget().consumed() - start_gas;
+        let timeout_gas = env.cost_estimate().budget().cpu_instruction_cost();
 
         println!(
             "Processed {} transactions for timeouts, Gas: {}, Gas per tx: {}",
             transaction_count,
             timeout_gas,
-            timeout_gas / transaction_count as u64
+            timeout_gas / transaction_count
         );
     }
 
