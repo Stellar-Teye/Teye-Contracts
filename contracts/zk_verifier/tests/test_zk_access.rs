@@ -1223,7 +1223,10 @@ fn test_plonk_invalid_proof_rejection() {
 
     // Should NOT be logged in audit trail
     let record = client.get_audit_record(&user, &resource_id);
-    assert!(record.is_none(), "No audit record should exist for failed proof");
+    assert!(
+        record.is_none(),
+        "No audit record should exist for failed proof"
+    );
 }
 
 #[test]
@@ -1361,7 +1364,10 @@ fn test_plonk_respects_pause() {
 
     // PLONK verification should fail while paused
     let result = client.try_verify_access_plonk(&request);
-    assert!(result.is_err(), "PLONK verification should fail when paused");
+    assert!(
+        result.is_err(),
+        "PLONK verification should fail when paused"
+    );
 
     // Unpause
     client.unpause(&admin);

@@ -1,5 +1,5 @@
 use compliance::access_control::{AccessControl, Role};
-use compliance::audit::{ComplianceAuditLog, SearchKey};
+use compliance::audit::{AuditLog, ComplianceAuditLog, SearchKey};
 use compliance::retention::RetentionManager;
 
 #[test]

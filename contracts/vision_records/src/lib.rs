@@ -140,7 +140,11 @@ fn has_active_consent(env: &Env, patient: &Address, grantee: &Address) -> bool {
     }
 }
 
-pub use rbac::{Permission, Role, AccessPolicy, PolicyContext, evaluate_access_policies, set_user_credential, set_record_sensitivity, create_access_policy, CredentialType, SensitivityLevel, TimeRestriction};
+pub use rbac::{
+    Permission, Role, AccessPolicy, PolicyContext, evaluate_access_policies,
+    set_user_credential, set_record_sensitivity, create_access_policy, CredentialType,
+    SensitivityLevel, TimeRestriction,
+};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
