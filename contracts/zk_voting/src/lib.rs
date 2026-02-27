@@ -12,7 +12,7 @@ use ballot::{DataKey, OptionIndex, VoteError};
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, BytesN, Env, Vec,
 };
-use zk_verifier::{Bn254Verifier, Proof};
+use zk_verifier::{Bn254Verifier, Proof, VerificationKey, ZkVerifier};
 
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -58,14 +58,14 @@ impl ZkVoting {
     }
 
     /// Set the Verification key for ZK proof validation. Admin only.
-    pub fn set_verification_key(env: Env, caller: Address, vk: zk_verifier::vk::VerificationKey) {
+    pub fn set_verification_key(env: Env, caller: Address, vk: VerificationKey) {
         caller.require_auth();
         Self::require_admin(&env, &caller);
         env.storage().instance().set(&DataKey::VerificationKey, &vk);
     }
 
     /// Return the current Verification key.
-    pub fn get_verification_key(env: Env) -> Option<zk_verifier::vk::VerificationKey> {
+    pub fn get_verification_key(env: Env) -> Option<VerificationKey> {
         env.storage().instance().get(&DataKey::VerificationKey)
     }
 
@@ -114,8 +114,7 @@ impl ZkVoting {
             .ok_or(VoteError::MerkleRootNotSet)?;
 
         // 5. Verify the ZK proof
-        let vk_opt: Option<zk_verifier::vk::VerificationKey> =
-            env.storage().instance().get(&DataKey::VerificationKey);
+        let vk_opt: Option<VerificationKey> = env.storage().instance().get(&DataKey::VerificationKey);
         let vk = vk_opt.ok_or(VoteError::InvalidProof)?;
         if !Bn254Verifier::verify_proof(&env, &vk, &proof, &public_inputs) {
             return Err(VoteError::InvalidProof);
