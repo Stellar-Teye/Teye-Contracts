@@ -190,15 +190,6 @@ impl ComplianceAuditLog {
     }
 }
 
-// ── Backward-compatibility alias ──────────────────────────────────────────────
-
-/// A single audit log record.
-///
-/// This is an alias for the `LogEntry` from the `audit` crate, provided for
-/// backward compatibility with code that previously used
-/// `compliance::AuditEntry`.
-pub type AuditEntry = LogEntry;
-
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

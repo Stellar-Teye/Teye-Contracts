@@ -1,8 +1,8 @@
 extern crate alloc;
 use alloc::vec::Vec;
-use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env, String, Symbol};
-use audit::types::LogSegmentId;
 use audit::merkle_log::hash_leaf;
+use audit::types::LogSegmentId;
+use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env, String, Symbol};
 
 const AUDIT_LATEST_HASH: Symbol = symbol_short!("AUD_HASH");
 const AUDIT_SEQUENCE: Symbol = symbol_short!("AUD_SEQ");
@@ -24,17 +24,16 @@ pub struct AuditLogEvent {
 
 impl AuditManager {
     /// Logs a tamper-evident audit event for the vision records contract.
-    pub fn log_event(
-        env: &Env,
-        actor: Address,
-        action: &str,
-        target: String,
-        result: &str,
-    ) {
+    #[allow(deprecated)]
+    pub fn log_event(env: &Env, actor: Address, action: &str, target: String, result: &str) {
         let mut sequence: u64 = env.storage().persistent().get(&AUDIT_SEQUENCE).unwrap_or(0);
         sequence += 1;
 
-        let prev_hash_bytes: [u8; 32] = env.storage().persistent().get(&AUDIT_LATEST_HASH).unwrap_or([0u8; 32]);
+        let prev_hash_bytes: [u8; 32] = env
+            .storage()
+            .persistent()
+            .get(&AUDIT_LATEST_HASH)
+            .unwrap_or([0u8; 32]);
         let timestamp = env.ledger().timestamp();
 
         // Use the segment "vision_records"
@@ -43,7 +42,7 @@ impl AuditManager {
         let mut buf = Vec::new();
         buf.extend_from_slice(&sequence.to_le_bytes());
         buf.extend_from_slice(&timestamp.to_le_bytes());
-        
+
         // Copy actor string to buffer
         let actor_str = actor.to_string();
         let mut actor_bytes = alloc::vec![0u8; actor_str.len() as usize];
@@ -68,7 +67,9 @@ impl AuditManager {
         let entry_hash = hash_leaf(&buf);
 
         // Update state
-        env.storage().persistent().set(&AUDIT_LATEST_HASH, &entry_hash);
+        env.storage()
+            .persistent()
+            .set(&AUDIT_LATEST_HASH, &entry_hash);
         env.storage().persistent().set(&AUDIT_SEQUENCE, &sequence);
 
         // Emit event
@@ -83,11 +84,10 @@ impl AuditManager {
             entry_hash: BytesN::from_array(env, &entry_hash),
         };
 
-        env.events().publish((symbol_short!("AUDIT"), actor), event_data);
+        env.events()
+            .publish((symbol_short!("AUDIT"), actor), event_data);
     }
 }
-
-
 
 // ── Storage keys ──────────────────────────────────────────────
 pub const AUDIT_CTR: Symbol = symbol_short!("AUD_CTR");
@@ -314,7 +314,11 @@ pub fn get_audit_log_by_result(env: &Env, result: AccessResult) -> soroban_sdk::
 }
 
 /// Gets audit entries within a time range
-pub fn get_audit_log_by_time_range(env: &Env, start_time: u64, end_time: u64) -> soroban_sdk::Vec<AuditEntry> {
+pub fn get_audit_log_by_time_range(
+    env: &Env,
+    start_time: u64,
+    end_time: u64,
+) -> soroban_sdk::Vec<AuditEntry> {
     let mut entries = soroban_sdk::Vec::new(env);
     let counter: u64 = env.storage().instance().get(&AUDIT_CTR).unwrap_or(0);
     let start_id = if counter > 1000 { counter - 1000 } else { 1 };

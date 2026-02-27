@@ -2,13 +2,16 @@
 #![cfg(test)]
 
 use soroban_sdk::{
+    symbol_short,
     testutils::{Address as _, Events, Ledger},
     xdr::{ContractEventBody, ScVal},
     Address, BytesN, Env, IntoVal, TryFromVal, Vec,
 };
 use zk_verifier::vk::{G1Point, G2Point, VerificationKey};
+use zk_verifier::{
+    AccessRejectedEvent, ContractError, ZkVerifierContract, ZkVerifierContractClient,
+};
 use zk_verifier::{MerkleVerifier, ZkAccessHelper};
-use zk_verifier::{AccessRejectedEvent, ContractError, ZkVerifierContract, ZkVerifierContractClient};
 
 fn setup_vk(env: &Env) -> VerificationKey {
     // Valid BN254 G1 point: (1, 2) is on y^2 = x^3 + 3
@@ -977,9 +980,9 @@ fn test_exactly_max_public_inputs_accepted() {
 #[test]
 #[ignore]
 fn test_audit_chain_integrity() {
-    use crate::{AccessRequest, ZkVerifierContract};
     use soroban_sdk::{Address, BytesN, Env, Vec};
     use zk_verifier::verifier::{G1Point, G2Point, Proof};
+    use zk_verifier::{AccessRequest, ZkVerifierContract};
 
     // 1️⃣ Setup test environment and user
     let env = Env::default();
@@ -1080,6 +1083,7 @@ fn test_audit_chain_integrity() {
             resource_id: resource_id.clone(),
             proof: proof.clone(),
             public_inputs: public_inputs.clone(),
+            expires_at: env.ledger().timestamp() + 1_000,
             nonce, // use the correct nonce
         };
 
@@ -1155,11 +1159,12 @@ fn test_plonk_valid_proof_verification() {
     let request = ZkAccessHelper::create_request(
         &env,
         user.clone(),
-        resource_id,
+        resource_id.to_array(),
         proof_a,
         proof_b,
         proof_c,
         &[&pi],
+        env.ledger().timestamp() + 1_000,
     );
 
     // Verify using PLONK endpoint
@@ -1208,11 +1213,12 @@ fn test_plonk_invalid_proof_rejection() {
     let request = ZkAccessHelper::create_request(
         &env,
         user.clone(),
-        resource_id,
+        resource_id.to_array(),
         proof_a,
         proof_b,
         proof_c,
         &[&pi],
+        env.ledger().timestamp() + 1_000,
     );
 
     // Invalid PLONK proof should fail
@@ -1265,11 +1271,12 @@ fn test_plonk_and_groth16_coexistence() {
     let request_groth16 = ZkAccessHelper::create_request(
         &env,
         user.clone(),
-        resource_id_groth16.clone(),
+        resource_id_groth16.to_array(),
         proof_a_g16,
         proof_b_g16,
         proof_c_g16,
         &[&pi_g16],
+        env.ledger().timestamp() + 1_000,
     );
 
     // Create PLONK proof
@@ -1290,11 +1297,12 @@ fn test_plonk_and_groth16_coexistence() {
     let request_plonk = ZkAccessHelper::create_request(
         &env,
         user.clone(),
-        resource_id_plonk.clone(),
+        resource_id_plonk.to_array(),
         proof_a_plonk,
         proof_b_plonk,
         proof_c_plonk,
         &[&pi_plonk],
+        env.ledger().timestamp() + 1_000,
     );
 
     // Both verifiers should work independently
@@ -1309,7 +1317,9 @@ fn test_plonk_and_groth16_coexistence() {
 
     // Both should have audit records
     assert!(
-        client.get_audit_record(&user, &resource_id_groth16).is_some(),
+        client
+            .get_audit_record(&user, &resource_id_groth16)
+            .is_some(),
         "Groth16 audit record should exist"
     );
     assert!(
@@ -1352,11 +1362,12 @@ fn test_plonk_respects_pause() {
     let request = ZkAccessHelper::create_request(
         &env,
         user.clone(),
-        resource_id,
+        resource_id.to_array(),
         proof_a,
         proof_b,
         proof_c,
         &[&pi],
+        env.ledger().timestamp() + 1_000,
     );
 
     // Pause the contract
@@ -1407,7 +1418,7 @@ fn test_plonk_multiple_public_inputs() {
     let mut proof_c = [0u8; 64];
     proof_c[0] = 2;
     proof_c[32] = 0x02;
-    
+
     // Multiple public inputs
     let mut pi1 = [0u8; 32];
     pi1[0] = 2;
@@ -1419,11 +1430,12 @@ fn test_plonk_multiple_public_inputs() {
     let request = ZkAccessHelper::create_request(
         &env,
         user.clone(),
-        resource_id,
+        resource_id.to_array(),
         proof_a,
         proof_b,
         proof_c,
         &[&pi1, &pi2, &pi3],
+        env.ledger().timestamp() + 1_000,
     );
 
     // Should handle multiple public inputs
@@ -1483,7 +1495,7 @@ fn test_merkle_proof_simple_tree() {
     // Step 2: hash(h01, h23) = root (h23 is on right)
     let mut proof = Vec::new(&env);
     proof.push_back((leaf1.clone(), false)); // leaf1 on right
-    proof.push_back((h23.clone(), false));   // h23 on right
+    proof.push_back((h23.clone(), false)); // h23 on right
 
     assert!(
         client.verify_data_inclusion(&root, &leaf0, &proof),
@@ -1496,7 +1508,7 @@ fn test_merkle_proof_simple_tree() {
     // Step 2: hash(h01, h23) = root (h01 is on left)
     let mut proof2 = Vec::new(&env);
     proof2.push_back((leaf3.clone(), false)); // leaf3 on right
-    proof2.push_back((h01.clone(), true));    // h01 on left
+    proof2.push_back((h01.clone(), true)); // h01 on left
 
     assert!(
         client.verify_data_inclusion(&root, &leaf2, &proof2),
@@ -1567,7 +1579,7 @@ fn test_merkle_proof_wrong_leaf() {
 
     // Try to prove a non-existent leaf
     let fake_leaf = BytesN::from_array(&env, &[99u8; 32]);
-    
+
     let mut proof = Vec::new(&env);
     proof.push_back((leaf1.clone(), false));
     proof.push_back((h23.clone(), false));
@@ -1587,7 +1599,7 @@ fn test_merkle_proof_single_leaf() {
     let client = ZkVerifierContractClient::new(&env, &contract_id);
 
     let leaf = BytesN::from_array(&env, &[1u8; 32]);
-    
+
     let mut leaves = Vec::new(&env);
     leaves.push_back(leaf.clone());
 
@@ -1656,7 +1668,7 @@ fn test_merkle_proof_larger_tree() {
     let mut h0123_inputs = Vec::new(&env);
     h0123_inputs.push_back(h01.clone());
     h0123_inputs.push_back(h23.clone());
-    let h0123 = zk_verifier::PoseidonHasher::hash(&env, &h0123_inputs);
+    let _h0123 = zk_verifier::PoseidonHasher::hash(&env, &h0123_inputs);
 
     let mut h4567_inputs = Vec::new(&env);
     h4567_inputs.push_back(h45.clone());
@@ -1666,7 +1678,7 @@ fn test_merkle_proof_larger_tree() {
     // Proof for leaf0: [leaf1, h23, h4567]
     let mut proof = Vec::new(&env);
     proof.push_back((leaf1.clone(), false)); // leaf1 on right
-    proof.push_back((h23.clone(), false));   // h23 on right
+    proof.push_back((h23.clone(), false)); // h23 on right
     proof.push_back((h4567.clone(), false)); // h4567 on right
 
     assert!(
@@ -1784,10 +1796,10 @@ fn test_merkle_proof_privacy_preservation() {
 #[test]
 fn test_merkle_compute_root_empty() {
     let env = Env::default();
-    
+
     let leaves = Vec::new(&env);
     let root = MerkleVerifier::compute_merkle_root(&env, &leaves);
-    
+
     assert_eq!(
         root,
         BytesN::from_array(&env, &[0u8; 32]),
@@ -1799,34 +1811,76 @@ fn test_merkle_compute_root_empty() {
 fn test_merkle_compute_root_odd_leaves() {
     // Test that odd number of leaves are handled correctly (duplicates last leaf)
     let env = Env::default();
-    
+
     let leaf0 = BytesN::from_array(&env, &[1u8; 32]);
     let leaf1 = BytesN::from_array(&env, &[2u8; 32]);
     let leaf2 = BytesN::from_array(&env, &[3u8; 32]);
-    
+
     let mut leaves = Vec::new(&env);
     leaves.push_back(leaf0.clone());
     leaves.push_back(leaf1.clone());
     leaves.push_back(leaf2.clone());
-    
+
     // Should compute: hash(hash(L0, L1), hash(L2, L2))
     let root = MerkleVerifier::compute_merkle_root(&env, &leaves);
-    
+
     // Manually compute expected root
     let mut h01_inputs = Vec::new(&env);
     h01_inputs.push_back(leaf0.clone());
     h01_inputs.push_back(leaf1.clone());
     let h01 = zk_verifier::PoseidonHasher::hash(&env, &h01_inputs);
-    
+
     let mut h22_inputs = Vec::new(&env);
     h22_inputs.push_back(leaf2.clone());
     h22_inputs.push_back(leaf2.clone()); // Duplicated
     let h22 = zk_verifier::PoseidonHasher::hash(&env, &h22_inputs);
-    
+
     let mut root_inputs = Vec::new(&env);
     root_inputs.push_back(h01);
     root_inputs.push_back(h22);
     let expected_root = zk_verifier::PoseidonHasher::hash(&env, &root_inputs);
-    
+
     assert_eq!(root, expected_root, "Odd leaves should duplicate last leaf");
+}
+
+#[test]
+fn test_poseidon_vector_bn254_ones_twos() {
+    let env = Env::default();
+
+    let a = BytesN::from_array(&env, &[1u8; 32]);
+    let b = BytesN::from_array(&env, &[2u8; 32]);
+    let mut inputs = Vec::new(&env);
+    inputs.push_back(a);
+    inputs.push_back(b);
+
+    let out = zk_verifier::PoseidonHasher::hash(&env, &inputs);
+    assert_eq!(
+        out.to_array(),
+        [
+            13, 84, 225, 147, 143, 138, 140, 28, 125, 235, 94, 3, 85, 242, 99, 25, 32, 123, 132,
+            254, 156, 162, 206, 27, 38, 231, 53, 200, 41, 130, 25, 144
+        ]
+    );
+}
+
+#[test]
+fn test_poseidon_vector_bn254_one_one() {
+    let env = Env::default();
+
+    let mut one = [0u8; 32];
+    one[31] = 1;
+    let a = BytesN::from_array(&env, &one);
+    let b = BytesN::from_array(&env, &one);
+    let mut inputs = Vec::new(&env);
+    inputs.push_back(a);
+    inputs.push_back(b);
+
+    let out = zk_verifier::PoseidonHasher::hash(&env, &inputs);
+    assert_eq!(
+        out.to_array(),
+        [
+            0, 122, 243, 70, 226, 211, 4, 39, 158, 121, 224, 169, 243, 2, 63, 119, 18, 148, 167,
+            138, 203, 112, 231, 63, 144, 175, 226, 124, 173, 64, 30, 129
+        ]
+    );
 }
