@@ -64,9 +64,10 @@ impl<'a> DeadlockDetector<'a> {
         for i in 0..transactions.len() {
             let transaction = transactions.get(i).unwrap();
             if !visited.contains(transaction)
-                && self.dfs_has_cycle(graph, transaction, &mut visited, &mut recursion_stack) {
-                    return true;
-                }
+                && self.dfs_has_cycle(graph, transaction, &mut visited, &mut recursion_stack)
+            {
+                return true;
+            }
         }
 
         false
@@ -121,6 +122,7 @@ impl<'a> DeadlockDetector<'a> {
     }
 
     /// Get resources that are causing conflicts in a deadlock cycle
+    #[allow(dead_code)]
     fn get_conflicting_resources(&self, cycle: &Vec<u64>) -> Vec<String> {
         let current_locks: Vec<(String, u64)> = self
             .env

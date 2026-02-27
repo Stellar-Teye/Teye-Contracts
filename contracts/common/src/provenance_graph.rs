@@ -34,7 +34,6 @@ pub const MAX_BFS_DEPTH: u32 = 32;
 
 // ── Traversal result types ──────────────────────────────────────────────────
 
-
 /// Compact DAG export suitable for off-chain visualisation tools.
 /// Edges are encoded as `(source_id, target_id, kind_u32, edge_id)` tuples.
 #[contracttype]
@@ -101,7 +100,7 @@ pub fn trace_ancestors(env: &Env, start_id: u64, max_depth: u32) -> TraversalRes
     let mut current_frontier: Vec<(u64, u32, Option<LineageEdge>)> = Vec::new(env);
     current_frontier.push_back((start_id, 0, None));
 
-    while current_frontier.len() > 0 {
+    while !current_frontier.is_empty() {
         let mut next_frontier: Vec<(u64, u32, Option<LineageEdge>)> = Vec::new(env);
 
         for i in 0..current_frontier.len() {
@@ -164,7 +163,7 @@ pub fn trace_descendants(env: &Env, start_id: u64, max_depth: u32) -> TraversalR
     let mut current_frontier: Vec<(u64, u32, Option<LineageEdge>)> = Vec::new(env);
     current_frontier.push_back((start_id, 0, None));
 
-    while current_frontier.len() > 0 {
+    while !current_frontier.is_empty() {
         let mut next_frontier: Vec<(u64, u32, Option<LineageEdge>)> = Vec::new(env);
 
         for i in 0..current_frontier.len() {

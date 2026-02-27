@@ -5,6 +5,7 @@ use soroban_sdk::{symbol_short, Address, Env, String, Vec};
 /// All symbol_short! values must be ≤9 characters.
 pub struct EventPublisher;
 
+#[allow(deprecated)]
 impl EventPublisher {
     /// Publish transaction started event
     pub fn transaction_started(env: &Env, log: &TransactionLog) {
