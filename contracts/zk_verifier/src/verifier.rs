@@ -7,6 +7,7 @@ use light_poseidon_nostd::{Poseidon, PoseidonBytesHasher};
 use soroban_sdk::{contracttype, BytesN, Env, Vec};
 
 pub type VerificationKey = crate::vk::VerificationKey;
+pub use crate::vk::{G1Point, G2Point};
 
 /// Shared trait for all ZK proof verification systems.
 /// This enables adding new proving systems (PLONK, STARKs, etc.) without breaking existing code.
@@ -65,22 +66,9 @@ pub trait ZkVerifier {
     }
 }
 
-// TODO: post-quantum migration - `G1Point`, `G2Point`, and `Proof` map to elliptic curves.
+// TODO: post-quantum migration - `Proof` maps to elliptic curves.
 // For hash-based STARKs or Lattice proofs, replace these representations with Hash paths
 // or matrix structural analogs.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct G1Point {
-    pub x: BytesN<32>,
-    pub y: BytesN<32>,
-}
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct G2Point {
-    pub x: (BytesN<32>, BytesN<32>),
-    pub y: (BytesN<32>, BytesN<32>),
-}
 
 /// Compressed or raw Groth16 proof points.
 #[contracttype]
