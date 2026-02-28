@@ -1,0 +1,16 @@
+    Checking vision_records v1.2.2 (C:\Users\nwaug\Desktop\Blockchain\DripsWave\Teye-Contracts\contracts\vision_records)
+error[E0308]: mismatched types
+    --> contracts\vision_records\src\lib.rs:2236:13
+     |
+2236 |             required_role,
+     |             ^^^^^^^^^^^^^ expected `Role`, found `Option<Role>`
+     |
+     = note: expected enum `Role`
+                found enum `core::option::Option<Role>`
+help: consider using `Option::expect` to unwrap the `core::option::Option<Role>` value, panicking if the value is an `Option::None`
+     |
+2236 |             required_role: required_role.expect("REASON"),
+     |                          ++++++++++++++++++++++++++++++++
+
+For more information about this error, try `rustc --explain E0308`.
+error: could not compile `vision_records` (lib) due to 1 previous error

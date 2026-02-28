@@ -1,0 +1,60 @@
+    Checking compliance v1.2.2 (C:\Users\nwaug\Desktop\Blockchain\DripsWave\Teye-Contracts\contracts\compliance)
+warning: trait `VisionRecordsInterface` is never used
+  --> contracts\state_channel\src\settlement.rs:27:7
+   |
+27 | trait VisionRecordsInterface {
+   |       ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `teye-state-channel` (lib) generated 1 warning
+    Checking zk_prover v0.1.0 (C:\Users\nwaug\Desktop\Blockchain\DripsWave\Teye-Contracts\sdk\zk_prover)
+    Checking key_manager v1.2.2 (C:\Users\nwaug\Desktop\Blockchain\DripsWave\Teye-Contracts\contracts\key_manager)
+    Checking vault v1.2.2 (C:\Users\nwaug\Desktop\Blockchain\DripsWave\Teye-Contracts\contracts\vault)
+error[E0432]: unresolved imports `zk_verifier::AccessRequest`, `zk_verifier::ZkAccessHelper`
+ --> sdk\zk_prover\src\lib.rs:7:19
+  |
+7 | use zk_verifier::{AccessRequest, ZkAccessHelper};
+  |                   ^^^^^^^^^^^^^  ^^^^^^^^^^^^^^ no `ZkAccessHelper` in the root
+  |                   |
+  |                   no `AccessRequest` in the root
+
+error[E0425]: cannot find type `AuditEntry` in this scope
+   --> contracts\compliance\src\audit.rs:277:22
+    |
+277 |     pub entries: Vec<AuditEntry>,
+    |                      ^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this struct
+    |
+ 36 + use common::AuditEntry;
+    |
+
+error[E0422]: cannot find struct, variant or union type `AuditEntry` in this scope
+   --> contracts\compliance\src\audit.rs:292:25
+    |
+292 |         let mut entry = AuditEntry {
+    |                         ^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this struct
+    |
+ 36 + use common::AuditEntry;
+    |
+
+error[E0425]: cannot find type `AuditEntry` in this scope
+   --> contracts\compliance\src\audit.rs:308:30
+    |
+308 |     pub fn query(&self) -> &[AuditEntry] {
+    |                              ^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this struct
+    |
+ 36 + use common::AuditEntry;
+    |
+
+For more information about this error, try `rustc --explain E0432`.
+error: could not compile `zk_prover` (lib) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+Some errors have detailed explanations: E0422, E0425.
+For more information about an error, try `rustc --explain E0422`.
+error: could not compile `compliance` (lib) due to 3 previous errors

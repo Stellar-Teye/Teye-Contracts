@@ -1,0 +1,102 @@
+   Compiling zk_verifier v1.2.2 (C:\Users\nwaug\Desktop\Blockchain\DripsWave\Teye-Contracts\contracts\zk_verifier)
+   Compiling test-framework v0.1.0 (C:\Users\nwaug\Desktop\Blockchain\DripsWave\Teye-Contracts\test)
+   Compiling key_manager v1.2.2 (C:\Users\nwaug\Desktop\Blockchain\DripsWave\Teye-Contracts\contracts\key_manager)
+   Compiling zk_voting v1.2.2 (C:\Users\nwaug\Desktop\Blockchain\DripsWave\Teye-Contracts\contracts\zk_voting)
+   Compiling identity v1.2.2 (C:\Users\nwaug\Desktop\Blockchain\DripsWave\Teye-Contracts\contracts\identity)
+   Compiling vault v1.2.2 (C:\Users\nwaug\Desktop\Blockchain\DripsWave\Teye-Contracts\contracts\vault)
+warning: value assigned to `pi` is never read
+  --> contracts\zk_voting\tests\test_voting.rs:32:5
+   |
+32 |     pi[0] = 1;
+   |     ^^^^^^^^^
+   |
+   = help: maybe it is overwritten before being read?
+   = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `pi`
+  --> contracts\zk_voting\tests\test_voting.rs:77:9
+   |
+77 |     let pi = [0u8; 32];
+   |         ^^ help: if this is intentional, prefix it with an underscore: `_pi`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+error[E0308]: arguments to this method are incorrect
+   --> contracts\identity\tests\core.rs:270:25
+    |
+270 |     let result = client.try_verify_zk_credential(
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^
+...
+273 |         &proof_a,
+    |         -------- expected `&Bytes`, found `&G1Point`
+274 |         &proof_b,
+    |         -------- expected `&Bytes`, found `&G2Point`
+275 |         &proof_c,
+    |         -------- expected `&Bytes`, found `&G1Point`
+    |
+    = note: expected reference `&soroban_sdk::Bytes`
+               found reference `&zk_verifier::vk::G1Point`
+    = note: expected reference `&soroban_sdk::Bytes`
+               found reference `&zk_verifier::vk::G2Point`
+    = note: expected reference `&soroban_sdk::Bytes`
+               found reference `&zk_verifier::vk::G1Point`
+note: method defined here
+   --> C:\Users\nwaug\Desktop\Blockchain\DripsWave\Teye-Contracts\contracts\identity\src\lib.rs:440:12
+    |
+440 |     pub fn verify_zk_credential(
+    |            ^^^^^^^^^^^^^^^^^^^^
+
+error[E0308]: arguments to this method are incorrect
+   --> contracts\identity\tests\core.rs:306:25
+    |
+306 |     let result = client.try_verify_zk_credential(
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^
+...
+309 |         &bad_proof_a,
+    |         ------------ expected `&Bytes`, found `&G1Point`
+310 |         &proof_b,
+    |         -------- expected `&Bytes`, found `&G2Point`
+311 |         &proof_c,
+    |         -------- expected `&Bytes`, found `&G1Point`
+    |
+    = note: expected reference `&soroban_sdk::Bytes`
+               found reference `&zk_verifier::vk::G1Point`
+    = note: expected reference `&soroban_sdk::Bytes`
+               found reference `&zk_verifier::vk::G2Point`
+    = note: expected reference `&soroban_sdk::Bytes`
+               found reference `&zk_verifier::vk::G1Point`
+note: method defined here
+   --> C:\Users\nwaug\Desktop\Blockchain\DripsWave\Teye-Contracts\contracts\identity\src\lib.rs:440:12
+    |
+440 |     pub fn verify_zk_credential(
+    |            ^^^^^^^^^^^^^^^^^^^^
+
+error[E0308]: arguments to this method are incorrect
+   --> contracts\identity\tests\core.rs:331:25
+    |
+331 |     let result = client.try_verify_zk_credential(
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^
+...
+334 |         &proof_a,
+    |         -------- expected `&Bytes`, found `&G1Point`
+335 |         &proof_b,
+    |         -------- expected `&Bytes`, found `&G2Point`
+336 |         &proof_c,
+    |         -------- expected `&Bytes`, found `&G1Point`
+    |
+    = note: expected reference `&soroban_sdk::Bytes`
+               found reference `&zk_verifier::vk::G1Point`
+    = note: expected reference `&soroban_sdk::Bytes`
+               found reference `&zk_verifier::vk::G2Point`
+    = note: expected reference `&soroban_sdk::Bytes`
+               found reference `&zk_verifier::vk::G1Point`
+note: method defined here
+   --> C:\Users\nwaug\Desktop\Blockchain\DripsWave\Teye-Contracts\contracts\identity\src\lib.rs:440:12
+    |
+440 |     pub fn verify_zk_credential(
+    |            ^^^^^^^^^^^^^^^^^^^^
+
+For more information about this error, try `rustc --explain E0308`.
+error: could not compile `identity` (test "core") due to 3 previous errors
+warning: build failed, waiting for other jobs to finish...
+warning: `zk_voting` (test "test_voting") generated 2 warnings (run `cargo fix --test "test_voting" -p zk_voting` to apply 1 suggestion)

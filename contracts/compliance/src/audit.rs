@@ -274,7 +274,7 @@ mod tests {
 
 #[derive(Default)]
 pub struct AuditLog {
-    pub entries: Vec<AuditEntry>,
+    pub entries: Vec<LogEntry>,
 }
 
 impl AuditLog {
@@ -289,7 +289,7 @@ impl AuditLog {
         let segment =
             LogSegmentId::new(ComplianceAuditLog::SEGMENT).expect("valid compliance segment");
 
-        let mut entry = AuditEntry {
+        let mut entry = LogEntry {
             sequence,
             timestamp: now,
             actor: actor.to_string(),
@@ -305,7 +305,7 @@ impl AuditLog {
         self.entries.push(entry);
     }
 
-    pub fn query(&self) -> &[AuditEntry] {
+    pub fn query(&self) -> &[LogEntry] {
         &self.entries
     }
 }
