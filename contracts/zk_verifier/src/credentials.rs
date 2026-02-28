@@ -21,11 +21,10 @@ use common::credential_types::{
     ChainedIssuanceRequest, Credential, CredentialContractError, CredentialPresentation,
     CredentialSchema, CredentialStatus, RevocationWitness,
 };
-use soroban_sdk::{Address, Bytes, BytesN, Env, Symbol, Vec};
+use soroban_sdk::{Address, BytesN, Env, Symbol, Vec};
 
 use crate::revocation::RevocationRegistryManager;
 use crate::selective_disclosure::SelectiveDisclosureVerifier;
-use crate::verifier::PoseidonHasher;
 
 // ── Storage key prefixes ────────────────────────────────────────────────────
 
@@ -156,7 +155,6 @@ impl CredentialManager {
         SelectiveDisclosureVerifier::verify_presentation(env, &request.parent_presentation)?;
 
         // 2. Build the child credential.
-        let zero = BytesN::from_array(env, &[0u8; 32]);
         let child = Credential {
             credential_id: new_credential_id,
             schema_id: request.new_schema_id.clone(),

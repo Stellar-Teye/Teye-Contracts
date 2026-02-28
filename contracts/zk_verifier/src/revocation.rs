@@ -22,7 +22,7 @@
 //! for stronger cryptographic guarantees.
 
 use common::credential_types::{
-    Credential, CredentialContractError, CredentialStatus, RevocationRegistry, RevocationWitness,
+    Credential, CredentialContractError, RevocationRegistry, RevocationWitness,
 };
 use soroban_sdk::{Address, Bytes, BytesN, Env, Symbol, Vec};
 
@@ -203,7 +203,7 @@ impl RevocationRegistryManager {
         credential_id: &BytesN<32>,
         witness: &RevocationWitness,
     ) -> Result<bool, CredentialContractError> {
-        let registry = Self::get_registry(env, registry_id)?;
+        let _registry = Self::get_registry(env, registry_id)?;
 
         // Check if the credential's index has been explicitly revoked.
         if Self::is_revoked(env, registry_id, witness.index) {
