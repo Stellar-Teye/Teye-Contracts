@@ -248,7 +248,7 @@ fn test_batch_get_records() {
     subset.push_back(1u64);
     subset.push_back(3u64);
 
-    let records = client.get_records(&subset);
+    let records = client.get_records(&provider, &subset);
     assert_eq!(records.len(), 2);
     assert_eq!(records.get(0).unwrap().id, 1);
     assert_eq!(records.get(1).unwrap().id, 3);
@@ -256,12 +256,12 @@ fn test_batch_get_records() {
 
 #[test]
 fn test_batch_get_records_not_found() {
-    let (env, client, _admin) = setup();
+    let (env, client, admin) = setup();
 
     let mut ids = Vec::new(&env);
     ids.push_back(999u64);
 
-    let result = client.try_get_records(&ids);
+    let result = client.try_get_records(&admin, &ids);
     assert_eq!(
         result.err().unwrap().unwrap(),
         ContractError::RecordNotFound
@@ -287,7 +287,7 @@ fn test_batch_get_records_partial_not_found() {
     ids.push_back(1u64);
     ids.push_back(999u64);
 
-    let result = client.try_get_records(&ids);
+    let result = client.try_get_records(&provider, &ids);
     assert_eq!(
         result.err().unwrap().unwrap(),
         ContractError::RecordNotFound
@@ -313,7 +313,7 @@ fn test_batch_grant_access_multiple() {
     });
     grants.push_back(BatchGrantInput {
         grantee: doc2.clone(),
-        level: AccessLevel::Full,
+        level: AccessLevel::Admin,
         duration_seconds: 7200,
     });
 
@@ -322,7 +322,7 @@ fn test_batch_grant_access_multiple() {
     client.grant_access_batch(&patient, &grants);
 
     assert_eq!(client.check_access(&patient, &doc1), AccessLevel::Read);
-    assert_eq!(client.check_access(&patient, &doc2), AccessLevel::Full);
+    assert_eq!(client.check_access(&patient, &doc2), AccessLevel::Admin);
 }
 
 #[test]
@@ -382,11 +382,11 @@ fn test_batch_grant_access_overwrite() {
     let mut grants2 = Vec::new(&env);
     grants2.push_back(BatchGrantInput {
         grantee: doc.clone(),
-        level: AccessLevel::Full,
+        level: AccessLevel::Admin,
         duration_seconds: 7200,
     });
     client.grant_access_batch(&patient, &grants2);
-    assert_eq!(client.check_access(&patient, &doc), AccessLevel::Full);
+    assert_eq!(client.check_access(&patient, &doc), AccessLevel::Admin);
 }
 
 // ======================== Atomicity / Gas Optimization ========================
@@ -442,7 +442,7 @@ fn test_batch_add_and_retrieve_round_trip() {
     let ids = client.add_records(&provider, &inputs);
 
     // Retrieve all via batch
-    let records = client.get_records(&ids);
+    let records = client.get_records(&provider, &ids);
     assert_eq!(records.len(), 2);
 
     assert_eq!(records.get(0).unwrap().record_type, RecordType::Examination);

@@ -2805,6 +2805,78 @@ impl VisionRecordsContract {
 
         Ok(())
     }
+
+    // ── Batch Retrieval ───────────────────────────────────────────────────────
+
+    /// Return the total number of records created
+    pub fn get_record_count(env: Env) -> u64 {
+        let counter_key = symbol_short!("REC_CTR");
+        env.storage().instance().get(&counter_key).unwrap_or(0)
+    }
+
+    /// Retrieve multiple records by ID.
+    pub fn get_records(
+        env: Env,
+        caller: Address,
+        ids: Vec<u64>,
+    ) -> Result<Vec<VisionRecord>, ContractError> {
+        let mut results = Vec::new(&env);
+        for id in ids.iter() {
+            let record = Self::get_record(env.clone(), caller.clone(), id)?;
+            results.push_back(record);
+        }
+        Ok(results)
+    }
+
+    // ── Admin Tiers Management ────────────────────────────────────────────────
+
+    /// Promote an admin to a specific tier
+    pub fn promote_admin(
+        env: Env,
+        caller: Address,
+        target: Address,
+        tier: AdminTier,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+
+        let admin = Self::get_admin(env.clone())?;
+        let is_admin = caller == admin;
+        let is_system_admin = rbac::has_permission(&env, &caller, &Permission::SystemAdmin);
+        let is_super_admin = admin_tiers::require_tier(&env, &caller, &AdminTier::SuperAdmin);
+
+        if !is_admin && !is_system_admin && !is_super_admin {
+            return Self::unauthorized(&env, &caller, "promote_admin", "SuperAdmin");
+        }
+
+        admin_tiers::track_admin(&env, &target);
+        admin_tiers::set_admin_tier(&env, &target, tier);
+
+        Ok(())
+    }
+
+    /// Demote an admin completely
+    pub fn demote_admin(env: Env, caller: Address, target: Address) -> Result<(), ContractError> {
+        caller.require_auth();
+
+        let admin = Self::get_admin(env.clone())?;
+        let is_admin = caller == admin;
+        let is_system_admin = rbac::has_permission(&env, &caller, &Permission::SystemAdmin);
+        let is_super_admin = admin_tiers::require_tier(&env, &caller, &AdminTier::SuperAdmin);
+
+        if !is_admin && !is_system_admin && !is_super_admin {
+            return Self::unauthorized(&env, &caller, "demote_admin", "SuperAdmin");
+        }
+
+        admin_tiers::untrack_admin(&env, &target);
+        admin_tiers::remove_admin_tier(&env, &target);
+
+        Ok(())
+    }
+
+    /// Get the tier of an admin
+    pub fn get_admin_tier(env: Env, admin: Address) -> Option<AdminTier> {
+        admin_tiers::get_admin_tier(&env, &admin)
+    }
 }
 
 #[cfg(test)]
