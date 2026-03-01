@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use super::*;
 use crate::settlement::BatchRecordInput;
 use soroban_sdk::{

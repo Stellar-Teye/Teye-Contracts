@@ -552,12 +552,6 @@ impl MeteringContract {
 
         let cycle_id = billing::close_cycle(&env).map_err(map_billing_error)?;
 
-        let costs: GasCosts = env
-            .storage()
-            .instance()
-            .get(&GAS_COSTS)
-            .unwrap_or_else(GasCosts::default_costs);
-
         let list: Vec<Address> = env
             .storage()
             .persistent()
@@ -572,10 +566,9 @@ impl MeteringContract {
 
                 let total_cost = usage
                     .read_used
-                    .saturating_mul(costs.read_cost)
-                    .saturating_add(usage.write_used.saturating_mul(costs.write_cost))
-                    .saturating_add(usage.compute_used.saturating_mul(costs.compute_cost))
-                    .saturating_add(usage.storage_used.saturating_mul(costs.storage_cost));
+                    .saturating_add(usage.write_used)
+                    .saturating_add(usage.compute_used)
+                    .saturating_add(usage.storage_used);
 
                 let record = TenantUsageRecord {
                     tenant: addr.clone(),

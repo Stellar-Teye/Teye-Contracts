@@ -187,7 +187,14 @@ fn setup_zk_verifier(
 /// and the G2 generator. The proof is structurally correct and passes
 /// `validate_proof_components`, but will not satisfy the pairing equation
 /// (which is expected — the test verifies the cross-contract flow completes).
-fn make_valid_proof(env: &Env) -> (soroban_sdk::Bytes, soroban_sdk::Bytes, soroban_sdk::Bytes, soroban_sdk::Vec<BytesN<32>>) {
+fn make_valid_proof(
+    env: &Env,
+) -> (
+    soroban_sdk::Bytes,
+    soroban_sdk::Bytes,
+    soroban_sdk::Bytes,
+    soroban_sdk::Vec<BytesN<32>>,
+) {
     let proof_a = soroban_sdk::Bytes::new(env);
     let proof_b = soroban_sdk::Bytes::new(env);
     let proof_c = soroban_sdk::Bytes::new(env);

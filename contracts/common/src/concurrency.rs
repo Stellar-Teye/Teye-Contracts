@@ -492,118 +492,140 @@ pub fn get_version_stamp(env: &Env, record_id: u64) -> VersionStamp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::{contract, contractimpl, testutils::Address as _, Address, Env};
+
+    #[contract]
+    struct TestContract;
+
+    #[contractimpl]
+    impl TestContract {}
+
+    fn setup_env() -> (Env, Address) {
+        let env = Env::default();
+        let contract_id = env.register(TestContract, ());
+        (env, contract_id)
+    }
 
     #[test]
     fn init_and_clean_update() {
-        let env = Env::default();
-        let stamp = init_record_version(&env, 1, 10);
-        assert_eq!(stamp.version, 1);
-        assert_eq!(stamp.clock.get(10), 1);
+        let (env, contract_id) = setup_env();
+        env.as_contract(&contract_id, || {
+            let stamp = init_record_version(&env, 1, 10);
+            assert_eq!(stamp.version, 1);
+            assert_eq!(stamp.clock.get(10), 1);
 
-        // Update with matching expected version succeeds.
-        let fields = Vec::new(&env);
-        let provider = Address::generate(&env);
-        match compare_and_swap(&env, 1, 1, 10, &provider, &fields) {
-            UpdateOutcome::Applied(s) => {
-                assert_eq!(s.version, 2);
-                assert_eq!(s.clock.get(10), 2);
+            // Update with matching expected version succeeds.
+            let fields = Vec::new(&env);
+            let provider = Address::generate(&env);
+            match compare_and_swap(&env, 1, 1, 10, &provider, &fields) {
+                UpdateOutcome::Applied(s) => {
+                    assert_eq!(s.version, 2);
+                    assert_eq!(s.clock.get(10), 2);
+                }
+                other => panic!("expected Applied, got {:?}", other),
             }
-            other => panic!("expected Applied, got {:?}", other),
-        }
+        });
     }
 
     #[test]
     fn stale_version_triggers_conflict_under_manual_review() {
-        let env = Env::default();
-        init_record_version(&env, 1, 10);
+        let (env, contract_id) = setup_env();
+        env.as_contract(&contract_id, || {
+            init_record_version(&env, 1, 10);
 
-        // Simulate another provider advancing the version.
-        let fields = Vec::new(&env);
-        let provider_a = Address::generate(&env);
-        let _ = compare_and_swap(&env, 1, 1, 20, &provider_a, &fields);
+            // Simulate another provider advancing the version.
+            let fields = Vec::new(&env);
+            let provider_a = Address::generate(&env);
+            let _ = compare_and_swap(&env, 1, 1, 20, &provider_a, &fields);
 
-        // Now attempt with stale version=1, different node.
-        set_resolution_strategy(&env, 1, &ResolutionStrategy::ManualReview);
-        let provider_b = Address::generate(&env);
-        match compare_and_swap(&env, 1, 1, 30, &provider_b, &fields) {
-            UpdateOutcome::Conflicted(cid) => {
-                assert!(cid > 0);
-                let pending = get_pending_conflicts(&env);
-                assert_eq!(pending.len(), 1);
+            // Now attempt with stale version=1, different node.
+            set_resolution_strategy(&env, 1, &ResolutionStrategy::ManualReview);
+            let provider_b = Address::generate(&env);
+            match compare_and_swap(&env, 1, 1, 30, &provider_b, &fields) {
+                UpdateOutcome::Conflicted(cid) => {
+                    assert!(cid > 0);
+                    let pending = get_pending_conflicts(&env);
+                    assert_eq!(pending.len(), 1);
+                }
+                other => panic!("expected Conflicted, got {:?}", other),
             }
-            other => panic!("expected Conflicted, got {:?}", other),
-        }
+        });
     }
 
     #[test]
     fn last_writer_wins_always_applies() {
-        let env = Env::default();
-        init_record_version(&env, 1, 10);
-        set_resolution_strategy(&env, 1, &ResolutionStrategy::LastWriterWins);
+        let (env, contract_id) = setup_env();
+        env.as_contract(&contract_id, || {
+            init_record_version(&env, 1, 10);
+            set_resolution_strategy(&env, 1, &ResolutionStrategy::LastWriterWins);
 
-        let fields = Vec::new(&env);
-        let provider = Address::generate(&env);
-        // Advance version once.
-        let _ = compare_and_swap(&env, 1, 1, 20, &provider, &fields);
+            let fields = Vec::new(&env);
+            let provider = Address::generate(&env);
+            // Advance version once.
+            let _ = compare_and_swap(&env, 1, 1, 20, &provider, &fields);
 
-        // Stale version under LWW still applies.
-        match compare_and_swap(&env, 1, 1, 30, &provider, &fields) {
-            UpdateOutcome::Applied(_) => {}
-            other => panic!("expected Applied under LWW, got {:?}", other),
-        }
+            // Stale version under LWW still applies.
+            match compare_and_swap(&env, 1, 1, 30, &provider, &fields) {
+                UpdateOutcome::Applied(_) => {}
+                other => panic!("expected Applied under LWW, got {:?}", other),
+            }
+        });
     }
 
     #[test]
     fn merge_strategy_non_overlapping_fields() {
-        let env = Env::default();
-        init_record_version(&env, 1, 10);
-        set_resolution_strategy(&env, 1, &ResolutionStrategy::Merge);
+        let (env, contract_id) = setup_env();
+        env.as_contract(&contract_id, || {
+            init_record_version(&env, 1, 10);
+            set_resolution_strategy(&env, 1, &ResolutionStrategy::Merge);
 
-        // Save a field snapshot for the record.
-        let mut snapshot_fields = Vec::new(&env);
-        snapshot_fields.push_back(FieldChange {
-            field_name: String::from_str(&env, "visual_acuity"),
-            old_hash: String::from_str(&env, "hash_a"),
-            new_hash: String::from_str(&env, "hash_b"),
+            // Save a field snapshot for the record.
+            let mut snapshot_fields = Vec::new(&env);
+            snapshot_fields.push_back(FieldChange {
+                field_name: String::from_str(&env, "visual_acuity"),
+                old_hash: String::from_str(&env, "hash_a"),
+                new_hash: String::from_str(&env, "hash_b"),
+            });
+            save_field_snapshot(&env, 1, &snapshot_fields);
+
+            // Advance version.
+            let provider = Address::generate(&env);
+            let empty = Vec::new(&env);
+            let _ = compare_and_swap(&env, 1, 1, 20, &provider, &empty);
+
+            // New update touches a different field — should merge.
+            let mut new_fields = Vec::new(&env);
+            new_fields.push_back(FieldChange {
+                field_name: String::from_str(&env, "iop"),
+                old_hash: String::from_str(&env, "old_iop"),
+                new_hash: String::from_str(&env, "new_iop"),
+            });
+            match compare_and_swap(&env, 1, 1, 30, &provider, &new_fields) {
+                UpdateOutcome::Merged(_) => {}
+                other => panic!("expected Merged, got {:?}", other),
+            }
         });
-        save_field_snapshot(&env, 1, &snapshot_fields);
-
-        // Advance version.
-        let provider = Address::generate(&env);
-        let empty = Vec::new(&env);
-        let _ = compare_and_swap(&env, 1, 1, 20, &provider, &empty);
-
-        // New update touches a different field — should merge.
-        let mut new_fields = Vec::new(&env);
-        new_fields.push_back(FieldChange {
-            field_name: String::from_str(&env, "iop"),
-            old_hash: String::from_str(&env, "old_iop"),
-            new_hash: String::from_str(&env, "new_iop"),
-        });
-        match compare_and_swap(&env, 1, 1, 30, &provider, &new_fields) {
-            UpdateOutcome::Merged(_) => {}
-            other => panic!("expected Merged, got {:?}", other),
-        }
     }
 
     #[test]
     fn resolve_conflict_marks_as_resolved() {
-        let env = Env::default();
-        init_record_version(&env, 1, 10);
-        set_resolution_strategy(&env, 1, &ResolutionStrategy::ManualReview);
+        let (env, contract_id) = setup_env();
+        env.as_contract(&contract_id, || {
+            init_record_version(&env, 1, 10);
+            set_resolution_strategy(&env, 1, &ResolutionStrategy::ManualReview);
 
-        let provider = Address::generate(&env);
-        let fields = Vec::new(&env);
-        let _ = compare_and_swap(&env, 1, 1, 20, &provider, &fields);
+            let provider = Address::generate(&env);
+            let fields = Vec::new(&env);
+            let _ = compare_and_swap(&env, 1, 1, 20, &provider, &fields);
 
-        match compare_and_swap(&env, 1, 1, 30, &provider, &fields) {
-            UpdateOutcome::Conflicted(cid) => {
-                let resolver = Address::generate(&env);
-                assert!(resolve_conflict(&env, cid, &resolver));
-                assert!(get_pending_conflicts(&env).is_empty());
+            match compare_and_swap(&env, 1, 1, 30, &provider, &fields) {
+                UpdateOutcome::Conflicted(cid) => {
+                    let resolver = Address::generate(&env);
+                    assert!(resolve_conflict(&env, cid, &resolver));
+                    assert!(get_pending_conflicts(&env).is_empty());
+                }
+                other => panic!("expected Conflicted, got {:?}", other),
             }
-            other => panic!("expected Conflicted, got {:?}", other),
-        }
+        });
     }
 }

@@ -94,7 +94,7 @@ fn test_clean_versioned_examination_update() {
         &patient,
         &patient,
         &provider,
-        &AccessLevel::Full,
+        &AccessLevel::Admin,
         &157_680_000u64,
     );
 
@@ -173,7 +173,7 @@ fn test_stale_version_triggers_conflict_manual_review() {
         &patient,
         &patient,
         &provider,
-        &AccessLevel::Full,
+        &AccessLevel::Admin,
         &157_680_000u64,
     );
 
@@ -278,7 +278,7 @@ fn test_last_writer_wins_strategy() {
         &patient,
         &patient,
         &provider,
-        &AccessLevel::Full,
+        &AccessLevel::Admin,
         &157_680_000u64,
     );
 
@@ -366,7 +366,7 @@ fn test_resolve_conflict() {
         &patient,
         &patient,
         &provider,
-        &AccessLevel::Full,
+        &AccessLevel::Admin,
         &157_680_000u64,
     );
 
@@ -459,7 +459,7 @@ fn test_merge_strategy_non_overlapping_fields() {
         &patient,
         &patient,
         &provider,
-        &AccessLevel::Full,
+        &AccessLevel::Admin,
         &157_680_000u64,
     );
 
@@ -555,7 +555,7 @@ fn test_get_record_conflicts_returns_for_specific_record() {
         &patient,
         &patient,
         &provider,
-        &AccessLevel::Full,
+        &AccessLevel::Admin,
         &157_680_000u64,
     );
 
