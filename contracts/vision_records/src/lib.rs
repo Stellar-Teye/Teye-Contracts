@@ -2219,7 +2219,7 @@ impl VisionRecordsContract {
         caller: Address,
         policy_id: String,
         name: String,
-        required_role: Option<Role>,
+        required_role: Role,
         time_restriction: TimeRestriction,
         required_credential: CredentialType,
         min_sensitivity_level: SensitivityLevel,

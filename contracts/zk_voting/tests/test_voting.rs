@@ -28,9 +28,6 @@ fn valid_proof(env: &Env) -> (Proof, Vec<BytesN<32>>) {
     cx[0] = 1;
     let cy = [0u8; 32];
 
-    let mut pi = [0u8; 32];
-    pi[0] = 1;
-
     let proof = Proof {
         a: G1Point {
             x: BytesN::from_array(env, &ax),
@@ -73,8 +70,6 @@ fn invalid_proof(env: &Env) -> (Proof, Vec<BytesN<32>>) {
             y: BytesN::from_array(env, &z32),
         },
     };
-
-    let pi = [0u8; 32];
 
     let mut inputs: Vec<BytesN<32>> = Vec::new(env);
     inputs.push_back(BytesN::from_array(env, &z32));

@@ -64,14 +64,6 @@ pub struct ComplianceAuditLog {
     search: SearchEngine,
 }
 
-#[derive(Debug, Clone)]
-pub struct SimpleAuditEntry {
-    pub actor: String,
-    pub action: String,
-    pub target: String,
-    pub timestamp: u64,
-}
-
 impl ComplianceAuditLog {
     /// The canonical segment label used for all compliance entries.
     pub const SEGMENT: &'static str = "compliance";
@@ -280,21 +272,38 @@ mod tests {
 
 #[derive(Default)]
 pub struct AuditLog {
-    pub entries: Vec<AuditEntry>,
+    pub entries: Vec<LogEntry>,
 }
 
 impl AuditLog {
     /// Records an audit entry. For key rotation, use action="rotate_master_secure" and target="master_key".
     pub fn record(&mut self, actor: &str, action: &str, target: &str, now: u64) {
-        self.entries.push(AuditEntry {
+        let sequence = self.entries.len() as u64 + 1;
+        let prev_hash = self
+            .entries
+            .last()
+            .map(|entry| entry.entry_hash)
+            .unwrap_or([0u8; 32]);
+        let segment =
+            LogSegmentId::new(ComplianceAuditLog::SEGMENT).expect("valid compliance segment");
+
+        let mut entry = LogEntry {
+            sequence,
+            timestamp: now,
             actor: actor.to_string(),
             action: action.to_string(),
             target: target.to_string(),
-            timestamp: now,
-        });
+            result: "ok".to_string(),
+            prev_hash,
+            entry_hash: [0u8; 32],
+            segment,
+        };
+
+        entry.entry_hash = audit::merkle_log::hash_leaf(&entry.canonical_bytes());
+        self.entries.push(entry);
     }
 
-    pub fn query(&self) -> &[AuditEntry] {
+    pub fn query(&self) -> &[LogEntry] {
         &self.entries
     }
 }
