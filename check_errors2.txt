@@ -1,0 +1,27 @@
+    Checking vision_records v1.2.2 (C:\Users\nwaug\Desktop\Blockchain\DripsWave\Teye-Contracts\contracts\vision_records)
+error[E0277]: the trait bound `soroban_sdk::xdr::ScVal: TryFrom<&core::option::Option<Role>>` is not satisfied
+   --> contracts\vision_records\src\rbac.rs:169:1
+    |
+169 | #[contracttype]
+    | ^^^^^^^^^^^^^^^ the trait `From<Role>` is not implemented for `soroban_sdk::xdr::ScVal`
+    |
+    = help: the following other types implement trait `From<T>`:
+              `&soroban_sdk::xdr::ScVal` implements `From<soroban_env_common::object::ScValObjRef<'_>>`
+              `soroban_sdk::xdr::ScVal` implements `From<&()>`
+              `soroban_sdk::xdr::ScVal` implements `From<&Bls12381Fp2>`
+              `soroban_sdk::xdr::ScVal` implements `From<&Bls12381Fp>`
+              `soroban_sdk::xdr::ScVal` implements `From<&Bls12381G1Affine>`
+              `soroban_sdk::xdr::ScVal` implements `From<&Bls12381G2Affine>`
+              `soroban_sdk::xdr::ScVal` implements `From<&Bn254Fp>`
+              `soroban_sdk::xdr::ScVal` implements `From<&Bn254G1Affine>`
+            and 56 others
+    = note: required for `Role` to implement `Into<soroban_sdk::xdr::ScVal>`
+    = note: required for `soroban_sdk::xdr::ScVal` to implement `From<&core::option::Option<Role>>`
+    = note: 1 redundant requirement hidden
+    = note: required for `&core::option::Option<Role>` to implement `Into<soroban_sdk::xdr::ScVal>`
+    = note: required for `soroban_sdk::xdr::ScVal` to implement `TryFrom<&core::option::Option<Role>>`
+    = note: required for `&core::option::Option<Role>` to implement `TryInto<soroban_sdk::xdr::ScVal>`
+    = note: this error originates in the attribute macro `contracttype` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+For more information about this error, try `rustc --explain E0277`.
+error: could not compile `vision_records` (lib) due to 1 previous error
