@@ -167,6 +167,7 @@ pub enum AccessLevel {
     None,
     Read,
     Write,
+    Full,
     Admin,
 }
 
@@ -1480,6 +1481,7 @@ impl VisionRecordsContract {
             let record_access = Self::check_record_access(env.clone(), record_id, caller.clone());
             access == AccessLevel::Read
                 || access == AccessLevel::Write
+                || access == AccessLevel::Full
                 || access == AccessLevel::Admin
                 || record_access != AccessLevel::None
                 || rbac::has_permission(&env, &caller, &Permission::SystemAdmin)
@@ -2803,6 +2805,75 @@ impl VisionRecordsContract {
         let prep_key = (symbol_short!("P_ADD_RX"), rx_id);
         env.storage().temporary().remove(&prep_key);
 
+        Ok(())
+    }
+
+    // ── Query helpers ─────────────────────────────────────────────────────────
+
+    /// Return total number of records added.
+    pub fn get_record_count(env: Env) -> u64 {
+        let counter_key = symbol_short!("REC_CTR");
+        env.storage().instance().get(&counter_key).unwrap_or(0)
+    }
+
+    /// Get multiple records by their IDs.
+    pub fn get_records(env: Env, ids: Vec<u64>) -> Result<Vec<VisionRecord>, ContractError> {
+        let mut records: Vec<VisionRecord> = Vec::new(&env);
+        for i in 0..ids.len() {
+            let record_id = ids.get(i).unwrap();
+            let key = (symbol_short!("RECORD"), record_id);
+            let record: VisionRecord = env
+                .storage()
+                .persistent()
+                .get(&key)
+                .ok_or(ContractError::RecordNotFound)?;
+            records.push_back(record);
+        }
+        Ok(records)
+    }
+
+    // ── Admin tier management ─────────────────────────────────────────────────
+
+    /// Return the admin tier for a given address.
+    pub fn get_admin_tier(env: Env, admin: Address) -> Option<AdminTier> {
+        admin_tiers::get_admin_tier(&env, &admin)
+    }
+
+    /// Promote a target address to the specified admin tier. SuperAdmin only.
+    pub fn promote_admin(
+        env: Env,
+        caller: Address,
+        target: Address,
+        tier: AdminTier,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+        let is_admin = {
+            let stored_admin: Option<Address> =
+                env.storage().instance().get(&symbol_short!("ADMIN"));
+            stored_admin.is_some_and(|a| a == caller)
+        };
+        let is_super_admin = admin_tiers::require_tier(&env, &caller, &AdminTier::SuperAdmin);
+        if !is_admin && !is_super_admin {
+            return Self::unauthorized(&env, &caller, "promote_admin", "SuperAdmin");
+        }
+        admin_tiers::set_admin_tier(&env, &target, tier);
+        admin_tiers::track_admin(&env, &target);
+        Ok(())
+    }
+
+    /// Remove a target's admin tier. SuperAdmin only.
+    pub fn demote_admin(env: Env, caller: Address, target: Address) -> Result<(), ContractError> {
+        caller.require_auth();
+        let is_admin = {
+            let stored_admin: Option<Address> =
+                env.storage().instance().get(&symbol_short!("ADMIN"));
+            stored_admin.is_some_and(|a| a == caller)
+        };
+        let is_super_admin = admin_tiers::require_tier(&env, &caller, &AdminTier::SuperAdmin);
+        if !is_admin && !is_super_admin {
+            return Self::unauthorized(&env, &caller, "demote_admin", "SuperAdmin");
+        }
+        admin_tiers::untrack_admin(&env, &target);
         Ok(())
     }
 }
