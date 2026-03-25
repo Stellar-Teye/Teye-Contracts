@@ -4,7 +4,9 @@
 #![cfg(test)]
 
 // Test that all types can be imported from the root
-use zk_verifier::{ContractError, ZkVerifierContract, ZkVerifierContractClient};
+use zk_verifier::{
+    AccessRequest, ContractError, ZkVerifierContract, ZkVerifierContractClient,
+};
 
 // Test that helper types are accessible
 use zk_verifier::{MerkleVerifier, ZkAccessHelper};
@@ -14,6 +16,13 @@ use zk_verifier::{PoseidonHasher, ProofValidationError};
 
 // Test that vk types are accessible
 use zk_verifier::vk::{G1Point, G2Point};
+use zk_verifier::VerificationKey;
+
+// Test that audit types are accessible
+use zk_verifier::{AuditRecord, AuditTrail};
+
+// Test that event types are accessible
+use zk_verifier::AccessRejectedEvent;
 
 // Test that types can be imported from submodules
 use zk_verifier::verifier::G1Point as VerifierG1Point;
