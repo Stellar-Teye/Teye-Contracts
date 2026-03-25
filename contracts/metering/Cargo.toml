@@ -21,3 +21,7 @@ soroban-sdk = { workspace = true, features = ["testutils"] }
 
 [features]
 testutils = ["soroban-sdk/testutils"]
+
+[[test]]
+name = "init_test"
+path = "tests/init_test.rs"
