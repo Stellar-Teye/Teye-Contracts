@@ -4,9 +4,7 @@
 #![cfg(test)]
 
 // Test that all types can be imported from the root
-use zk_verifier::{
-    AccessRequest, ContractError, ZkVerifierContract, ZkVerifierContractClient,
-};
+use zk_verifier::{AccessRequest, ContractError, ZkVerifierContract, ZkVerifierContractClient};
 
 // Test that helper types are accessible
 use zk_verifier::{MerkleVerifier, ZkAccessHelper};

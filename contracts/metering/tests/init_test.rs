@@ -118,7 +118,7 @@ fn test_contract_functions_fail_before_initialization() {
     // Now initialize and verify it works
     let admin = Address::generate(&env);
     client.initialize(&admin);
-    
+
     let stored_admin = client.get_admin();
     assert_eq!(stored_admin, admin);
 }
@@ -133,7 +133,7 @@ fn test_initialization_exploit_prevention() {
     client.initialize(&original_admin);
 
     // Simulate various attack scenarios
-    
+
     // 1. Attempt to re-initialize with the same admin (should fail)
     let attack1 = client.try_initialize(&original_admin);
     assert_eq!(attack1, Err(Ok(MeteringError::AlreadyInitialized)));
@@ -147,9 +147,10 @@ fn test_initialization_exploit_prevention() {
         let attacker = Address::generate(&env);
         let result = client.try_initialize(&attacker);
         assert_eq!(
-            result, 
+            result,
             Err(Ok(MeteringError::AlreadyInitialized)),
-            "Attack attempt {} should have failed", i
+            "Attack attempt {} should have failed",
+            i
         );
     }
 
@@ -175,9 +176,9 @@ fn test_initialization_error_consistency() {
 
     // All subsequent initialization attempts should return the same error
     let error_type = MeteringError::AlreadyInitialized;
-    
+
     for _ in 0..3 {
         let result = client.try_initialize(&Address::generate(&env));
-        assert_eq!(result, Err(Ok(error_type.clone())));
+        assert_eq!(result, Err(Ok(error_type)));
     }
 }
