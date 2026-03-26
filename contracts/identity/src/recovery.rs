@@ -210,7 +210,7 @@ pub fn initiate_recovery(
         new_address,
         approvals,
         initiated_at: now,
-        execute_after: now + COOLDOWN_PERIOD,
+        execute_after: now.saturating_add(COOLDOWN_PERIOD),
     };
 
     env.storage().persistent().set(&key, &request);
