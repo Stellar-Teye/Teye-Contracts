@@ -82,6 +82,7 @@ pub enum ContractError {
     ExternalCallFailed = 4,
     TimelockNotMet = 5,
     SubmissionExpired = 6,
+    InvalidInput = 7,
 }
 
 #[contractclient(name = "MetricSourceClient")]
@@ -105,6 +106,14 @@ impl AnalyticsContract {
     ) -> Result<(), ContractError> {
         if env.storage().instance().has(&ADMIN) {
             return Err(ContractError::AlreadyInitialized);
+        }
+        if pub_key.n <= 0 || pub_key.nn <= 0 || pub_key.g <= 0 {
+            return Err(ContractError::InvalidInput);
+        }
+        if let Some(ref pk) = priv_key {
+            if pk.lambda <= 0 || pk.mu <= 0 {
+                return Err(ContractError::InvalidInput);
+            }
         }
         env.storage().instance().set(&ADMIN, &admin);
         env.storage().instance().set(&AGGREGATOR, &aggregator);
@@ -201,6 +210,9 @@ impl AnalyticsContract {
         let aggregator = Self::get_aggregator(env.clone());
         if caller != aggregator {
             return Err(ContractError::Unauthorized);
+        }
+        if ciphertexts.is_empty() {
+            return Err(ContractError::InvalidInput);
         }
 
         let pub_key: PaillierPublicKey = env.storage().instance().get(&PUB_KEY).unwrap();
