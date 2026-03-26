@@ -83,6 +83,7 @@ impl AuditManager {
             entry_hash: BytesN::from_array(env, &entry_hash),
         };
 
+        #[allow(deprecated)]
         env.events()
             .publish((symbol_short!("AUDIT"), actor), event_data);
     }

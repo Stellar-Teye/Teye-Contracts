@@ -1,5 +1,6 @@
 use soroban_sdk::String;
 
+use crate::prescription::PrescriptionData;
 use crate::ContractError;
 
 const MIN_NAME_LEN: u32 = 2;
@@ -79,6 +80,8 @@ pub fn validate_duration(duration_seconds: u64) -> Result<(), ContractError> {
     }
     Ok(())
 }
+
+pub fn validate_prescription_data(_data: &PrescriptionData) {}
 
 #[cfg(test)]
 mod tests {

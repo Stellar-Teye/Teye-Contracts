@@ -141,11 +141,9 @@ mod soroban_impl {
 
 #[cfg(any(test, feature = "std"))]
 mod std_impl {
+    extern crate alloc;
+    use self::alloc::collections::BTreeMap;
     use super::{hex_decode_and_xor, xor_and_hex_encode, StdString, StdVec};
-    #[cfg(not(feature = "std"))]
-    use alloc::collections::BTreeMap;
-    #[cfg(feature = "std")]
-    use std::collections::BTreeMap;
 
     #[derive(Debug, Clone, Default)]
     pub struct AuditEntry {

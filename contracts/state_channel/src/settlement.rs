@@ -24,6 +24,7 @@ pub struct BatchRecordInput {
 }
 
 #[soroban_sdk::contractclient(name = "VisionRecordsClient")]
+#[allow(dead_code)]
 trait VisionRecordsInterface {
     fn add_records(
         env: Env,

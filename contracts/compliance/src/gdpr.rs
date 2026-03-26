@@ -117,7 +117,7 @@ fn consent_tracking_rule() -> ComplianceRule {
                 // Must have a documented lawful basis.
                 let basis = ctx.metadata.get("lawful_basis");
                 match basis {
-                    Some(b) => LAWFUL_BASES.iter().any(|lb| *lb == b.as_str()),
+                    Some(b) => LAWFUL_BASES.contains(&b.as_str()),
                     None => {
                         // Fall back: if consent is recorded, that counts.
                         ctx.has_consent
@@ -199,7 +199,7 @@ fn breach_notification_rule() -> ComplianceRule {
             // After-hours access to sensitive data.
             if ctx.sensitivity >= 2 {
                 let hour = (ctx.timestamp / 3600) % 24;
-                if hour < 6 || hour >= 22 {
+                if !(6..22).contains(&hour) {
                     return false;
                 }
             }
@@ -224,7 +224,7 @@ fn data_protection_by_design_rule() -> ComplianceRule {
             .into(),
         evaluate: Box::new(|ctx: &OperationContext| {
             if ctx.sensitivity >= 2 {
-                return ctx.metadata.get("encrypted").map_or(false, |v| v == "true");
+                return ctx.metadata.get("encrypted").is_some_and(|v| v == "true");
             }
             true
         }),

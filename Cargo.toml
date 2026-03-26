@@ -20,6 +20,7 @@ members = [
     "contracts/orchestrator",
     "contracts/state_channel",
     "contracts/metering",
+    "contracts/vault",
     "sdk/zk_prover",
     "test",
 ]

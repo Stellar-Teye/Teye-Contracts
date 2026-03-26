@@ -227,7 +227,9 @@ impl ContractError {
             ContractError::ConflictNotFound => ErrorSeverity::Low,
             ContractError::StorageError | ContractError::TransientFailure => ErrorSeverity::High,
             ContractError::Paused | ContractError::ContractPaused => ErrorSeverity::Critical,
-            ContractError::LineageNodeNotFound | ContractError::LineageAncestorMissing => ErrorSeverity::Low,
+            ContractError::LineageNodeNotFound | ContractError::LineageAncestorMissing => {
+                ErrorSeverity::Low
+            }
             ContractError::LineageTampered => ErrorSeverity::Critical,
             ContractError::LineageAccessDenied => ErrorSeverity::Medium,
             ContractError::LineageCycleDetected => ErrorSeverity::High,
@@ -288,15 +290,24 @@ impl ContractError {
             ContractError::InvalidAttestation => "Invalid emergency attestation provided",
             ContractError::InvalidAppointmentTime => "Invalid appointment time provided",
             ContractError::InvalidAppointmentStatus => "Invalid appointment status provided",
-            ContractError::VersionConflict =>
-                "Record version conflict detected, retry with current version",
+            ContractError::VersionConflict => {
+                "Record version conflict detected, retry with current version"
+            }
             ContractError::ConflictQueued => "Concurrent modification conflict queued for review",
             ContractError::ConflictNotFound => "Conflict entry not found",
             ContractError::LineageNodeNotFound => "Lineage node does not exist for this record",
-            ContractError::LineageAncestorMissing => "A required ancestor is missing from the provenance chain",
-            ContractError::LineageTampered => "Provenance commitment mismatch — history may have been tampered with",
-            ContractError::LineageAccessDenied => "Lineage-based access denied: no access path found",
-            ContractError::LineageCycleDetected => "Operation would create a cycle in the provenance DAG",
+            ContractError::LineageAncestorMissing => {
+                "A required ancestor is missing from the provenance chain"
+            }
+            ContractError::LineageTampered => {
+                "Provenance commitment mismatch — history may have been tampered with"
+            }
+            ContractError::LineageAccessDenied => {
+                "Lineage-based access denied: no access path found"
+            }
+            ContractError::LineageCycleDetected => {
+                "Operation would create a cycle in the provenance DAG"
+            }
         }
     }
 }

@@ -274,7 +274,9 @@ fn find_migration(
     from: SchemaVersion,
     to: SchemaVersion,
 ) -> Option<Migration> {
-    registry.iter().find(|m| m.from_version == from && m.to_version == to)
+    registry
+        .iter()
+        .find(|m| m.from_version == from && m.to_version == to)
 }
 
 fn apply_transforms(
