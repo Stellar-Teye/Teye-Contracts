@@ -21,6 +21,80 @@ fn sample_priv_key() -> PaillierPrivateKey {
 }
 
 #[test]
+fn test_initialize_sets_initial_state_constraints() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(AnalyticsContract, ());
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let aggregator = Address::generate(&env);
+    let pub_key = sample_pub_key();
+    let priv_key = sample_priv_key();
+
+    client.initialize(&admin, &aggregator, &pub_key, &Some(priv_key));
+
+    assert_eq!(client.get_admin(), admin);
+    assert_eq!(client.get_aggregator(), aggregator);
+
+    let ciphertext = client.encrypt(&5);
+    assert_eq!(client.decrypt(&aggregator, &ciphertext), 5);
+}
+
+#[test]
+fn test_initialize_rejects_invalid_public_key_and_does_not_initialize() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(AnalyticsContract, ());
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let aggregator = Address::generate(&env);
+    let invalid_pub_key = PaillierPublicKey { n: 0, nn: 0, g: 0 };
+
+    assert_eq!(
+        client.try_initialize(&admin, &aggregator, &invalid_pub_key, &None),
+        Err(Ok(ContractError::InvalidInput))
+    );
+
+    let valid_pub_key = sample_pub_key();
+    let valid_priv_key = sample_priv_key();
+    client.initialize(&admin, &aggregator, &valid_pub_key, &Some(valid_priv_key));
+
+    assert_eq!(client.get_admin(), admin);
+    assert_eq!(client.get_aggregator(), aggregator);
+}
+
+#[test]
+fn test_initialize_rejects_invalid_private_key_and_does_not_initialize() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(AnalyticsContract, ());
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let aggregator = Address::generate(&env);
+    let invalid_priv_key = PaillierPrivateKey { lambda: 0, mu: 0 };
+
+    assert_eq!(
+        client.try_initialize(
+            &admin,
+            &aggregator,
+            &sample_pub_key(),
+            &Some(invalid_priv_key)
+        ),
+        Err(Ok(ContractError::InvalidInput))
+    );
+
+    client.initialize(&admin, &aggregator, &sample_pub_key(), &Some(sample_priv_key()));
+    assert_eq!(client.get_admin(), admin);
+    assert_eq!(client.get_aggregator(), aggregator);
+}
+
+#[test]
 fn test_initialize_rejects_second_call_with_already_initialized() {
     let env = Env::default();
     env.mock_all_auths();
