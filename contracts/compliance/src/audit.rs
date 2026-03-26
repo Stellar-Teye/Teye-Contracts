@@ -67,7 +67,7 @@ pub struct ComplianceAuditLog {
 }
 
 #[derive(Debug, Clone)]
-pub struct AuditEntry {
+pub struct LegacyAuditEntry {
     pub actor: String,
     pub action: String,
     pub target: String,
@@ -289,14 +289,15 @@ mod tests {
     }
 }
 
+#[derive(Default)]
 pub struct AuditLog {
-    pub entries: Vec<AuditEntry>,
+    pub entries: Vec<LegacyAuditEntry>,
 }
 
 impl AuditLog {
     /// Records an audit entry. For key rotation, use action="rotate_master_secure" and target="master_key".
     pub fn record(&mut self, actor: &str, action: &str, target: &str, now: u64) {
-        self.entries.push(AuditEntry {
+        self.entries.push(LegacyAuditEntry {
             actor: actor.to_string(),
             action: action.to_string(),
             target: target.to_string(),
@@ -304,7 +305,7 @@ impl AuditLog {
         });
     }
 
-    pub fn query(&self) -> &[AuditEntry] {
+    pub fn query(&self) -> &[LegacyAuditEntry] {
         &self.entries
     }
 }
