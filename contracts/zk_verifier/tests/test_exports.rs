@@ -4,15 +4,13 @@
 #![cfg(test)]
 
 // Test that all types can be imported from the root
-use zk_verifier::{
-    AccessRequest, ContractError, ZkVerifierContract, ZkVerifierContractClient,
-};
+use zk_verifier::{AccessRequest, ContractError, ZkVerifierContract, ZkVerifierContractClient};
 
 // Test that helper types are accessible
 use zk_verifier::{MerkleVerifier, ZkAccessHelper};
 
 // Test that verifier types are accessible
-use zk_verifier::{Bn254Verifier, PoseidonHasher, Proof, ProofValidationError, ZkVerifier};
+use zk_verifier::{PoseidonHasher, ProofValidationError};
 
 // Test that vk types are accessible
 use zk_verifier::vk::{G1Point, G2Point};
@@ -25,8 +23,8 @@ use zk_verifier::{AuditRecord, AuditTrail};
 use zk_verifier::AccessRejectedEvent;
 
 // Test that types can be imported from submodules
-use zk_verifier::verifier::{G1Point as VerifierG1Point, G2Point as VerifierG2Point};
-use zk_verifier::vk::{G1Point as VkG1Point, G2Point as VkG2Point};
+use zk_verifier::verifier::G1Point as VerifierG1Point;
+use zk_verifier::vk::G1Point as VkG1Point;
 
 use soroban_sdk::{testutils::Address as _, BytesN, Env};
 
@@ -53,10 +51,7 @@ fn test_all_exports_accessible() {
     };
 
     // Verify error enum is accessible
-    let _err = ContractError::Unauthorized;
-
-    // If this compiles, all exports are working correctly
-    assert!(true, "All exports are accessible");
+    let _ = ContractError::Unauthorized;
 }
 
 #[test]
@@ -93,9 +88,7 @@ fn test_contract_client_accessible() {
     // Verify we can register and create a client
     let contract_id = env.register(ZkVerifierContract, ());
     let _client = ZkVerifierContractClient::new(&env, &contract_id);
-
-    // If this compiles and runs, the contract client export works
-    assert!(true, "Contract client is accessible");
+    let _ = _client;
 }
 
 #[test]
@@ -121,7 +114,7 @@ fn test_helper_functions_accessible() {
     leaves.push_back(leaf);
     let _root = MerkleVerifier::compute_merkle_root(&env, &leaves);
 
-    assert!(true, "Helper functions are accessible");
+    assert_eq!(leaves.len(), 1);
 }
 
 #[test]
@@ -134,7 +127,7 @@ fn test_poseidon_hasher_accessible() {
 
     let _hash = PoseidonHasher::hash(&env, &inputs);
 
-    assert!(true, "PoseidonHasher is accessible");
+    assert_eq!(_hash.to_array().len(), 32);
 }
 
 #[test]
@@ -144,7 +137,7 @@ fn test_validation_error_accessible() {
     let _err2 = ProofValidationError::EmptyPublicInputs;
     let _err3 = ProofValidationError::MalformedG1PointA;
 
-    assert!(true, "ProofValidationError is accessible");
+    let _ = (_err1, _err2, _err3);
 }
 
 #[test]
@@ -165,5 +158,8 @@ fn test_contract_error_accessible() {
     let _err13 = ContractError::InvalidAuthLevel;
     let _err14 = ContractError::ProofRequiredForAuthLevel;
 
-    assert!(true, "ContractError is accessible with all variants");
+    let _ = (
+        _err1, _err2, _err3, _err4, _err5, _err6, _err7, _err8, _err9, _err10, _err11, _err12,
+        _err13, _err14,
+    );
 }

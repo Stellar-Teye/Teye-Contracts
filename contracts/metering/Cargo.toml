@@ -12,6 +12,10 @@ autotests = false
 crate-type = ["cdylib", "rlib"]
 doctest = false
 
+[[test]]
+name = "access_test"
+path = "tests/access_test.rs"
+
 [dependencies]
 soroban-sdk = { workspace = true }
 teye-common = { path = "../common", package = "common" }
@@ -21,3 +25,7 @@ soroban-sdk = { workspace = true, features = ["testutils"] }
 
 [features]
 testutils = ["soroban-sdk/testutils"]
+
+[[test]]
+name = "init_test"
+path = "tests/init_test.rs"
