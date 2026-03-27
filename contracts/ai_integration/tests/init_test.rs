@@ -131,8 +131,10 @@ fn test_double_initialize_fails_and_state_is_not_overwritten() {
 
     client.initialize(&admin_1, &6_000);
 
+    // Even if the second init passes an invalid threshold, it must still fail
+    // as AlreadyInitialized (init cannot be bypassed by triggering other checks).
     assert_eq!(
-        client.try_initialize(&admin_2, &1_000),
+        client.try_initialize(&admin_2, &10_001),
         Err(Ok(AiIntegrationError::AlreadyInitialized))
     );
 

@@ -16,6 +16,13 @@ const PROVIDER_KEY: Symbol = symbol_short!("PROV");
 const REQUEST_KEY: Symbol = symbol_short!("REQ");
 const RESULT_KEY: Symbol = symbol_short!("RES");
 const FLAGGED_KEY: Symbol = symbol_short!("FLAGGED");
+const EVT_INIT: Symbol = symbol_short!("AI_INIT");
+const EVT_THRESH_SET: Symbol = symbol_short!("THR_SET");
+const EVT_PROVIDER_REG: Symbol = symbol_short!("PRV_REG");
+const EVT_PROVIDER_STATUS: Symbol = symbol_short!("PRV_STS");
+const EVT_REQUEST_SUBMITTED: Symbol = symbol_short!("REQ_SUB");
+const EVT_RESULT_STORED: Symbol = symbol_short!("RES_STO");
+const EVT_RESULT_VERIFIED: Symbol = symbol_short!("RES_VFY");
 
 const MAX_BPS: u32 = 10_000;
 
@@ -126,6 +133,8 @@ impl AiIntegrationContract {
             .set(&THRESHOLD_BPS, &anomaly_threshold_bps);
         env.storage().instance().set(&INITIALIZED, &true);
         env.storage().instance().set(&REQUEST_COUNTER, &0u64);
+        env.events()
+            .publish((EVT_INIT, admin.clone()), anomaly_threshold_bps);
 
         Ok(())
     }
@@ -157,6 +166,8 @@ impl AiIntegrationContract {
         env.storage()
             .instance()
             .set(&THRESHOLD_BPS, &anomaly_threshold_bps);
+        env.events()
+            .publish((EVT_THRESH_SET, caller), anomaly_threshold_bps);
         Ok(())
     }
 
@@ -203,6 +214,8 @@ impl AiIntegrationContract {
         };
 
         env.storage().persistent().set(&key, &provider);
+        env.events()
+            .publish((EVT_PROVIDER_REG, provider_id), provider.clone());
         Ok(())
     }
 
@@ -224,6 +237,8 @@ impl AiIntegrationContract {
 
         provider.status = status;
         env.storage().persistent().set(&key, &provider);
+        env.events()
+            .publish((EVT_PROVIDER_STATUS, provider_id), provider.clone());
 
         Ok(())
     }
@@ -275,6 +290,8 @@ impl AiIntegrationContract {
 
         let key = (REQUEST_KEY, counter);
         env.storage().persistent().set(&key, &request);
+        env.events()
+            .publish((EVT_REQUEST_SUBMITTED, counter, provider_id), request.clone());
 
         Ok(counter)
     }
@@ -359,6 +376,8 @@ impl AiIntegrationContract {
             flagged.push_back(request_id);
             env.storage().persistent().set(&FLAGGED_KEY, &flagged);
         }
+        env.events()
+            .publish((EVT_RESULT_STORED, request_id), result.clone());
 
         Ok(next_status)
     }
@@ -406,6 +425,8 @@ impl AiIntegrationContract {
         }
 
         env.storage().persistent().set(&result_key, &result);
+        env.events()
+            .publish((EVT_RESULT_VERIFIED, request_id, accepted), result.clone());
         Ok(())
     }
 
