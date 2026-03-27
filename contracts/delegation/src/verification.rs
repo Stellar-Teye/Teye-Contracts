@@ -15,7 +15,8 @@ pub fn verify_execution_proof(
     data[..32].copy_from_slice(&input_hash.to_array());
     data[32..].copy_from_slice(&result_hash.to_array());
     
-    let expected_proof = env.crypto().sha256(&soroban_sdk::Bytes::from_slice(env, &data));
+    let expected_proof_hash = env.crypto().sha256(&soroban_sdk::Bytes::from_slice(env, &data));
+    let expected_proof = BytesN::from_array(env, &expected_proof_hash.to_array());
     
     proof == expected_proof
 }

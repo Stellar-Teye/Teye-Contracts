@@ -5,7 +5,9 @@ pub mod homomorphic;
 #[cfg(test)]
 mod test;
 
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec};
+use soroban_sdk::{
+    contract, contractclient, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec,
+};
 
 use crate::aggregation::Aggregator;
 use crate::differential_privacy::DifferentialPrivacy;
@@ -51,6 +53,12 @@ pub enum ContractError {
     AlreadyInitialized = 1,
     NotInitialized = 2,
     Unauthorized = 3,
+    ExternalCallFailed = 4,
+}
+
+#[contractclient(name = "MetricSourceClient")]
+trait MetricSourceInterface {
+    fn read_metric(env: Env, kind: Symbol, dims: MetricDimensions) -> MetricValue;
 }
 
 // ── Contract ───────────────────────────────────────────────────────────────────
@@ -85,6 +93,30 @@ impl AnalyticsContract {
 
     pub fn get_aggregator(env: Env) -> Address {
         env.storage().instance().get(&AGGREGATOR).unwrap()
+    }
+
+    pub fn import_metric_from_source(
+        env: Env,
+        caller: Address,
+        source: Address,
+        kind: Symbol,
+        dims: MetricDimensions,
+    ) -> Result<MetricValue, ContractError> {
+        caller.require_auth();
+        let aggregator = Self::get_aggregator(env.clone());
+        if caller != aggregator {
+            return Err(ContractError::Unauthorized);
+        }
+
+        let imported = match MetricSourceClient::new(&env, &source).try_read_metric(&kind, &dims) {
+            Ok(Ok(value)) => value,
+            _ => return Err(ContractError::ExternalCallFailed),
+        };
+
+        let key = (METRIC, kind, dims);
+        env.storage().persistent().set(&key, &imported);
+
+        Ok(imported)
     }
 
     // ── Homomorphic Operations ────────────────────────────────────────────────
