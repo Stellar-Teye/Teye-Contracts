@@ -31,6 +31,9 @@ impl LogSegmentId {
     /// Returns [`AuditError::InvalidSegmentId`] when `label` exceeds 64 bytes.
     pub fn new(label: &str) -> Result<Self, AuditError> {
         let bytes = label.as_bytes();
+        if bytes.is_empty() {
+            return Err(AuditError::InvalidSegmentId);
+        }
         if bytes.len() > 64 {
             return Err(AuditError::InvalidSegmentId);
         }
@@ -177,7 +180,7 @@ pub struct WitnessSignature {
 /// (a Merkle proof over the deleted range) so that auditors can verify which
 /// entries were removed and confirm the remaining log's integrity has been
 /// preserved.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct RetentionPolicy {
     /// Segment this policy applies to.
     pub segment: LogSegmentId,
@@ -231,6 +234,12 @@ pub enum AuditError {
 
     /// An internal invariant was violated — indicates a bug.
     InternalError(&'static str),
+
+    /// The requested segment does not exist.
+    SegmentNotFound,
+
+    /// Search key has not been set for this segment.
+    SearchKeyNotSet,
 }
 
 impl core::fmt::Display for AuditError {
@@ -263,6 +272,8 @@ impl core::fmt::Display for AuditError {
             ),
             AuditError::RootMismatch => write!(f, "Merkle root mismatch"),
             AuditError::InternalError(msg) => write!(f, "internal error: {msg}"),
+            AuditError::SegmentNotFound => write!(f, "segment not found"),
+            AuditError::SearchKeyNotSet => write!(f, "search key not set for segment"),
         }
     }
 }

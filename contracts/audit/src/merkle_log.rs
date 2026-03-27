@@ -145,7 +145,7 @@ impl InclusionProof {
 
 /// A published root checkpoint, created each time `publish_root` is called.
 /// Checkpoints are the basis for consistency proofs.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct RootCheckpoint {
     /// Number of leaves in the tree at the time of this checkpoint.
     pub tree_size: u64,
@@ -188,6 +188,7 @@ pub struct CompactionReceipt {
 /// Entries are stored in an ordered map keyed by their sequence number,
 /// enabling O(log n) point-lookup and O(k) range queries without a secondary
 /// index.
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct MerkleLog {
     /// The logical partition this log covers.
     pub segment: LogSegmentId,

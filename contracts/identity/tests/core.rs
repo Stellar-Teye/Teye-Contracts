@@ -299,3 +299,22 @@ fn test_zk_credential_verifier_not_set() {
         "Error should be VerifierNotSet"
     );
 }
+
+#[test]
+fn test_recovery_initiation_with_max_timestamp() {
+    let (env, client, owner) = setup();
+    let (g1, _g2, _g3) = add_three_guardians(&env, &client, &owner);
+    
+    // Set timestamp to u64::MAX
+    env.ledger().set_timestamp(u64::MAX);
+    
+    let new_owner = Address::generate(&env);
+    
+    // This should NOT panic now that we use saturating_add
+    client.initiate_recovery(&g1, &owner, &new_owner);
+    
+    let req = client.get_recovery_request(&owner).unwrap();
+    assert_eq!(req.initiated_at, u64::MAX);
+    assert_eq!(req.execute_after, u64::MAX); // Saturated
+}
+

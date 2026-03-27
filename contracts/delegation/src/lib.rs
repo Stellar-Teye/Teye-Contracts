@@ -39,6 +39,12 @@ impl DelegationContract {
 
     pub fn assign_task(env: Env, executor: Address, task_id: u64) {
         executor.require_auth();
+
+        // Enforce executor registration invariants before assignment.
+        if executor::get_executor(&env, executor.clone()).is_none() {
+            panic!("Executor not registered");
+        }
+
         let mut task = task_queue::get_task(&env, task_id).expect("Task not found");
         if task.status != TaskStatus::Pending {
             panic!("Task not pending");
@@ -66,7 +72,7 @@ impl DelegationContract {
             task.proof = Some(proof);
             task.status = TaskStatus::Completed;
             
-            if let Some(mut info) = executor::get_executor(&env, executor) {
+            if let Some(mut info) = executor::get_executor(&env, executor.clone()) {
                 info.tasks_completed += 1;
                 info.reputation += 1;
                 executor::update_executor(&env, info);
@@ -76,5 +82,13 @@ impl DelegationContract {
             executor::slash_executor(&env, executor, 10);
         }
         task_queue::update_task(&env, task);
+    }
+
+    pub fn get_task(env: Env, task_id: u64) -> Option<task_queue::Task> {
+        task_queue::get_task(&env, task_id)
+    }
+
+    pub fn get_executor_info(env: Env, executor: Address) -> Option<executor::ExecutorInfo> {
+        executor::get_executor(&env, executor)
     }
 }

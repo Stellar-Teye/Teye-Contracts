@@ -1,7 +1,9 @@
 #![cfg(test)]
 
-use key_manager::{KeyManagerContract, KeyManagerContractClient, ContractError, KeyType, KeyPolicy, KeyLevel};
-use soroban_sdk::{testutils::Address as _, Address, Env, Vec, symbol_short, BytesN};
+use key_manager::{
+    ContractError, KeyLevel, KeyManagerContract, KeyManagerContractClient, KeyPolicy, KeyType,
+};
+use soroban_sdk::{symbol_short, testutils::Address as _, Address, BytesN, Env, Vec};
 
 fn setup() -> (Env, KeyManagerContractClient<'static>, Address, Address) {
     let env = Env::default();
@@ -23,7 +25,8 @@ fn test_unauthenticated_admin_calls() {
     let unauthenticated_address = Address::generate(&env);
 
     // 1. set_identity_contract should fail when called by a random address
-    let res_set_identity = client.try_set_identity_contract(&unauthenticated_address, &identity_contract);
+    let res_set_identity =
+        client.try_set_identity_contract(&unauthenticated_address, &identity_contract);
     assert_eq!(res_set_identity, Err(Ok(ContractError::Unauthorized)));
 
     // 2. create_master_key should fail when called by a random address
@@ -35,11 +38,11 @@ fn test_unauthenticated_admin_calls() {
     };
     let key_bytes = BytesN::from_array(&env, &[0u8; 32]);
     let res_create_master = client.try_create_master_key(
-        &unauthenticated_address, 
-        &KeyType::Signing, 
-        &policy, 
-        &0, 
-        &key_bytes
+        &unauthenticated_address,
+        &KeyType::Signing,
+        &policy,
+        &0,
+        &key_bytes,
     );
     assert_eq!(res_create_master, Err(Ok(ContractError::Unauthorized)));
 }
@@ -47,7 +50,7 @@ fn test_unauthenticated_admin_calls() {
 #[test]
 fn test_unauthenticated_owner_level_calls() {
     let (env, client, admin, _identity_contract) = setup();
-    
+
     // Create a master key with admin to have a key_id for testing other calls
     let policy = KeyPolicy {
         max_uses: 0,

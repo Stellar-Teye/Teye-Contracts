@@ -59,6 +59,11 @@
 extern crate alloc;
 
 pub mod consistency;
+pub mod contract;
 pub mod merkle_log;
 pub mod search;
 pub mod types;
+
+// Re-export contract types for external use
+pub use contract::AuditContract;
+pub use contract::AuditContractClient;

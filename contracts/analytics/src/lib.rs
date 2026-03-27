@@ -82,7 +82,6 @@ pub enum ContractError {
     ExternalCallFailed = 4,
     TimelockNotMet = 5,
     SubmissionExpired = 6,
-    InvalidInput = 7,
 }
 
 #[contractclient(name = "MetricSourceClient")]
@@ -154,18 +153,8 @@ impl AnalyticsContract {
             _ => return Err(ContractError::ExternalCallFailed),
         };
 
-        let key = (METRIC, kind.clone(), dims.clone());
+        let key = (METRIC, kind, dims);
         env.storage().persistent().set(&key, &imported);
-        env.events().publish(
-            (symbol_short!("M_IMPORT"), kind, caller.clone()),
-            MetricImportedEvent {
-                caller,
-                source,
-                kind: key.1.clone(),
-                dims,
-                value: imported.clone(),
-            },
-        );
 
         Ok(imported)
     }
