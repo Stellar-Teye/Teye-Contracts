@@ -106,13 +106,23 @@ pub fn isqrt(n: i128) -> i128 {
     if n <= 0 {
         return 0;
     }
-    let mut x = n;
-    let mut y = (x + 1) / 2;
-    while y < x {
-        x = y;
-        y = (x + n / x) / 2;
+    // Use binary search on unsigned to avoid intermediate overflow
+    let nn: u128 = n as u128;
+    let mut low: u128 = 0;
+    let mut high: u128 = nn;
+    while low <= high {
+        let mid = (low + high) / 2;
+        let sq = mid.saturating_mul(mid);
+        if sq == nn {
+            return mid as i128;
+        } else if sq < nn {
+            low = mid + 1;
+        } else {
+            if mid == 0 { break; }
+            high = mid - 1;
+        }
     }
-    x
+    high as i128
 }
 
 /// Compute the loyalty multiplier (scaled by SCALE).

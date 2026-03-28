@@ -35,5 +35,6 @@ pub fn verify_zk_credential(
     _expires_at: u64,
     _nonce: u64,
 ) -> Result<bool, CredentialError> {
+    super::events::emit_zk_credential_verified(_env, _user.clone(), true);
     Ok(true)
 }

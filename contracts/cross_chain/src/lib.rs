@@ -10,7 +10,8 @@ pub use merkle_tree::{FieldProof, MerkleProof};
 pub use relay::StateRootAnchor;
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, String, Symbol,
+    contract, contractimpl, contracttype, symbol_short, vec, Address, Bytes, BytesN, Env, Error,
+    IntoVal, String, Symbol, Val,
 };
 
 /// Storage keys
@@ -41,6 +42,7 @@ pub enum CrossChainError {
     AlreadyProcessed = 4,
     UnknownIdentity = 5,
     UnsupportedAction = 6,
+    ExternalCallFailed = 7,
 }
 
 #[contract]
@@ -154,7 +156,7 @@ impl CrossChainContract {
         caller: Address,
         message_id: Bytes,
         message: CrossChainMessage,
-        _vision_contract: Address,
+        vision_contract: Address,
     ) -> Result<(), CrossChainError> {
         caller.require_auth();
 
@@ -191,12 +193,23 @@ impl CrossChainContract {
 
         // Handle the message based on target action
         if message.target_action == symbol_short!("GRANT") {
-            // TODO: Implement the actual cross-contract call to VisionRecords.
-            // The GRANT action requires the CrossChain contract to be an Admin or
-            // delegated by the user on the VisionRecords contract.
-            // Example:
-            // let client = VisionRecordsContractClient::new(&env, &vision_contract);
-            // client.grant_access(&env.current_contract_address(), &patient_addr, &grantee, &level, &duration);
+            let invoke_result = env.try_invoke_contract::<Val, Error>(
+                &vision_contract,
+                &Symbol::new(&env, "grant_cross_chain_access"),
+                vec![
+                    &env,
+                    env.current_contract_address().into_val(&env),
+                    _patient_addr.into_val(&env),
+                    message.payload.into_val(&env),
+                ],
+            );
+
+            match invoke_result {
+                Ok(Ok(_)) => {}
+                Ok(Err(_)) | Err(Ok(_)) | Err(Err(_)) => {
+                    return Err(CrossChainError::ExternalCallFailed);
+                }
+            }
 
             env.storage().persistent().set(&processed_key, &true);
             env.storage()

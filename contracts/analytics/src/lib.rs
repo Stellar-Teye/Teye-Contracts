@@ -46,6 +46,32 @@ pub struct TrendPoint {
     pub value: MetricValue,
 }
 
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InitializedEvent {
+    pub admin: Address,
+    pub aggregator: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MetricImportedEvent {
+    pub caller: Address,
+    pub source: Address,
+    pub kind: Symbol,
+    pub dims: MetricDimensions,
+    pub value: MetricValue,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MetricAggregatedEvent {
+    pub caller: Address,
+    pub kind: Symbol,
+    pub dims: MetricDimensions,
+    pub value: MetricValue,
+}
+
 #[soroban_sdk::contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
@@ -56,6 +82,7 @@ pub enum ContractError {
     ExternalCallFailed = 4,
     TimelockNotMet = 5,
     SubmissionExpired = 6,
+    InvalidInput = 7,
 }
 
 #[contractclient(name = "MetricSourceClient")]
@@ -80,12 +107,24 @@ impl AnalyticsContract {
         if env.storage().instance().has(&ADMIN) {
             return Err(ContractError::AlreadyInitialized);
         }
+        if pub_key.n <= 0 || pub_key.nn <= 0 || pub_key.g <= 0 {
+            return Err(ContractError::InvalidInput);
+        }
+        if let Some(ref pk) = priv_key {
+            if pk.lambda <= 0 || pk.mu <= 0 {
+                return Err(ContractError::InvalidInput);
+            }
+        }
         env.storage().instance().set(&ADMIN, &admin);
         env.storage().instance().set(&AGGREGATOR, &aggregator);
         env.storage().instance().set(&PUB_KEY, &pub_key);
         if let Some(pk) = priv_key {
             env.storage().instance().set(&PRIV_KEY, &pk);
         }
+        env.events().publish(
+            (symbol_short!("INIT"), admin.clone(), aggregator.clone()),
+            InitializedEvent { admin, aggregator },
+        );
         Ok(())
     }
 
@@ -115,8 +154,18 @@ impl AnalyticsContract {
             _ => return Err(ContractError::ExternalCallFailed),
         };
 
-        let key = (METRIC, kind, dims);
+        let key = (METRIC, kind.clone(), dims.clone());
         env.storage().persistent().set(&key, &imported);
+        env.events().publish(
+            (symbol_short!("M_IMPORT"), kind, caller.clone()),
+            MetricImportedEvent {
+                caller,
+                source,
+                kind: key.1.clone(),
+                dims,
+                value: imported.clone(),
+            },
+        );
 
         Ok(imported)
     }
@@ -162,6 +211,9 @@ impl AnalyticsContract {
         if caller != aggregator {
             return Err(ContractError::Unauthorized);
         }
+        if ciphertexts.is_empty() {
+            return Err(ContractError::InvalidInput);
+        }
 
         let pub_key: PaillierPublicKey = env.storage().instance().get(&PUB_KEY).unwrap();
         let agg_ciphertext = Aggregator::aggregate_sum(&pub_key, ciphertexts.clone());
@@ -173,7 +225,7 @@ impl AnalyticsContract {
         let noisy_sum = DifferentialPrivacy::add_laplace_noise(&env, plaintext_sum, 1, 10);
         let count = ciphertexts.len() as i128;
 
-        let key = (METRIC, kind, dims);
+        let key = (METRIC, kind.clone(), dims.clone());
         let mut current: MetricValue = env
             .storage()
             .persistent()
@@ -184,6 +236,15 @@ impl AnalyticsContract {
         current.sum = current.sum.saturating_add(noisy_sum);
 
         env.storage().persistent().set(&key, &current);
+        env.events().publish(
+            (symbol_short!("M_AGG"), kind, caller.clone()),
+            MetricAggregatedEvent {
+                caller,
+                kind: key.1.clone(),
+                dims,
+                value: current.clone(),
+            },
+        );
         Ok(())
     }
 

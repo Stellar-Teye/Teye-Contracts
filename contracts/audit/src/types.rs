@@ -31,6 +31,9 @@ impl LogSegmentId {
     /// Returns [`AuditError::InvalidSegmentId`] when `label` exceeds 64 bytes.
     pub fn new(label: &str) -> Result<Self, AuditError> {
         let bytes = label.as_bytes();
+        if bytes.is_empty() {
+            return Err(AuditError::InvalidSegmentId);
+        }
         if bytes.len() > 64 {
             return Err(AuditError::InvalidSegmentId);
         }

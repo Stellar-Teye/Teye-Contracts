@@ -44,3 +44,14 @@ pub struct Observation {
     pub value: String,      // As string for flexibility, could be parsed as needed
     pub effective_datetime: u64,
 }
+
+#[soroban_sdk::contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum FhirError {
+    AlreadyInitialized = 1,
+    RecordNotFound = 2,
+    ExternalCallFailed = 3,
+    InvalidRecordData = 4,
+    RecordAlreadyExists = 5,
+}
