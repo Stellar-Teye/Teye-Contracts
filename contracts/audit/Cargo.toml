@@ -12,8 +12,12 @@ crate-type = ["rlib"]
 doctest = false
 
 [dependencies]
+# Required for Soroban Smart Contract development
+soroban-sdk = { workspace = true } 
 sha2     = { version = "0.10", default-features = false }
 hmac     = { version = "0.12", default-features = false }
 hex      = { version = "0.4",  default-features = false, features = ["alloc"] }
 
 [dev-dependencies]
+# Required for testing features like Env, Address mocking, and testutils
+soroban-sdk = { workspace = true, features = ["testutils"] }

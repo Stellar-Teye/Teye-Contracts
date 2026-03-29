@@ -1,4 +1,29 @@
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, symbol_short, Vec, Val, Error, IntoVal};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, contracterror, symbol_short, Address, Env, Error,
+    IntoVal, Symbol, Val, Vec,
+};
+
+/// Typed error enum for the AuditContract.
+///
+/// Using `#[contracterror]` ensures the SDK encodes these as u32 contract
+/// errors so callers can match on them with `try_*` client methods.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum AuditContractError {
+    /// `initialize` was called on an already-initialized contract.
+    AlreadyInitialized = 1,
+    /// The requested segment does not exist.
+    SegmentNotFound = 2,
+    /// The segment already exists.
+    SegmentAlreadyExists = 3,
+    /// Identity verification failed.
+    IdentityCheckFailed = 4,
+    /// Vault balance check failed.
+    VaultBalanceInsufficient = 5,
+    /// Compliance check failed.
+    ComplianceCheckFailed = 6,
+}
 
 #[contract]
 pub struct AuditContract;
@@ -26,19 +51,30 @@ const SEGMENTS: Symbol = symbol_short!("SEGMENTS");
 
 #[contractimpl]
 impl AuditContract {
-    pub fn initialize(env: Env, admin: Address) {
+    /// Initialize the contract with an admin address.
+    ///
+    /// # Errors
+    /// Returns [`AuditContractError::AlreadyInitialized`] if called more than once.
+    pub fn initialize(env: Env, admin: Address) -> Result<(), AuditContractError> {
         if env.storage().instance().has(&ADMIN) {
-            panic!("Already initialized");
+            return Err(AuditContractError::AlreadyInitialized);
         }
         env.storage().instance().set(&ADMIN, &admin);
+        Ok(())
     }
 
     pub fn create_segment(env: Env, segment_id: Symbol) -> Result<(), Error> {
         let admin: Address = env.storage().instance().get(&ADMIN).unwrap();
         admin.require_auth();
 
-        if env.storage().persistent().has(&(SEGMENTS, segment_id.clone())) {
-            return Err(Error::from_contract_error(1)); // Segment already exists
+        if env
+            .storage()
+            .persistent()
+            .has(&(SEGMENTS, segment_id.clone()))
+        {
+            return Err(Error::from_contract_error(
+                AuditContractError::SegmentAlreadyExists as u32,
+            ));
         }
 
         let segment_info = SegmentInfo {
@@ -46,7 +82,9 @@ impl AuditContract {
             next_sequence: 1,
         };
 
-        env.storage().persistent().set(&(SEGMENTS, segment_id), &segment_info);
+        env.storage()
+            .persistent()
+            .set(&(SEGMENTS, segment_id), &segment_info);
         Ok(())
     }
 
@@ -58,9 +96,13 @@ impl AuditContract {
         target: Symbol,
         result: Symbol,
     ) -> Result<u64, Error> {
-        let mut segment_info: SegmentInfo = env.storage().persistent()
+        let mut segment_info: SegmentInfo = env
+            .storage()
+            .persistent()
             .get(&(SEGMENTS, segment_id.clone()))
-            .ok_or(Error::from_contract_error(2))?; // Segment not found
+            .ok_or(Error::from_contract_error(
+                AuditContractError::SegmentNotFound as u32,
+            ))?;
 
         let sequence = segment_info.next_sequence;
         let entry = AuditLogEntry {
@@ -75,22 +117,32 @@ impl AuditContract {
         segment_info.entries.push_back(entry);
         segment_info.next_sequence += 1;
 
-        env.storage().persistent().set(&(SEGMENTS, segment_id), &segment_info);
+        env.storage()
+            .persistent()
+            .set(&(SEGMENTS, segment_id), &segment_info);
         Ok(sequence)
     }
 
     pub fn get_entries(env: Env, segment_id: Symbol) -> Result<Vec<AuditLogEntry>, Error> {
-        let segment_info: SegmentInfo = env.storage().persistent()
+        let segment_info: SegmentInfo = env
+            .storage()
+            .persistent()
             .get(&(SEGMENTS, segment_id))
-            .ok_or(Error::from_contract_error(2))?; // Segment not found
+            .ok_or(Error::from_contract_error(
+                AuditContractError::SegmentNotFound as u32,
+            ))?;
 
         Ok(segment_info.entries)
     }
 
     pub fn get_entry_count(env: Env, segment_id: Symbol) -> Result<u64, Error> {
-        let segment_info: SegmentInfo = env.storage().persistent()
+        let segment_info: SegmentInfo = env
+            .storage()
+            .persistent()
             .get(&(SEGMENTS, segment_id))
-            .ok_or(Error::from_contract_error(2))?; // Segment not found
+            .ok_or(Error::from_contract_error(
+                AuditContractError::SegmentNotFound as u32,
+            ))?;
 
         Ok(segment_info.entries.len() as u64)
     }
@@ -146,23 +198,38 @@ impl AuditContract {
         compliance_action: Symbol,
         compliance_method: Symbol,
     ) -> Result<u64, Error> {
-        let identity_ok = Self::verify_identity(env.clone(), identity_contract, actor.clone(), identity_method)?;
+        let identity_ok = Self::verify_identity(
+            env.clone(),
+            identity_contract,
+            actor.clone(),
+            identity_method,
+        )?;
         if !identity_ok {
-            return Err(Error::from_contract_error(3));
+            return Err(Error::from_contract_error(
+                AuditContractError::IdentityCheckFailed as u32,
+            ));
         }
 
-        let balance = Self::check_vault_balance(env.clone(), vault_contract, actor.clone(), vault_method)?;
+        let balance =
+            Self::check_vault_balance(env.clone(), vault_contract, actor.clone(), vault_method)?;
         if balance < 0 {
-            return Err(Error::from_contract_error(4));
+            return Err(Error::from_contract_error(
+                AuditContractError::VaultBalanceInsufficient as u32,
+            ));
         }
 
-        let compliant = Self::check_compliance(env.clone(), compliance_contract, compliance_action, compliance_method)?;
+        let compliant = Self::check_compliance(
+            env.clone(),
+            compliance_contract,
+            compliance_action,
+            compliance_method,
+        )?;
         if !compliant {
-            return Err(Error::from_contract_error(5));
+            return Err(Error::from_contract_error(
+                AuditContractError::ComplianceCheckFailed as u32,
+            ));
         }
 
-        let seq = Self::append_entry(env.clone(), segment_id.clone(), actor, action, target, result)?;
-
-        Ok(seq)
+        Self::append_entry(env, segment_id, actor, action, target, result)
     }
 }

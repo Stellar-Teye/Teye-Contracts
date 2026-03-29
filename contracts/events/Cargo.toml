@@ -17,5 +17,17 @@ soroban-sdk = { workspace = true }
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 
+[[test]]
+name = "math_test"
+path = "tests/math_test.rs"
+
+[[test]]
+name = "events_test"
+path = "tests/events_test.rs"
+
+[[test]]
+name = "init_test"
+path = "tests/init_test.rs"
+
 [features]
 testutils = ["soroban-sdk/testutils"]

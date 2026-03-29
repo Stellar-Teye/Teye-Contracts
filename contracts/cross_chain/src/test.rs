@@ -1,6 +1,29 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 use crate::{CrossChainContract, CrossChainContractClient, CrossChainError, CrossChainMessage};
-use soroban_sdk::{symbol_short, testutils::Address as _, Address, Bytes, Env, String};
+use soroban_sdk::{
+    contract, contractimpl, symbol_short, testutils::Address as _, Address, Bytes, Env, String,
+};
+
+#[contract]
+struct MockVisionRecords;
+
+#[contractimpl]
+impl MockVisionRecords {
+    pub fn grant_cross_chain_access(
+        env: Env,
+        bridge_caller: Address,
+        patient: Address,
+        payload: Bytes,
+    ) {
+        bridge_caller.require_auth();
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PATIENT"), &patient);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PAYLOAD"), &payload);
+    }
+}
 
 #[test]
 fn test_initialization() {
@@ -134,7 +157,7 @@ fn setup_process_message_env() -> (
 
     let admin = Address::generate(&env);
     let relayer = Address::generate(&env);
-    let vision_contract = Address::generate(&env);
+    let vision_contract = env.register(MockVisionRecords, ());
 
     client.initialize(&admin);
     client.add_relayer(&admin, &relayer);
@@ -156,7 +179,7 @@ fn test_process_message_grant_success() {
         source_chain: String::from_str(&env, "ethereum"),
         source_address: String::from_str(&env, "0xabc123"),
         target_action: symbol_short!("GRANT"),
-        payload: Bytes::new(&env),
+        payload: Bytes::from_slice(&env, &[1]),
     };
 
     // Should succeed
@@ -175,7 +198,7 @@ fn test_process_message_replay_fails() {
         source_chain: String::from_str(&env, "ethereum"),
         source_address: String::from_str(&env, "0xabc123"),
         target_action: symbol_short!("GRANT"),
-        payload: Bytes::new(&env),
+        payload: Bytes::from_slice(&env, &[1]),
     };
 
     // First call succeeds
@@ -216,7 +239,7 @@ fn test_process_message_unknown_identity_not_permanently_blocked() {
         source_chain: String::from_str(&env, "polygon"),
         source_address: String::from_str(&env, "0xnewuser"),
         target_action: symbol_short!("GRANT"),
-        payload: Bytes::new(&env),
+        payload: Bytes::from_slice(&env, &[1]),
     };
 
     // First attempt fails because identity is not mapped
@@ -267,7 +290,7 @@ fn test_process_message_non_relayer_fails() {
         source_chain: String::from_str(&env, "ethereum"),
         source_address: String::from_str(&env, "0xabc123"),
         target_action: symbol_short!("GRANT"),
-        payload: Bytes::new(&env),
+        payload: Bytes::from_slice(&env, &[1]),
     };
 
     // Non-relayer caller should fail with Unauthorized

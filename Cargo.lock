@@ -324,6 +324,7 @@ dependencies = [
  "hex",
  "hmac",
  "sha2",
+ "soroban-sdk",
 ]
 
 [[package]]
@@ -943,6 +944,14 @@ dependencies = [
  "r-efi",
  "wasip2",
  "wasip3",
+]
+
+[[package]]
+name = "governor"
+version = "1.2.2"
+dependencies = [
+ "common",
+ "soroban-sdk",
 ]
 
 [[package]]
