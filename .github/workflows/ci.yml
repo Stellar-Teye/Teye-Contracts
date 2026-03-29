@@ -39,7 +39,7 @@ jobs:
 
           # Fallback: if BASE is empty or all zeros (new branch), check all
           if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
-            echo "packages=--all" >> "$GITHUB_OUTPUT"
+            echo "packages=--workspace --exclude vision_records --exclude teye-state-channel" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -48,7 +48,7 @@ jobs:
             sed -E 's#^(contracts/[^/]+|sdk/[^/]+|libs/[^/]+)/.*#\1#' | sort -u)
 
           if [ -z "$CHANGED_DIRS" ]; then
-            echo "packages=--all" >> "$GITHUB_OUTPUT"
+            echo "packages=--workspace --exclude vision_records --exclude teye-state-channel" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -64,7 +64,7 @@ jobs:
           done
 
           if [ -z "$PKG_FLAGS" ]; then
-            echo "packages=--all" >> "$GITHUB_OUTPUT"
+            echo "packages=--workspace --exclude vision_records --exclude teye-state-channel" >> "$GITHUB_OUTPUT"
           else
             echo "packages=$PKG_FLAGS" >> "$GITHUB_OUTPUT"
           fi

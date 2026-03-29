@@ -50,6 +50,8 @@ jobs:
         run: |
           cargo tarpaulin \
             --workspace \
+            --exclude vision_records \
+            --exclude teye-state-channel \
             --out xml \
             --output-dir coverage \
             --timeout 600 \

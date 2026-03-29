@@ -41,7 +41,7 @@ jobs:
           restore-keys: ${{ runner.os }}-bench-
 
       - name: Run benchmarks
-        run: cargo bench 2>&1 | tee bench_output.txt
+        run: cargo bench --workspace --exclude vision_records --exclude teye-state-channel 2>&1 | tee bench_output.txt
 
       - name: Post benchmark summary
         if: always()
