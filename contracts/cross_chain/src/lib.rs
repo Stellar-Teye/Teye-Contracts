@@ -43,6 +43,7 @@ pub enum CrossChainError {
     UnknownIdentity = 5,
     UnsupportedAction = 6,
     ExternalCallFailed = 7,
+    InvalidInput = 8,
 }
 
 #[contract]
@@ -118,6 +119,8 @@ impl CrossChainContract {
         if caller != admin {
             return Err(CrossChainError::Unauthorized);
         }
+        Self::validate_non_empty_string(&foreign_chain)?;
+        Self::validate_non_empty_string(&foreign_address)?;
 
         let key = (
             symbol_short!("ID_MAP"),
@@ -163,6 +166,9 @@ impl CrossChainContract {
         if !Self::is_relayer(env.clone(), caller) {
             return Err(CrossChainError::Unauthorized);
         }
+        Self::validate_non_empty_bytes(&message_id)?;
+        Self::validate_non_empty_string(&message.source_chain)?;
+        Self::validate_non_empty_string(&message.source_address)?;
 
         // Prevent replay attacks
         let processed_key = (symbol_short!("PROC_MSG"), message_id.clone());
@@ -273,6 +279,20 @@ impl CrossChainContract {
 
     pub fn get_latest_root(env: Env, chain_id: Symbol) -> Option<StateRootAnchor> {
         relay::get_latest_root(&env, chain_id)
+    }
+
+    fn validate_non_empty_string(value: &String) -> Result<(), CrossChainError> {
+        if value.is_empty() {
+            return Err(CrossChainError::InvalidInput);
+        }
+        Ok(())
+    }
+
+    fn validate_non_empty_bytes(value: &Bytes) -> Result<(), CrossChainError> {
+        if value.is_empty() {
+            return Err(CrossChainError::InvalidInput);
+        }
+        Ok(())
     }
 }
 
