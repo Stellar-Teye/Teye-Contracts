@@ -21,6 +21,7 @@ members = [
     "contracts/state_channel",
     "contracts/metering",
     "contracts/vault",
+    "contracts/events",
     "sdk/zk_prover",
     "test",
 ]
