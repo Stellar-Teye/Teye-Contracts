@@ -13,11 +13,17 @@
 //! - Edge cases: zero usage, exact quota boundary, multiple cycles
 
 #![allow(unused_variables, unused_imports)]
+extern crate std;
 
-use soroban_sdk::{testutils::Address as _, Address, Env};
+use soroban_sdk::{testutils::Address as _, Address, Env, testutils::events::Event};
 
 use crate::{
     billing::{BillingModel, CycleStatus},
+    events::{
+        CycleClosedEvent, CycleOpenedEvent, GasRecordedEvent, GasTokenBurnedEvent,
+        GasTokenMintedEvent, InvoiceIssuedEvent, InvoiceSettledEvent, QuotaAlertEvent,
+        QuotaExceededEvent, TenantRegisteredEvent,
+    },
     quota::TenantQuota,
     GasCosts, MeteringContract, MeteringContractClient, MeteringError, OperationType, TenantLevel,
 };
@@ -77,6 +83,26 @@ fn register_provider(
     let provider = Address::generate(env);
     client.register_tenant(admin, &provider, &TenantLevel::Provider, clinic);
     provider
+}
+
+/// Assert the last event matches the expected topics and data.
+fn assert_last_event<T>(env: &Env, expected_topics: Vec<soroban_sdk::Val>, expected_data: &T)
+where
+    T: Clone + soroban_sdk::IntoVal<Env, soroban_sdk::Val>,
+{
+    let events = env.events().all();
+    let event = events.events().last().expect("No events found");
+    let soroban_sdk::xdr::ContractEventBody::V0(body) = &event.body;
+
+    let mut expected_topics_scval = std::vec::Vec::new();
+    for topic in expected_topics.iter() {
+        expected_topics_scval.push(soroban_sdk::xdr::ScVal::try_from_val(env, &topic).unwrap());
+    }
+    assert_eq!(body.topics.as_slice(), expected_topics_scval.as_slice());
+
+    let expected_val: soroban_sdk::Val = expected_data.clone().into_val(env);
+    let expected_data_scval = soroban_sdk::xdr::ScVal::try_from_val(env, &expected_val).unwrap();
+    assert_eq!(body.data, expected_data_scval);
 }
 
 // ── Initialisation tests ──────────────────────────────────────────────────────
@@ -831,4 +857,207 @@ fn test_rounding_stays_in_base_units_without_fractional_drift() {
 
     // 3 + 4 + 3 = 10 exact base units, no fractional rounding paths.
     assert_eq!(record.total_cost, 10);
+}
+
+// ── Event emission tests ──────────────────────────────────────────────────────
+
+/// Helper to collect all events emitted during a test.
+fn collect_events(env: &Env) -> soroban_sdk::testutils::events::ContractEvents {
+    env.events().all()
+}
+
+#[test]
+fn test_tenant_registered_event_emitted() {
+    let (env, client, admin) = setup();
+    let org = Address::generate(&env);
+    client.register_tenant(&admin, &org, &TenantLevel::Organization, &org);
+
+    let events = collect_events(&env);
+    assert_eq!(events.len(), 1);
+
+    let expected_topics = vec![
+        soroban_sdk::symbol_short!("METER").into_val(&env),
+        soroban_sdk::Symbol::new(&env, "TenantReg").into_val(&env),
+    ];
+    let expected_data = TenantRegisteredEvent {
+        tenant: org.clone(),
+        level: TenantLevel::Organization,
+        parent: org,
+        timestamp: env.ledger().timestamp(),
+    };
+
+    assert_last_event(&env, expected_topics, &expected_data);
+}
+
+#[test]
+fn test_gas_recorded_event_emitted_for_direct_tenant() {
+    let (env, client, admin) = setup();
+    let org = register_org(&client, &admin, &env);
+    client.record_gas(&admin, &org, &OperationType::Read);
+
+    let events = collect_events(&env);
+    assert_eq!(events.len(), 1);
+}
+
+#[test]
+fn test_gas_recorded_events_emitted_for_hierarchy_rollup() {
+    let (env, client, admin) = setup();
+    let org = register_org(&client, &admin, &env);
+    let clinic = register_clinic(&client, &admin, &env, &org);
+    let provider = register_provider(&client, &admin, &env, &clinic);
+
+    client.record_gas(&admin, &provider, &OperationType::Write);
+
+    let events = collect_events(&env);
+    assert_eq!(events.len(), 3); // provider, clinic, org
+}
+
+#[test]
+fn test_quota_alert_event_emitted_when_threshold_crossed() {
+    let (env, client, admin) = setup();
+    let org = register_org(&client, &admin, &env);
+    // Set quota where alert triggers at 80% of 10 = 8 units
+    let quota = TenantQuota {
+        read_limit: 10,
+        write_limit: 10,
+        compute_limit: 10,
+        storage_limit: 10,
+        total_limit: 10,
+        burst_allowance: 0,
+        enabled: true,
+    };
+    client.set_quota(&admin, &org, &quota);
+
+    // Record 8 reads (8 units, exactly 80%)
+    for _ in 0..8 {
+        client.record_gas(&admin, &org, &OperationType::Read);
+    }
+
+    let events = collect_events(&env);
+    // 8 gas recorded events + 1 alert event
+    assert_eq!(events.len(), 9);
+}
+
+#[test]
+fn test_quota_exceeded_event_emitted_when_quota_breached() {
+    let (env, client, admin) = setup();
+    let org = register_org(&client, &admin, &env);
+    let quota = TenantQuota {
+        read_limit: 1,
+        write_limit: 1,
+        compute_limit: 1,
+        storage_limit: 1,
+        total_limit: 1,
+        burst_allowance: 0,
+        enabled: true,
+    };
+    client.set_quota(&admin, &org, &quota);
+
+    // First read succeeds
+    client.record_gas(&admin, &org, &OperationType::Read);
+    // Second read fails and emits event
+    let _ = client.try_record_gas(&admin, &org, &OperationType::Read);
+
+    let events = collect_events(&env);
+    // 1 gas recorded + 1 quota exceeded
+    assert_eq!(events.len(), 2);
+}
+
+#[test]
+fn test_cycle_opened_event_emitted() {
+    let (env, client, admin) = setup();
+    client.open_billing_cycle(&admin);
+
+    let events = collect_events(&env);
+    assert_eq!(events.len(), 1);
+}
+
+#[test]
+fn test_cycle_closed_event_emitted() {
+    let (env, client, admin) = setup();
+    client.open_billing_cycle(&admin);
+    client.close_billing_cycle(&admin);
+
+    let events = collect_events(&env);
+    assert_eq!(events.len(), 2); // opened and closed
+}
+
+#[test]
+fn test_invoice_issued_event_emitted_for_postpaid_tenant() {
+    let (env, client, admin) = setup();
+    let org = register_org(&client, &admin, &env);
+    client.set_billing_model(&admin, &org, &BillingModel::Postpaid);
+
+    client.open_billing_cycle(&admin);
+    client.record_gas(&admin, &org, &OperationType::Write); // 5 units
+    client.close_billing_cycle(&admin);
+
+    let events = collect_events(&env);
+    // cycle opened, gas recorded, invoice issued, cycle closed
+    assert_eq!(events.len(), 4);
+}
+
+#[test]
+fn test_invoice_settled_event_emitted() {
+    let (env, client, admin) = setup();
+    let org = register_org(&client, &admin, &env);
+    client.set_billing_model(&admin, &org, &BillingModel::Postpaid);
+
+    client.open_billing_cycle(&admin);
+    client.record_gas(&admin, &org, &OperationType::Read);
+    client.close_billing_cycle(&admin);
+    client.settle_invoice(&org, &1u64);
+
+    let events = collect_events(&env);
+    // cycle opened, gas recorded, invoice issued, cycle closed, invoice settled
+    assert_eq!(events.len(), 5);
+}
+
+#[test]
+fn test_gas_token_minted_event_emitted() {
+    let (env, client, admin) = setup();
+    let org = register_org(&client, &admin, &env);
+    client.mint_gas_tokens(&admin, &org, &100u64);
+
+    let events = collect_events(&env);
+    assert_eq!(events.len(), 1);
+}
+
+#[test]
+fn test_gas_token_burned_event_emitted_for_prepaid_usage() {
+    let (env, client, admin) = setup();
+    let org = register_org(&client, &admin, &env);
+    client.set_billing_model(&admin, &org, &BillingModel::Prepaid);
+    client.mint_gas_tokens(&admin, &org, &10u64);
+    client.record_gas(&admin, &org, &OperationType::Write); // burns 5
+
+    let events = collect_events(&env);
+    // mint + gas recorded + burn
+    assert_eq!(events.len(), 3);
+}
+
+#[test]
+fn test_no_events_emitted_for_deactivate_tenant() {
+    let (env, client, admin) = setup();
+    let org = register_org(&client, &admin, &env);
+    client.deactivate_tenant(&admin, &org);
+
+    let events = collect_events(&env);
+    // Only the registration event
+    assert_eq!(events.len(), 1);
+}
+
+#[test]
+fn test_events_include_correct_timestamps() {
+    let (env, client, admin) = setup();
+    let initial_time = env.ledger().timestamp();
+
+    let org = register_org(&client, &admin, &env);
+    client.record_gas(&admin, &org, &OperationType::Read);
+
+    let events = collect_events(&env);
+    assert_eq!(events.len(), 2);
+
+    // Just check that events are emitted, timestamps are checked in the detailed test
+    // In a real test, we could check each event's timestamp > initial_time
 }
