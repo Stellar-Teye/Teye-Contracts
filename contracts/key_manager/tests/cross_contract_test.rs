@@ -221,3 +221,80 @@ fn use_key_invariants_remain_intact_after_cross_contract_recovery_failures() {
     let current = client.use_key(&admin, &key_id, &symbol_short!("ENC"));
     assert_eq!(current, BytesN::from_array(&env, &[31u8; 32]));
 }
+
+#[test]
+fn threshold_update_requires_new_guardian_approval_before_execute() {
+    let (env, client, admin, identity_id, guardian1, guardian2, _outsider) = setup();
+    let key_id = create_master_key(&env, &client, &admin, 41);
+    let replacement = BytesN::from_array(&env, &[42u8; 32]);
+
+    client.initiate_recovery(&guardian1, &key_id, &replacement);
+    client.approve_recovery(&guardian2, &key_id);
+
+    let guardian3 = Address::generate(&env);
+    let identity = MockIdentityContractClient::new(&env, &identity_id);
+    let mut guardians = Vec::new(&env);
+    guardians.push_back(guardian1.clone());
+    guardians.push_back(guardian2.clone());
+    guardians.push_back(guardian3.clone());
+    identity.configure(&guardians, &3, &false, &false);
+
+    let now = env.ledger().timestamp();
+    env.ledger().set_timestamp(now + 86_401);
+
+    let blocked = client.try_execute_recovery(&admin, &key_id);
+    assert_eq!(blocked, Err(Ok(ContractError::InsufficientApprovals)));
+
+    client.approve_recovery(&guardian3, &key_id);
+    let version = client.execute_recovery(&admin, &key_id);
+    assert_eq!(version, 2);
+}
+
+#[test]
+fn removed_guardian_approval_is_invalidated() {
+    let (env, client, admin, identity_id, guardian1, guardian2, _outsider) = setup();
+    let key_id = create_master_key(&env, &client, &admin, 51);
+    let replacement = BytesN::from_array(&env, &[52u8; 32]);
+
+    client.initiate_recovery(&guardian1, &key_id, &replacement);
+    client.approve_recovery(&guardian2, &key_id);
+
+    let guardian3 = Address::generate(&env);
+    let identity = MockIdentityContractClient::new(&env, &identity_id);
+    let mut guardians = Vec::new(&env);
+    guardians.push_back(guardian1.clone());
+    guardians.push_back(guardian3.clone());
+    identity.configure(&guardians, &2, &false, &false);
+
+    let now = env.ledger().timestamp();
+    env.ledger().set_timestamp(now + 86_401);
+
+    let blocked = client.try_execute_recovery(&admin, &key_id);
+    assert_eq!(blocked, Err(Ok(ContractError::InsufficientApprovals)));
+
+    client.approve_recovery(&guardian3, &key_id);
+    let version = client.execute_recovery(&admin, &key_id);
+    assert_eq!(version, 2);
+}
+
+#[test]
+fn zero_threshold_configuration_cannot_execute_recovery() {
+    let (env, client, admin, identity_id, guardian1, guardian2, _outsider) = setup();
+    let key_id = create_master_key(&env, &client, &admin, 61);
+    let replacement = BytesN::from_array(&env, &[62u8; 32]);
+
+    client.initiate_recovery(&guardian1, &key_id, &replacement);
+    client.approve_recovery(&guardian2, &key_id);
+
+    let identity = MockIdentityContractClient::new(&env, &identity_id);
+    let mut guardians = Vec::new(&env);
+    guardians.push_back(guardian1);
+    guardians.push_back(guardian2);
+    identity.configure(&guardians, &0, &false, &false);
+
+    let now = env.ledger().timestamp();
+    env.ledger().set_timestamp(now + 86_401);
+
+    let blocked = client.try_execute_recovery(&admin, &key_id);
+    assert_eq!(blocked, Err(Ok(ContractError::InsufficientApprovals)));
+}

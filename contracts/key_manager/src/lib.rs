@@ -478,7 +478,7 @@ impl KeyManagerContract {
     ) -> Result<u32, ContractError> {
         caller.require_auth();
         let record = Self::load_key_record(&env, &key_id)?;
-        let (_guardians, threshold) = Self::load_guardians(&env, &record.owner)?;
+        let (guardians, threshold) = Self::load_guardians(&env, &record.owner)?;
 
         let key = (RECOVERY, key_id.clone());
         let request: RecoveryRequest = env
@@ -487,7 +487,22 @@ impl KeyManagerContract {
             .get(&key)
             .ok_or(ContractError::RecoveryNotActive)?;
 
-        if request.approvals.len() < threshold {
+        // Revalidate approvals against the *current* guardian set so that
+        // stale approvals are invalidated when guardian membership changes.
+        if threshold == 0 || guardians.len() == 0 {
+            return Err(ContractError::InsufficientApprovals);
+        }
+
+        let mut valid_approvals: u32 = 0;
+        for i in 0..request.approvals.len() {
+            if let Some(approver) = request.approvals.get(i) {
+                if guardians.contains(&approver) {
+                    valid_approvals = valid_approvals.saturating_add(1);
+                }
+            }
+        }
+
+        if valid_approvals < threshold {
             return Err(ContractError::InsufficientApprovals);
         }
 

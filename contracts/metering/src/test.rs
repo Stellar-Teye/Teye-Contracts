@@ -753,3 +753,82 @@ fn test_gas_token_account_snapshot() {
     assert_eq!(account.balance, 200);
     assert!(!account.frozen);
 }
+
+#[test]
+fn test_long_running_and_short_burst_usage_are_billed_precisely() {
+    let (env, client, admin) = setup();
+    let org = register_org(&client, &admin, &env);
+
+    client.open_billing_cycle(&admin);
+
+    // Long-running background read load: 100 x 1 unit.
+    for _ in 0..100 {
+        client.record_gas(&admin, &org, &OperationType::Read);
+    }
+
+    // Short burst compute spike: 2 x 10 units.
+    for _ in 0..2 {
+        client.record_gas(&admin, &org, &OperationType::Compute);
+    }
+
+    let report = client.close_billing_cycle(&admin);
+    let record = report.records.get(0).unwrap();
+
+    assert_eq!(record.read_units, 100);
+    assert_eq!(record.compute_units, 20);
+    assert_eq!(record.total_cost, 120);
+}
+
+#[test]
+fn test_dynamic_pricing_only_affects_future_metered_usage() {
+    let (env, client, admin) = setup();
+    let org = register_org(&client, &admin, &env);
+
+    client.open_billing_cycle(&admin);
+
+    // First read at default price (1).
+    client.record_gas(&admin, &org, &OperationType::Read);
+
+    // Raise read cost from 1 to 7. Only future usage should use the new cost.
+    let updated_costs = GasCosts {
+        read_cost: 7,
+        write_cost: 5,
+        compute_cost: 10,
+        storage_cost: 3,
+    };
+    client.set_gas_costs(&admin, &updated_costs);
+
+    client.record_gas(&admin, &org, &OperationType::Read);
+
+    let report = client.close_billing_cycle(&admin);
+    let record = report.records.get(0).unwrap();
+
+    // Metered units are recorded at operation time: 1 + 7.
+    assert_eq!(record.read_units, 8);
+    assert_eq!(record.total_cost, 8);
+}
+
+#[test]
+fn test_rounding_stays_in_base_units_without_fractional_drift() {
+    let (env, client, admin) = setup();
+    let org = register_org(&client, &admin, &env);
+
+    let custom_costs = GasCosts {
+        read_cost: 3,
+        write_cost: 6,
+        compute_cost: 9,
+        storage_cost: 4,
+    };
+    client.set_gas_costs(&admin, &custom_costs);
+
+    client.open_billing_cycle(&admin);
+    client.record_gas(&admin, &org, &OperationType::Read); // 3
+    client.record_gas(&admin, &org, &OperationType::Storage); // 4
+    client.record_gas(&admin, &org, &OperationType::Read); // 3
+
+    let report = client.close_billing_cycle(&admin);
+    let record = report.records.get(0).unwrap();
+
+    // 3 + 4 + 3 = 10 exact base units, no fractional rounding paths.
+    assert_eq!(record.total_cost, 10);
+}

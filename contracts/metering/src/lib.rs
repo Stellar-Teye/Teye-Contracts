@@ -552,12 +552,6 @@ impl MeteringContract {
 
         let cycle_id = billing::close_cycle(&env).map_err(map_billing_error)?;
 
-        let costs: GasCosts = env
-            .storage()
-            .instance()
-            .get(&GAS_COSTS)
-            .unwrap_or_else(GasCosts::default_costs);
-
         let list: Vec<Address> = env
             .storage()
             .persistent()
@@ -570,12 +564,10 @@ impl MeteringContract {
             if let Some(addr) = list.get(i) {
                 let usage = quota::get_usage(&env, &addr);
 
-                let total_cost = usage
-                    .read_used
-                    .saturating_mul(costs.read_cost)
-                    .saturating_add(usage.write_used.saturating_mul(costs.write_cost))
-                    .saturating_add(usage.compute_used.saturating_mul(costs.compute_cost))
-                    .saturating_add(usage.storage_used.saturating_mul(costs.storage_cost));
+                // Usage buckets already store metered gas units at record time.
+                // Summing the buckets avoids retroactive re-pricing and keeps
+                // billing stable when gas costs are updated mid-cycle.
+                let total_cost = usage.total();
 
                 let record = TenantUsageRecord {
                     tenant: addr.clone(),
