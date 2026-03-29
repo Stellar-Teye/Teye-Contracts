@@ -1,6 +1,30 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 use crate::{CrossChainContract, CrossChainContractClient, CrossChainError, CrossChainMessage};
-use soroban_sdk::{symbol_short, testutils::Address as _, Address, Bytes, Env, String};
+use soroban_sdk::{
+    contract, contractimpl, symbol_short, testutils::Address as _, Address, Bytes, BytesN, Env,
+    String,
+};
+
+#[contract]
+struct MockVisionRecords;
+
+#[contractimpl]
+impl MockVisionRecords {
+    pub fn grant_cross_chain_access(
+        env: Env,
+        bridge_caller: Address,
+        patient: Address,
+        payload: Bytes,
+    ) {
+        bridge_caller.require_auth();
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PATIENT"), &patient);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PAYLOAD"), &payload);
+    }
+}
 
 #[test]
 fn test_initialization() {
@@ -134,7 +158,7 @@ fn setup_process_message_env() -> (
 
     let admin = Address::generate(&env);
     let relayer = Address::generate(&env);
-    let vision_contract = Address::generate(&env);
+    let vision_contract = env.register(MockVisionRecords, ());
 
     client.initialize(&admin);
     client.add_relayer(&admin, &relayer);
@@ -156,7 +180,7 @@ fn test_process_message_grant_success() {
         source_chain: String::from_str(&env, "ethereum"),
         source_address: String::from_str(&env, "0xabc123"),
         target_action: symbol_short!("GRANT"),
-        payload: Bytes::new(&env),
+        payload: Bytes::from_slice(&env, &[1]),
     };
 
     // Should succeed
@@ -175,7 +199,7 @@ fn test_process_message_replay_fails() {
         source_chain: String::from_str(&env, "ethereum"),
         source_address: String::from_str(&env, "0xabc123"),
         target_action: symbol_short!("GRANT"),
-        payload: Bytes::new(&env),
+        payload: Bytes::from_slice(&env, &[1]),
     };
 
     // First call succeeds
@@ -216,7 +240,7 @@ fn test_process_message_unknown_identity_not_permanently_blocked() {
         source_chain: String::from_str(&env, "polygon"),
         source_address: String::from_str(&env, "0xnewuser"),
         target_action: symbol_short!("GRANT"),
-        payload: Bytes::new(&env),
+        payload: Bytes::from_slice(&env, &[1]),
     };
 
     // First attempt fails because identity is not mapped
@@ -267,12 +291,57 @@ fn test_process_message_non_relayer_fails() {
         source_chain: String::from_str(&env, "ethereum"),
         source_address: String::from_str(&env, "0xabc123"),
         target_action: symbol_short!("GRANT"),
-        payload: Bytes::new(&env),
+        payload: Bytes::from_slice(&env, &[1]),
     };
 
     // Non-relayer caller should fail with Unauthorized
     assert_eq!(
         client.try_process_message(&non_relayer, &message_id, &message, &vision_contract),
+        Err(Ok(CrossChainError::Unauthorized))
+    );
+}
+
+#[test]
+fn test_anchor_state_root_unauthorized_fails() {
+    let (env, client, _relayer, _vision_contract, admin) = setup_process_message_env();
+    let non_admin = Address::generate(&env);
+    let root = BytesN::from_array(&env, &[1; 32]);
+    let chain_id = symbol_short!("ETH");
+
+    // Only admin can anchor state root
+    assert_eq!(
+        client.try_anchor_state_root(&non_admin, &root, &chain_id),
+        Err(Ok(CrossChainError::Unauthorized))
+    );
+
+    // Admin can anchor state root
+    assert!(client
+        .try_anchor_state_root(&admin, &root, &chain_id)
+        .is_ok());
+}
+
+#[test]
+fn test_unauthorized_attacker_role_escalation_attempts() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(CrossChainContract, ());
+    let client = CrossChainContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let attacker = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    // Attacker tries to add themselves as relayer
+    assert_eq!(
+        client.try_add_relayer(&attacker, &attacker),
+        Err(Ok(CrossChainError::Unauthorized))
+    );
+
+    // Attacker tries to map an identity
+    let foreign_chain = String::from_str(&env, "ethereum");
+    let foreign_address = String::from_str(&env, "0xattacker");
+    assert_eq!(
+        client.try_map_identity(&attacker, &foreign_chain, &foreign_address, &attacker),
         Err(Ok(CrossChainError::Unauthorized))
     );
 }

@@ -124,6 +124,28 @@ pub struct AdminTransferCancelledEvent {
     pub timestamp: u64,
 }
 
+/// Fired when an admin slashes a validator's staked tokens.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SlashedEvent {
+    pub admin: Address,
+    pub validator: Address,
+    pub amount: i128,
+    pub new_validator_stake: i128,
+    pub new_total_staked: i128,
+    pub timestamp: u64,
+}
+
+/// Fired when a stake-with-tolerance call exceeds the slippage bound.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SlippageExceededEvent {
+    pub staker: Address,
+    pub expected_share_bps: i128,
+    pub actual_share_bps: i128,
+    pub timestamp: u64,
+}
+
 /// Fired when an unauthorized action is attempted.
 #[soroban_sdk::contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -290,6 +312,44 @@ pub fn publish_admin_transfer_cancelled(env: &Env, admin: Address, cancelled_pro
         AdminTransferCancelledEvent {
             admin,
             cancelled_proposed,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
+}
+
+pub fn publish_slashed(
+    env: &Env,
+    admin: Address,
+    validator: Address,
+    amount: i128,
+    new_validator_stake: i128,
+    new_total_staked: i128,
+) {
+    env.events().publish(
+        (symbol_short!("SLASHED"), validator.clone()),
+        SlashedEvent {
+            admin,
+            validator,
+            amount,
+            new_validator_stake,
+            new_total_staked,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
+}
+
+pub fn publish_slippage_exceeded(
+    env: &Env,
+    staker: Address,
+    expected_share_bps: i128,
+    actual_share_bps: i128,
+) {
+    env.events().publish(
+        (symbol_short!("SLIP_EXC"), staker.clone()),
+        SlippageExceededEvent {
+            staker,
+            expected_share_bps,
+            actual_share_bps,
             timestamp: env.ledger().timestamp(),
         },
     );

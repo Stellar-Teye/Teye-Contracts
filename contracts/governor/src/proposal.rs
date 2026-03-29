@@ -132,10 +132,10 @@ pub(crate) fn load(env: &Env, id: u64) -> Option<Proposal> {
 pub fn quorum_bps(proposal_type: &ProposalType) -> u32 {
     match proposal_type {
         ProposalType::TreasurySpend => 1_000,      // 10 %
-        ProposalType::ParameterChange => 1_500,     // 15 %
-        ProposalType::PolicyModification => 2_000,  // 20 %
-        ProposalType::ContractUpgrade => 3_000,     // 30 %
-        ProposalType::EmergencyAction => 500,       // 5 %  — fast path
+        ProposalType::ParameterChange => 1_500,    // 15 %
+        ProposalType::PolicyModification => 2_000, // 20 %
+        ProposalType::ContractUpgrade => 3_000,    // 30 %
+        ProposalType::EmergencyAction => 500,      // 5 %  — fast path
     }
 }
 

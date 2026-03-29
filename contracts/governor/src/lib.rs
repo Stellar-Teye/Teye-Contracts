@@ -263,9 +263,8 @@ impl GovernorContract {
                 } else {
                     // Check simple majority among for/against.
                     let decisive = proposal.votes_for.saturating_add(proposal.votes_against);
-                    let pass_needed = decisive
-                        * pass_threshold_bps(&proposal.proposal_type) as i128
-                        / 10_000;
+                    let pass_needed =
+                        decisive * pass_threshold_bps(&proposal.proposal_type) as i128 / 10_000;
                     if proposal.votes_for >= pass_needed {
                         ProposalPhase::Timelock
                     } else {
@@ -323,8 +322,7 @@ impl GovernorContract {
         Self::require_initialized(&env)?;
         voter.require_auth();
 
-        let proposal =
-            load_proposal(&env, proposal_id).ok_or(ContractError::ProposalNotFound)?;
+        let proposal = load_proposal(&env, proposal_id).ok_or(ContractError::ProposalNotFound)?;
 
         if !matches!(proposal.phase, ProposalPhase::Voting) {
             return Err(ContractError::WrongPhase);
@@ -378,8 +376,7 @@ impl GovernorContract {
             return Err(ContractError::NotADelegate);
         }
 
-        let proposal =
-            load_proposal(&env, proposal_id).ok_or(ContractError::ProposalNotFound)?;
+        let proposal = load_proposal(&env, proposal_id).ok_or(ContractError::ProposalNotFound)?;
         if !matches!(proposal.phase, ProposalPhase::Voting) {
             return Err(ContractError::WrongPhase);
         }
@@ -442,8 +439,7 @@ impl GovernorContract {
         }
 
         // Fetch and verify the stored commitment.
-        let commit =
-            load_commit(&env, proposal_id, &voter).ok_or(ContractError::NoCommitFound)?;
+        let commit = load_commit(&env, proposal_id, &voter).ok_or(ContractError::NoCommitFound)?;
 
         // Recompute commitment: SHA-256(proposal_id || voter || choice || salt)
         let expected = Self::hash_commitment(&env, proposal_id, &voter, &choice, &salt);
@@ -462,9 +458,7 @@ impl GovernorContract {
             VoteChoice::Against => {
                 proposal.votes_against = proposal.votes_against.saturating_add(power)
             }
-            VoteChoice::Veto => {
-                proposal.votes_veto = proposal.votes_veto.saturating_add(power)
-            }
+            VoteChoice::Veto => proposal.votes_veto = proposal.votes_veto.saturating_add(power),
         }
         proposal.reveal_count = proposal.reveal_count.saturating_add(1);
 
@@ -491,11 +485,7 @@ impl GovernorContract {
     /// The delegation is active for all proposals in the Voting phase from
     /// this point forward.  You may not vote directly while a delegation is
     /// active — call `revoke_delegation` first.
-    pub fn delegate(
-        env: Env,
-        voter: Address,
-        delegate: Address,
-    ) -> Result<(), ContractError> {
+    pub fn delegate(env: Env, voter: Address, delegate: Address) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         voter.require_auth();
 
@@ -526,7 +516,11 @@ impl GovernorContract {
     ///
     /// Moves the proposal to Completed and dispatches each action.
     /// Anyone may call this (permissionless optimistic execution).
-    pub fn execute_proposal(env: Env, caller: Address, proposal_id: u64) -> Result<(), ContractError> {
+    pub fn execute_proposal(
+        env: Env,
+        caller: Address,
+        proposal_id: u64,
+    ) -> Result<(), ContractError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
 
@@ -662,10 +656,7 @@ impl GovernorContract {
         //
         // For testability we use a mock key injected by tests.
         let mock_key = (symbol_short!("M_STK"), voter.clone());
-        env.storage()
-            .persistent()
-            .get(&mock_key)
-            .unwrap_or(0i128)
+        env.storage().persistent().get(&mock_key).unwrap_or(0i128)
     }
 
     /// Query how long `voter` has been staking (in seconds).
@@ -676,10 +667,7 @@ impl GovernorContract {
         // Same pattern: replace with cross-contract call in production.
         //   env.invoke_contract(&staking, &symbol_short!("get_stk_age"), (voter.clone(),).into_val(env))
         let mock_key = (symbol_short!("M_AGE"), voter.clone());
-        env.storage()
-            .persistent()
-            .get(&mock_key)
-            .unwrap_or(0u64)
+        env.storage().persistent().get(&mock_key).unwrap_or(0u64)
     }
 
     /// Compute the vote commitment hash.
@@ -729,3 +717,6 @@ impl GovernorContract {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod test_timelock_delay;

@@ -33,6 +33,7 @@ pub mod meta_tx;
 pub mod metering;
 pub mod migration;
 pub mod multisig;
+pub mod multisig_test;
 pub mod nonce;
 pub mod pausable;
 pub mod policy_dsl;

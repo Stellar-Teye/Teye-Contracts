@@ -146,3 +146,81 @@ fn test_hierarchy_validation() {
     );
     assert!(matches!(err, Err(Ok(ContractError::InvalidHierarchy))));
 }
+
+#[test]
+fn test_recovery_cooldown_is_enforced_before_execution() {
+    let (env, client, identity, admin) = setup();
+
+    let guardian1 = Address::generate(&env);
+    let guardian2 = Address::generate(&env);
+    let guardian3 = Address::generate(&env);
+
+    identity.add_guardian(&admin, &guardian1);
+    identity.add_guardian(&admin, &guardian2);
+    identity.add_guardian(&admin, &guardian3);
+    identity.set_recovery_threshold(&admin, &2);
+
+    let policy = KeyPolicy {
+        max_uses: 0,
+        not_before: 0,
+        not_after: 0,
+        allowed_ops: Vec::new(&env),
+    };
+
+    let key_bytes = BytesN::from_array(&env, &[13u8; 32]);
+    let key_id = client.create_master_key(&admin, &KeyType::Encryption, &policy, &0u64, &key_bytes);
+
+    let replacement = BytesN::from_array(&env, &[14u8; 32]);
+    client.initiate_recovery(&guardian1, &key_id, &replacement);
+    client.approve_recovery(&guardian2, &key_id);
+
+    let now = env.ledger().timestamp();
+    env.ledger().set_timestamp(now + 86_400);
+    let early = client.try_execute_recovery(&admin, &key_id);
+    assert_eq!(early, Err(Ok(ContractError::CooldownNotExpired)));
+
+    env.ledger().set_timestamp(now + 86_401);
+    let version = client.execute_recovery(&admin, &key_id);
+    let current = client.get_key_version(&key_id, &version).unwrap();
+    assert_eq!(current.key_bytes, replacement);
+}
+
+#[test]
+fn test_only_designated_guardians_can_start_and_approve_recovery() {
+    let (env, client, identity, admin) = setup();
+
+    let guardian1 = Address::generate(&env);
+    let guardian2 = Address::generate(&env);
+    let guardian3 = Address::generate(&env);
+    let outsider = Address::generate(&env);
+
+    identity.add_guardian(&admin, &guardian1);
+    identity.add_guardian(&admin, &guardian2);
+    identity.add_guardian(&admin, &guardian3);
+    identity.set_recovery_threshold(&admin, &2);
+
+    let policy = KeyPolicy {
+        max_uses: 0,
+        not_before: 0,
+        not_after: 0,
+        allowed_ops: Vec::new(&env),
+    };
+
+    let key_bytes = BytesN::from_array(&env, &[15u8; 32]);
+    let key_id = client.create_master_key(&admin, &KeyType::Encryption, &policy, &0u64, &key_bytes);
+    let replacement = BytesN::from_array(&env, &[16u8; 32]);
+
+    let denied_initiate = client.try_initiate_recovery(&outsider, &key_id, &replacement);
+    assert_eq!(denied_initiate, Err(Ok(ContractError::NotAGuardian)));
+
+    client.initiate_recovery(&guardian1, &key_id, &replacement);
+
+    let denied_approve = client.try_approve_recovery(&outsider, &key_id);
+    assert_eq!(denied_approve, Err(Ok(ContractError::NotAGuardian)));
+
+    client.approve_recovery(&guardian2, &key_id);
+    let now = env.ledger().timestamp();
+    env.ledger().set_timestamp(now + 86_401);
+    let version = client.execute_recovery(&admin, &key_id);
+    assert_eq!(version, 2);
+}

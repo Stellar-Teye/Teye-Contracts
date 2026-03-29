@@ -324,6 +324,7 @@ dependencies = [
  "hex",
  "hmac",
  "sha2",
+ "soroban-sdk",
 ]
 
 [[package]]
@@ -876,6 +877,7 @@ dependencies = [
 name = "fhir"
 version = "1.2.2"
 dependencies = [
+ "proptest",
  "soroban-sdk",
 ]
 
@@ -950,6 +952,14 @@ dependencies = [
  "r-efi",
  "wasip2",
  "wasip3",
+]
+
+[[package]]
+name = "governor"
+version = "1.2.2"
+dependencies = [
+ "common",
+ "soroban-sdk",
 ]
 
 [[package]]
@@ -2068,6 +2078,13 @@ dependencies = [
  "proptest",
  "soroban-sdk",
  "staking",
+]
+
+[[package]]
+name = "teye-delegation"
+version = "1.2.2"
+dependencies = [
+ "soroban-sdk",
 ]
 
 [[package]]

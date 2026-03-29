@@ -162,4 +162,4 @@ Contributors are recognized in:
 - Join our Discord community
 - Tag maintainers in issues
 
-Thank you for contributing! 👁️
+Thank you for your contribution! 👁️

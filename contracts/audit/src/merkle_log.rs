@@ -116,21 +116,31 @@ impl InclusionProof {
         let mut computed = self.leaf_hash;
         let mut index = self.leaf_index;
         let mut size = self.tree_size;
+        let mut sib_iter = self.siblings.iter();
 
-        for sibling in &self.siblings {
-            if size == 0 {
-                return Err(AuditError::InvalidInclusionProof);
-            }
-            // Determine "inner" node count at the current tree level.
-            // At each level we pair nodes; the last unpaired node is promoted.
+        // Iterate level by level (not sibling by sibling) so that lone nodes
+        // — where no sibling exists — are correctly promoted without consuming
+        // a sibling entry.  A 6-leaf tree has 3 levels but only 2 siblings for
+        // the rightmost leaf; iterating over siblings would short-circuit by
+        // one level and fail to reach the root.
+        while size > 1 {
             if index % 2 == 1 {
+                // Right child — its left sibling must be in the proof.
+                let sibling = sib_iter.next().ok_or(AuditError::InvalidInclusionProof)?;
                 computed = hash_node(sibling, &computed);
             } else if index < size - 1 {
+                // Left child with a right sibling.
+                let sibling = sib_iter.next().ok_or(AuditError::InvalidInclusionProof)?;
                 computed = hash_node(&computed, sibling);
             }
-            // else: lone right-hand node — keep `computed` unchanged.
+            // else: lone right-hand node — promoted as-is, no sibling consumed.
             index /= 2;
             size = size.div_ceil(2);
+        }
+
+        // A well-formed proof must have no leftover siblings.
+        if sib_iter.next().is_some() {
+            return Err(AuditError::InvalidInclusionProof);
         }
 
         if &computed == root {
@@ -145,7 +155,7 @@ impl InclusionProof {
 
 /// A published root checkpoint, created each time `publish_root` is called.
 /// Checkpoints are the basis for consistency proofs.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct RootCheckpoint {
     /// Number of leaves in the tree at the time of this checkpoint.
     pub tree_size: u64,
@@ -188,6 +198,7 @@ pub struct CompactionReceipt {
 /// Entries are stored in an ordered map keyed by their sequence number,
 /// enabling O(log n) point-lookup and O(k) range queries without a secondary
 /// index.
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct MerkleLog {
     /// The logical partition this log covers.
     pub segment: LogSegmentId,
@@ -209,6 +220,11 @@ pub struct MerkleLog {
     /// Next sequence number to assign.
     next_seq: u64,
 
+    /// Timestamp of the most recently appended entry.
+    /// Used to enforce chronological order: new entries must have
+    /// `timestamp >= last_timestamp`.
+    last_timestamp: u64,
+
     /// Retention policy for this segment (if any).
     retention: Option<RetentionPolicy>,
 }
@@ -227,6 +243,7 @@ impl MerkleLog {
             checkpoints: Vec::new(),
             witnesses: Vec::new(),
             next_seq: 1,
+            last_timestamp: 0,
             retention: None,
         }
     }
@@ -251,7 +268,14 @@ impl MerkleLog {
     /// * `result`    – Outcome string.
     ///
     /// # Returns
-    /// The newly assigned sequence number.
+    /// The newly assigned sequence number, or an error if the entry would
+    /// violate chronological ordering.
+    ///
+    /// # Errors
+    /// Returns [`AuditError::OutOfOrderTimestamp`] when `timestamp` is
+    /// strictly less than the timestamp of the previous entry.  Equal
+    /// timestamps (same ledger slot) are permitted to accommodate multiple
+    /// events in the same block.
     ///
     /// # Complexity
     /// O(log n) — one BTreeMap insertion, one leaf-hash push, constant hashing.
@@ -262,8 +286,19 @@ impl MerkleLog {
         action: impl Into<String>,
         target: impl Into<String>,
         result: impl Into<String>,
-    ) -> u64 {
+    ) -> Result<u64, AuditError> {
         let seq = self.next_seq;
+
+        // Enforce chronological ordering: reject timestamps that pre-date the
+        // last stored entry (history manipulation prevention).
+        if seq > 1 && timestamp < self.last_timestamp {
+            return Err(AuditError::OutOfOrderTimestamp {
+                sequence: seq,
+                supplied: timestamp,
+                minimum: self.last_timestamp,
+            });
+        }
+
         self.next_seq += 1;
 
         // Hash chain: previous entry's hash, or zero-hash for the first entry.
@@ -297,8 +332,9 @@ impl MerkleLog {
 
         self.leaf_hashes.push(leaf_hash);
         self.entries.insert(seq, entry);
+        self.last_timestamp = timestamp;
 
-        seq
+        Ok(seq)
     }
 
     // ── Root publishing ───────────────────────────────────────────────────────
@@ -583,7 +619,9 @@ mod tests {
     #[test]
     fn single_entry_root_is_leaf_hash() {
         let mut log = MerkleLog::new(seg());
-        let seq = log.append(1_000, "alice", "create", "record:1", "ok");
+        let seq = log
+            .append(1_000, "alice", "create", "record:1", "ok")
+            .unwrap();
         assert_eq!(seq, 1);
 
         let root = log.current_root();
@@ -595,9 +633,9 @@ mod tests {
     #[test]
     fn hash_chain_is_linked() {
         let mut log = MerkleLog::new(seg());
-        log.append(1_000, "alice", "create", "r:1", "ok");
-        log.append(1_001, "bob", "read", "r:1", "ok");
-        log.append(1_002, "carol", "update", "r:1", "ok");
+        log.append(1_000, "alice", "create", "r:1", "ok").unwrap();
+        log.append(1_001, "bob", "read", "r:1", "ok").unwrap();
+        log.append(1_002, "carol", "update", "r:1", "ok").unwrap();
 
         assert!(log.verify_chain(1, 3).is_ok());
     }
@@ -605,8 +643,8 @@ mod tests {
     #[test]
     fn tamper_detected_by_chain_verification() {
         let mut log = MerkleLog::new(seg());
-        log.append(1_000, "alice", "create", "r:1", "ok");
-        log.append(1_001, "bob", "read", "r:1", "ok");
+        log.append(1_000, "alice", "create", "r:1", "ok").unwrap();
+        log.append(1_001, "bob", "read", "r:1", "ok").unwrap();
 
         // Simulate tampering: corrupt entry 2's prev_hash.
         // We can't mutate through the public API (append-only design), so we
@@ -626,7 +664,7 @@ mod tests {
     fn inclusion_proof_verifies() {
         let mut log = MerkleLog::new(seg());
         for i in 0..8u64 {
-            log.append(i, "user", "action", "tgt", "ok");
+            log.append(i, "user", "action", "tgt", "ok").unwrap();
         }
         let root = log.current_root();
         for seq in 1..=8u64 {
@@ -638,9 +676,9 @@ mod tests {
     #[test]
     fn merkle_root_changes_after_append() {
         let mut log = MerkleLog::new(seg());
-        log.append(1, "a", "b", "c", "ok");
+        log.append(1, "a", "b", "c", "ok").unwrap();
         let root1 = log.current_root();
-        log.append(2, "d", "e", "f", "ok");
+        log.append(2, "d", "e", "f", "ok").unwrap();
         let root2 = log.current_root();
         assert_ne!(root1, root2);
     }
@@ -649,7 +687,7 @@ mod tests {
     fn compact_returns_receipt_and_shrinks_log() {
         let mut log = MerkleLog::new(seg());
         for i in 1..=5u64 {
-            log.append(i, "u", "a", "t", "ok");
+            log.append(i, "u", "a", "t", "ok").unwrap();
         }
         let receipt = log.compact(1, 2, 10_000, 0).unwrap();
         assert_eq!(receipt.deleted_hashes.len(), 2);
@@ -665,7 +703,7 @@ mod tests {
             min_retention_secs: 1_000,
             requires_witness_for_deletion: false,
         });
-        log.append(500, "u", "a", "t", "ok");
+        log.append(500, "u", "a", "t", "ok").unwrap();
         // now = 999 → retained_until = 500 + 1_000 = 1_500 > 999
         let err = log.compact(1, 1, 999, 0).unwrap_err();
         assert!(matches!(err, AuditError::RetentionPolicyViolation { .. }));
@@ -675,7 +713,7 @@ mod tests {
     fn query_range_returns_correct_entries() {
         let mut log = MerkleLog::new(seg());
         for i in 1..=10u64 {
-            log.append(i, "u", "a", "t", "ok");
+            log.append(i, "u", "a", "t", "ok").unwrap();
         }
         let range = log.query_range(3, 7);
         assert_eq!(range.len(), 5);

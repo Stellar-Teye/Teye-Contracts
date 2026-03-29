@@ -297,3 +297,232 @@ fn test_acl_group_unauthorized_management() {
     let result = client.try_create_acl_group(&non_admin, &group_name, &perms);
     assert!(result.is_err());
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #479 — Explicit vs inherited permissions
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// An explicit custom grant on user A must not affect user B who shares the
+/// same base role — permissions are scoped to individual identities.
+#[test]
+fn test_explicit_grant_scoped_to_individual_user() {
+    let (env, client, admin) = setup_test();
+
+    let staff_a = Address::generate(&env);
+    let staff_b = Address::generate(&env);
+
+    client.register_user(
+        &admin,
+        &staff_a,
+        &Role::Staff,
+        &String::from_str(&env, "StaffA"),
+    );
+    client.register_user(
+        &admin,
+        &staff_b,
+        &Role::Staff,
+        &String::from_str(&env, "StaffB"),
+    );
+
+    // Both Staff users cannot write records via their base role.
+    assert!(!client.check_permission(&staff_a, &Permission::WriteRecord));
+    assert!(!client.check_permission(&staff_b, &Permission::WriteRecord));
+
+    // Grant WriteRecord only to staff_a.
+    client.grant_custom_permission(&admin, &staff_a, &Permission::WriteRecord);
+
+    assert!(client.check_permission(&staff_a, &Permission::WriteRecord));
+    // staff_b must remain unaffected.
+    assert!(!client.check_permission(&staff_b, &Permission::WriteRecord));
+}
+
+/// An explicit revocation on user A must not affect user B who shares the
+/// same base role — revocations are scoped to individual identities.
+#[test]
+fn test_explicit_revoke_scoped_to_individual_user() {
+    let (env, client, admin) = setup_test();
+
+    let opto_a = Address::generate(&env);
+    let opto_b = Address::generate(&env);
+
+    client.register_user(
+        &admin,
+        &opto_a,
+        &Role::Optometrist,
+        &String::from_str(&env, "OptoA"),
+    );
+    client.register_user(
+        &admin,
+        &opto_b,
+        &Role::Optometrist,
+        &String::from_str(&env, "OptoB"),
+    );
+
+    // Both Optometrists inherit WriteRecord.
+    assert!(client.check_permission(&opto_a, &Permission::WriteRecord));
+    assert!(client.check_permission(&opto_b, &Permission::WriteRecord));
+
+    // Revoke WriteRecord from opto_a only.
+    client.revoke_custom_permission(&admin, &opto_a, &Permission::WriteRecord);
+
+    assert!(!client.check_permission(&opto_a, &Permission::WriteRecord));
+    // opto_b must keep the inherited permission.
+    assert!(client.check_permission(&opto_b, &Permission::WriteRecord));
+}
+
+/// Verifies that `check_record_access` returns `AccessLevel::None` when no
+/// record-level grant exists for a grantee — default deny for sub-record access.
+#[test]
+fn test_record_level_access_defaults_to_none() {
+    let (env, client, admin) = setup_test();
+
+    let doctor = Address::generate(&env);
+    client.register_user(
+        &admin,
+        &doctor,
+        &Role::Optometrist,
+        &String::from_str(&env, "Doc"),
+    );
+
+    // No record-level grant has been made — must return None access.
+    let access = client.check_record_access(&99u64, &doctor);
+    assert_eq!(access, super::AccessLevel::None);
+}
+
+/// Trying to grant record-level access on a non-existent record must fail.
+#[test]
+fn test_grant_record_access_nonexistent_record_fails() {
+    let (env, client, admin) = setup_test();
+
+    let patient = Address::generate(&env);
+    let doctor = Address::generate(&env);
+
+    client.register_user(
+        &admin,
+        &patient,
+        &Role::Patient,
+        &String::from_str(&env, "Patient"),
+    );
+    client.register_user(
+        &admin,
+        &doctor,
+        &Role::Optometrist,
+        &String::from_str(&env, "Doctor"),
+    );
+
+    let result = client.try_grant_record_access(
+        &patient,
+        &doctor,
+        &9999u64,
+        &super::AccessLevel::Read,
+        &3600,
+    );
+    assert!(result.is_err());
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #479 — Scoped delegation
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// After a delegation expires the delegatee loses the delegated role, while
+/// the original delegator continues to hold their own permissions.
+#[test]
+fn test_scoped_delegation_expiry_does_not_affect_delegator() {
+    let (env, client, admin) = setup_test();
+
+    let delegator = Address::generate(&env);
+    let delegatee = Address::generate(&env);
+
+    client.register_user(
+        &admin,
+        &delegator,
+        &Role::Optometrist,
+        &String::from_str(&env, "Delegator"),
+    );
+    client.register_user(
+        &admin,
+        &delegatee,
+        &Role::Patient,
+        &String::from_str(&env, "Delegatee"),
+    );
+
+    // Delegator holds WriteRecord via their base role.
+    assert!(client.check_permission(&delegator, &Permission::WriteRecord));
+
+    // Delegate the Optometrist role to delegatee for 1 second.
+    env.ledger().set_timestamp(500);
+    let expire_at = 501u64; // expires almost immediately
+    client.delegate_role(&delegator, &delegatee, &Role::Optometrist, &expire_at);
+
+    // Advance past expiry.
+    env.ledger().set_timestamp(600);
+
+    let doctor = Address::generate(&env);
+    client.register_user(
+        &admin,
+        &doctor,
+        &Role::Optometrist,
+        &String::from_str(&env, "Doc"),
+    );
+
+    // Delegatee attempts to act for delegator — should fail (delegation expired)
+    let result = client.try_grant_access(
+        &delegatee,
+        &delegator,
+        &doctor,
+        &super::AccessLevel::Read,
+        &3600,
+    );
+    assert!(result.is_err(), "Expired delegation must be rejected");
+
+    // Delegator retains their own permissions unaffected.
+    assert!(client.check_permission(&delegator, &Permission::WriteRecord));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #479 — Institution sharing via ACL groups
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Adding multiple practitioners to a shared group grants all of them the
+/// same permissions simultaneously (institution sharing pattern).
+#[test]
+fn test_institution_group_grants_access_to_all_members() {
+    let (env, client, admin) = setup_test();
+
+    let practitioner_a = Address::generate(&env);
+    let practitioner_b = Address::generate(&env);
+    let practitioner_c = Address::generate(&env);
+
+    for (addr, name) in [
+        (&practitioner_a, "PA"),
+        (&practitioner_b, "PB"),
+        (&practitioner_c, "PC"),
+    ] {
+        client.register_user(&admin, addr, &Role::Staff, &String::from_str(&env, name));
+    }
+
+    // Staff base role does not include ReadAnyRecord.
+    assert!(!client.check_permission(&practitioner_a, &Permission::ReadAnyRecord));
+
+    let institution_group = String::from_str(&env, "Teye Eye Clinic");
+    let mut perms = Vec::new(&env);
+    perms.push_back(Permission::ReadAnyRecord);
+    client.create_acl_group(&admin, &institution_group, &perms);
+
+    // Add all three to the institution group.
+    for addr in [&practitioner_a, &practitioner_b, &practitioner_c] {
+        client.add_user_to_group(&admin, addr, &institution_group);
+    }
+
+    // All three should now have the institution-level permission.
+    assert!(client.check_permission(&practitioner_a, &Permission::ReadAnyRecord));
+    assert!(client.check_permission(&practitioner_b, &Permission::ReadAnyRecord));
+    assert!(client.check_permission(&practitioner_c, &Permission::ReadAnyRecord));
+
+    // Removing one practitioner revokes only their access.
+    client.remove_user_from_group(&admin, &practitioner_b, &institution_group);
+
+    assert!(client.check_permission(&practitioner_a, &Permission::ReadAnyRecord));
+    assert!(!client.check_permission(&practitioner_b, &Permission::ReadAnyRecord));
+    assert!(client.check_permission(&practitioner_c, &Permission::ReadAnyRecord));
+}

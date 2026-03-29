@@ -6,6 +6,9 @@ pub mod events;
 pub mod rewards;
 pub mod timelock;
 
+#[cfg(test)]
+mod test_slash;
+
 extern crate alloc;
 use alloc::string::ToString;
 
@@ -78,6 +81,7 @@ pub enum ContractError {
     MultisigRequired = 13,
     MultisigError = 14,
     Paused = 15,
+    SlippageExceeded = 16,
 }
 
 // ── Public-facing types (re-exported for test consumers) ─────────────────────
@@ -245,6 +249,101 @@ impl StakingContract {
         }
 
         events::publish_staked(&env, staker, amount, new_total);
+
+        Ok(())
+    }
+
+    /// Deposit `amount` stake tokens with slippage protection.
+    ///
+    /// `min_share_bps` specifies the minimum share of the total pool (in basis
+    /// points, where 10 000 = 100 %) the staker expects to hold after the
+    /// deposit.  If the resulting share is below this threshold — e.g. because
+    /// a large deposit was front-run — the transaction reverts with
+    /// `SlippageExceeded`.
+    ///
+    /// Passing `0` disables the check (equivalent to calling `stake` directly).
+    pub fn stake_with_tolerance(
+        env: Env,
+        staker: Address,
+        amount: i128,
+        min_share_bps: i128,
+    ) -> Result<(), ContractError> {
+        let _guard = common::ReentrancyGuard::new(&env);
+        Self::require_not_paused(&env)?;
+        Self::require_initialized(&env)?;
+        staker.require_auth();
+
+        if amount <= 0 {
+            return Err(ContractError::InvalidInput);
+        }
+        if min_share_bps < 0 || min_share_bps > 10_000 {
+            return Err(ContractError::InvalidInput);
+        }
+
+        // 1. Flush global accumulator then snapshot for this user.
+        Self::update_reward(&env, &staker);
+
+        // 2. Pull tokens from the staker into the contract.
+        let stake_token: Address = env
+            .storage()
+            .instance()
+            .get(&STAKE_TOKEN)
+            .ok_or(ContractError::NotInitialized)?;
+        token::Client::new(&env, &stake_token).transfer(
+            &staker,
+            env.current_contract_address(),
+            &amount,
+        );
+
+        // 3. Increase the user's staked balance and the global total.
+        let user_stake_key = (USER_STAKE, staker.clone());
+        let prev_stake: i128 = env
+            .storage()
+            .persistent()
+            .get(&user_stake_key)
+            .unwrap_or(0i128);
+        let new_stake = prev_stake.saturating_add(amount);
+        env.storage().persistent().set(&user_stake_key, &new_stake);
+
+        let prev_total: i128 = env.storage().instance().get(&TOTAL_STAKED).unwrap_or(0);
+        let new_total = prev_total.saturating_add(amount);
+        env.storage().instance().set(&TOTAL_STAKED, &new_total);
+
+        // 4. Slippage check: verify the staker's share meets the minimum.
+        if min_share_bps > 0 && new_total > 0 {
+            let actual_share_bps = new_stake
+                .saturating_mul(10_000)
+                .checked_div(new_total)
+                .unwrap_or(0);
+            if actual_share_bps < min_share_bps {
+                events::publish_slippage_exceeded(
+                    &env,
+                    staker.clone(),
+                    min_share_bps,
+                    actual_share_bps,
+                );
+                // Revert all state changes by returning an error.
+                // In Soroban, returning Err rolls back the transaction.
+                return Err(ContractError::SlippageExceeded);
+            }
+        }
+
+        // 5. Record the first-stake timestamp for loyalty age tracking.
+        let since_key = (USER_SINCE, staker.clone());
+        if !env.storage().persistent().has(&since_key) {
+            let now = env.ledger().timestamp();
+            env.storage().persistent().set(&since_key, &now);
+        }
+
+        events::publish_staked(&env, staker.clone(), amount, new_total);
+
+        audit::AuditManager::log_event(
+            &env,
+            staker,
+            "staking.stake_tolerant",
+            soroban_sdk::String::from_str(&env, &amount.to_string()),
+            "ok",
+        );
 
         Ok(())
     }
@@ -901,6 +1000,84 @@ impl StakingContract {
         common::pausable::is_paused(&env)
     }
 
+    // ── Slashing ─────────────────────────────────────────────────────────────
+
+    /// Slash `amount` tokens from a validator's staked balance.
+    ///
+    /// Only the admin (or a `ContractAdmin`-tier caller) may slash.
+    /// Returns `SlashingUnauthorized` when called by any other address.
+    ///
+    /// If `amount` exceeds the validator's current staked balance the entire
+    /// balance is slashed (no partial-slash revert).  The slashed tokens are
+    /// retained by the contract and excluded from staking accounting.
+    ///
+    /// # Errors
+    /// * `NotInitialized`       – contract not yet bootstrapped.
+    /// * `SlashingUnauthorized` – caller is not an authorised admin.
+    /// * `InvalidInput`         – `amount` is zero or negative.
+    /// * `InsufficientBalance`  – validator has nothing staked.
+    pub fn slash(
+        env: Env,
+        caller: Address,
+        validator: Address,
+        amount: i128,
+    ) -> Result<i128, ContractError> {
+        Self::require_initialized(&env)?;
+        caller.require_auth();
+
+        // Only admin-tier callers may slash.
+        if Self::require_admin_tier(&env, &caller, &AdminTier::ContractAdmin, "slash").is_err() {
+            events::publish_access_violation(
+                &env,
+                caller.clone(),
+                String::from_str(&env, "slash"),
+                String::from_str(&env, "admin_tier:ContractAdmin"),
+            );
+            return Err(ContractError::SlashingUnauthorized);
+        }
+
+        if amount <= 0 {
+            return Err(ContractError::InvalidInput);
+        }
+
+        let user_stake_key = (USER_STAKE, validator.clone());
+        let current_stake: i128 = env.storage().persistent().get(&user_stake_key).unwrap_or(0);
+
+        if current_stake <= 0 {
+            return Err(ContractError::InsufficientBalance);
+        }
+
+        // Cap the slash at the validator's entire balance.
+        let slash_amount = amount.min(current_stake);
+        let new_validator_stake = current_stake.saturating_sub(slash_amount);
+        env.storage()
+            .persistent()
+            .set(&user_stake_key, &new_validator_stake);
+
+        let prev_total: i128 = env.storage().instance().get(&TOTAL_STAKED).unwrap_or(0);
+        let new_total = prev_total.saturating_sub(slash_amount);
+        env.storage().instance().set(&TOTAL_STAKED, &new_total);
+
+        events::publish_slashed(
+            &env,
+            caller.clone(),
+            validator.clone(),
+            slash_amount,
+            new_validator_stake,
+            new_total,
+        );
+
+        audit::AuditManager::log_event(
+            &env,
+            caller,
+            "staking.slash",
+            soroban_sdk::String::from_str(&env, &slash_amount.to_string()),
+            "ok",
+        );
+
+        Ok(slash_amount)
+    }
+
     // ── Internal helpers ─────────────────────────────────────────────────────
 
     /// Guard: revert if the contract is paused.
@@ -1255,3 +1432,10 @@ mod test_admin_tiers;
 
 #[cfg(test)]
 mod test_multisig;
+
+#[cfg(test)]
+mod test_late_quorum;
+mod test_reward_multiplier;
+
+#[cfg(test)]
+mod test_slippage;

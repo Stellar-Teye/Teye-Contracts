@@ -35,7 +35,7 @@
 //! let mut log = MerkleLog::new(seg);
 //!
 //! // Append entries.
-//! let seq = log.append(1_700_000_000, "alice", "record.read", "patient:42", "ok");
+//! let seq = log.append(1_700_000_000, "alice", "record.read", "patient:42", "ok").unwrap();
 //!
 //! // Generate and verify a Merkle inclusion proof.
 //! let root  = log.current_root();
@@ -59,6 +59,12 @@
 extern crate alloc;
 
 pub mod consistency;
+pub mod contract;
 pub mod merkle_log;
 pub mod search;
 pub mod types;
+
+// Re-export contract types for external use
+pub use contract::AuditContract;
+pub use contract::AuditContractClient;
+pub use contract::AuditContractError;

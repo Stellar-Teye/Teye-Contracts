@@ -39,6 +39,7 @@ pub enum EmrBridgeError {
     MappingAlreadyExists = 12,
     VerificationNotFound = 13,
     VerificationAlreadyExists = 14,
+    InvalidSyncState = 15,
 }
 
 #[contract]
@@ -452,8 +453,18 @@ impl EmrBridgeContract {
 
         // Verify the exchange exists
         let exchange_key = (symbol_short!("EXCHANGE"), exchange_id.clone());
-        if !env.storage().persistent().has(&exchange_key) {
-            return Err(EmrBridgeError::ExchangeNotFound);
+        let exchange: DataExchangeRecord = env
+            .storage()
+            .persistent()
+            .get(&exchange_key)
+            .ok_or(EmrBridgeError::ExchangeNotFound)?;
+
+        // Front-running / delayed-execution defense:
+        // Only allow verification once an exchange has entered InProgress.
+        // This prevents an attacker (or mis-ordered mempool execution) from
+        // prematurely finalizing an exchange that hasn't actually synced yet.
+        if exchange.status != SyncStatus::InProgress {
+            return Err(EmrBridgeError::InvalidSyncState);
         }
 
         // Prevent duplicate verifications
@@ -480,11 +491,7 @@ impl EmrBridgeContract {
             .extend_ttl(&verify_key, TTL_THRESHOLD, TTL_EXTEND_TO);
 
         // Update exchange status based on verification
-        let mut record: DataExchangeRecord = env
-            .storage()
-            .persistent()
-            .get(&exchange_key)
-            .ok_or(EmrBridgeError::ExchangeNotFound)?;
+        let mut record: DataExchangeRecord = exchange;
         record.status = if is_consistent {
             SyncStatus::Completed
         } else {

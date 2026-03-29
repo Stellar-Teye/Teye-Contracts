@@ -74,7 +74,9 @@ pub(crate) fn store_commit(env: &Env, proposal_id: u64, voter: &Address, commit:
 }
 
 pub(crate) fn load_commit(env: &Env, proposal_id: u64, voter: &Address) -> Option<VoteCommit> {
-    env.storage().persistent().get(&commit_key(proposal_id, voter))
+    env.storage()
+        .persistent()
+        .get(&commit_key(proposal_id, voter))
 }
 
 pub(crate) fn store_vote(env: &Env, proposal_id: u64, voter: &Address, record: &VoteRecord) {
@@ -106,13 +108,25 @@ pub fn isqrt(n: i128) -> i128 {
     if n <= 0 {
         return 0;
     }
-    let mut x = n;
-    let mut y = (x + 1) / 2;
-    while y < x {
-        x = y;
-        y = (x + n / x) / 2;
+    // Use binary search on unsigned to avoid intermediate overflow
+    let nn: u128 = n as u128;
+    let mut low: u128 = 0;
+    let mut high: u128 = nn;
+    while low <= high {
+        let mid = (low + high) / 2;
+        let sq = mid.saturating_mul(mid);
+        if sq == nn {
+            return mid as i128;
+        } else if sq < nn {
+            low = mid + 1;
+        } else {
+            if mid == 0 {
+                break;
+            }
+            high = mid - 1;
+        }
     }
-    x
+    high as i128
 }
 
 /// Compute the loyalty multiplier (scaled by SCALE).
@@ -139,6 +153,6 @@ pub fn loyalty_multiplier_scaled(stake_age_secs: u64) -> i128 {
 pub fn compute_vote_power(staked: i128, stake_age_secs: u64) -> i128 {
     let raw = isqrt(staked); // sqrt(tokens)
     let loyalty = loyalty_multiplier_scaled(stake_age_secs); // SCALE-scaled
-    // raw × loyalty / SCALE  — keeps result in "SCALE-scaled sqrt-token" units
+                                                             // raw × loyalty / SCALE  — keeps result in "SCALE-scaled sqrt-token" units
     raw.saturating_mul(loyalty) / SCALE
 }
