@@ -6,9 +6,6 @@ use metering::{
 use soroban_sdk::{testutils::Address as _, Address, Env};
 
 fn uninitialized_setup() -> (Env, MeteringContractClient<'static>, Address, Address) {
-use metering::{MeteringContract, MeteringContractClient, MeteringError};
-
-fn setup() -> (Env, MeteringContractClient<'static>) {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -18,6 +15,16 @@ fn setup() -> (Env, MeteringContractClient<'static>) {
     let outsider = Address::generate(&env);
 
     (env, client, admin, outsider)
+}
+
+fn setup() -> (Env, MeteringContractClient<'static>) {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(MeteringContract, ());
+    let client = MeteringContractClient::new(&env, &contract_id);
+
+    (env, client)
 }
 
 #[test]
@@ -41,7 +48,10 @@ fn stateful_entrypoints_reject_calls_before_initialization() {
         storage_cost: 4,
     };
 
-    assert_eq!(client.try_get_admin(), Err(Ok(MeteringError::NotInitialized)));
+    assert_eq!(
+        client.try_get_admin(),
+        Err(Ok(MeteringError::NotInitialized))
+    );
     assert_eq!(
         client.try_set_gas_costs(&admin, &costs),
         Err(Ok(MeteringError::NotInitialized))
@@ -86,8 +96,6 @@ fn post_initialize_constraints_still_enforce_admin_boundaries() {
         Err(Ok(MeteringError::Unauthorized))
     );
     assert_eq!(client.get_gas_costs(), GasCosts::default_costs());
-
-    (env, client)
 }
 
 #[test]

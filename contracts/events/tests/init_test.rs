@@ -123,7 +123,10 @@ fn test_not_initialized_before_initialize() {
 #[test]
 fn test_is_initialized_after_initialize() {
     let (_env, client, _admin) = setup();
-    assert!(client.is_initialized(), "Contract must be initialized after initialize()");
+    assert!(
+        client.is_initialized(),
+        "Contract must be initialized after initialize()"
+    );
 }
 
 /// After initialize(), get_admin() must return the exact address passed in.

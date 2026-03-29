@@ -160,7 +160,10 @@ fn test_automatic_rotation_on_primary_failure() {
         &s(&env, "diagnosis"),
     );
 
-    assert!(request_id > 0, "Request should succeed with secondary provider");
+    assert!(
+        request_id > 0,
+        "Request should succeed with secondary provider"
+    );
 
     // Verify request was created with secondary provider
     let request = client.get_analysis_request(&request_id);
@@ -270,7 +273,10 @@ fn test_provider_recovery_after_pause() {
     assert_eq!(request_id_2, 2u64);
 
     let request_2 = client.get_analysis_request(&request_id_2);
-    assert_eq!(request_2.provider_id, 1u32, "Should use reactivated primary");
+    assert_eq!(
+        request_2.provider_id, 1u32,
+        "Should use reactivated primary"
+    );
 }
 
 /// Test rapid provider failures and rotation stress
@@ -554,7 +560,7 @@ fn test_event_emission_on_provider_status_change() {
     for event in events.iter() {
         // Events are tuples of (topics, data)
         // We're looking for EVT_PROVIDER_STATUS
-        if let Ok(event_topics) = event.0.try_into_val::<Vec<String>(&env) {
+        if let Ok(event_topics) = event.0.try_into_val::<Vec<String>>(&env) {
             if event_topics
                 .iter()
                 .any(|t| t == String::from_str(&env, "PRV_STS"))
@@ -762,7 +768,11 @@ fn test_concurrent_requests_during_rotation() {
     }
 
     // All requests should succeed
-    assert_eq!(request_ids.len(), 3, "All concurrent requests should succeed");
+    assert_eq!(
+        request_ids.len(),
+        3,
+        "All concurrent requests should succeed"
+    );
 
     // Pause one provider mid-flight
     client.set_provider_status(&admin, &2u32, &ProviderStatus::Paused);
@@ -890,5 +900,8 @@ fn test_end_to_end_provider_failure_and_recovery() {
     assert_eq!(requests[0].provider_id, 1u32, "Request 1: Primary");
     assert_eq!(requests[1].provider_id, 2u32, "Request 2: Secondary");
     assert_eq!(requests[2].provider_id, 3u32, "Request 3: Tertiary");
-    assert_eq!(requests[3].provider_id, 1u32, "Request 4: Primary (recovered)");
+    assert_eq!(
+        requests[3].provider_id, 1u32,
+        "Request 4: Primary (recovered)"
+    );
 }

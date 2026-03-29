@@ -536,3 +536,93 @@ fn test_double_commit_rejected() {
     let result = client.try_commit_vote(&voter, &id, &commit);
     assert!(result.is_err());
 }
+
+// ── Replay / duplicate execution simulation ──────────────────────────────────
+
+/// Compute the commitment hash according to the current on-chain logic:
+/// SHA-256(proposal_id_le_bytes || choice_byte || salt_32bytes)
+fn compute_commitment(
+    env: &Env,
+    proposal_id: u64,
+    choice: &VoteChoice,
+    salt: &BytesN<32>,
+) -> BytesN<32> {
+    use soroban_sdk::Bytes;
+    let mut data = Bytes::new(env);
+    for b in proposal_id.to_le_bytes().iter() {
+        data.push_back(*b);
+    }
+    let choice_byte: u8 = match choice {
+        VoteChoice::For => 0,
+        VoteChoice::Against => 1,
+        VoteChoice::Veto => 2,
+    };
+    data.push_back(choice_byte);
+    for i in 0..32u32 {
+        data.push_back(salt.get(i).unwrap_or(0));
+    }
+    env.crypto().sha256(&data).into()
+}
+
+#[test]
+fn test_execute_proposal_is_not_replayable() {
+    let env = create_env();
+    env.mock_all_auths();
+    let (contract_id, client) = register_governor(&env);
+
+    // Initialize with a small total supply so quorum is easy to meet.
+    let admin = Address::generate(&env);
+    let staking = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    client.initialize(&admin, &staking, &treasury, &1_000i128);
+
+    let proposer = Address::generate(&env);
+    let voter = Address::generate(&env);
+    set_mock_stake(&env, &contract_id, &proposer, 10_000);
+    set_mock_stake(&env, &contract_id, &voter, 10_000);
+
+    let target = Address::generate(&env);
+    let actions = single_action(&env, &target);
+
+    let id = client.create_proposal(
+        &proposer,
+        &ProposalType::ParameterChange,
+        &String::from_str(&env, "Replay protection test"),
+        &actions,
+    );
+
+    // Draft → Discussion → Voting
+    client.advance_phase(&proposer, &id);
+    advance_time(&env, 3 * 24 * 3600 + 1);
+    client.advance_phase(&voter, &id);
+
+    // Commit + reveal a FOR vote with a matching commitment.
+    let salt = BytesN::from_array(&env, &[9u8; 32]);
+    let choice = VoteChoice::For;
+    let commitment = compute_commitment(&env, id, &choice, &salt);
+    client.commit_vote(&voter, &id, &commitment);
+    let revealed_power = client.reveal_vote(&voter, &id, &choice, &salt);
+    assert!(revealed_power > 0);
+
+    // Voting → Timelock
+    advance_time(&env, 5 * 24 * 3600 + 1);
+    let phase = client.advance_phase(&voter, &id);
+    assert!(matches!(phase, ProposalPhase::Timelock));
+
+    // Timelock → Execution
+    let p = client.get_proposal(&id).unwrap();
+    let now = env.ledger().timestamp();
+    if p.timelock_ends > now {
+        advance_time(&env, p.timelock_ends - now + 1);
+    }
+    let phase = client.advance_phase(&voter, &id);
+    assert!(matches!(phase, ProposalPhase::Execution));
+
+    // Execute once should succeed.
+    let executor = Address::generate(&env);
+    client.execute_proposal(&executor, &id);
+
+    // Replay attempt: executing again must fail (proposal no longer in Execution phase).
+    let res = client.try_execute_proposal(&executor, &id);
+    assert!(res.is_err());
+}

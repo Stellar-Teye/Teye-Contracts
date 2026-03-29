@@ -186,10 +186,7 @@ fn test_subscribe_emits_event() {
     client.subscribe(&subscriber, &pattern);
     let after = env.events().all().len();
 
-    assert!(
-        after > before,
-        "subscribe() must emit at least one event"
-    );
+    assert!(after > before, "subscribe() must emit at least one event");
 }
 
 /// unsubscribe() must emit an event when a subscription is removed.
@@ -205,10 +202,7 @@ fn test_unsubscribe_emits_event() {
     client.unsubscribe(&subscriber, &sub_id);
     let after = env.events().all().len();
 
-    assert!(
-        after > before,
-        "unsubscribe() must emit at least one event"
-    );
+    assert!(after > before, "unsubscribe() must emit at least one event");
 }
 
 // ── Consumer group events ────────────────────────────────────────────────────

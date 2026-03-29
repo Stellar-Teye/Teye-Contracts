@@ -16,14 +16,17 @@ fn test_cross_contract_calling_invariants() {
 
     let topic = String::from_str(&env, "external.failure");
     let hash = String::from_str(&env, "sha256:cross_contract");
-    
+
     // Test that the contract parses and handles successfully
     client.register_schema(&admin, &topic, &1, &hash);
-    
+
     // Ensure we can publish parsing cross contract mock
     let payload = String::from_str(&env, "payload");
     client.publish_event(&admin, &topic, &1, &payload);
-    
+
     let all_events = env.events().all();
-    assert!(!all_events.is_empty(), "Cross contract calling invariants not respected");
+    assert!(
+        !all_events.is_empty(),
+        "Cross contract calling invariants not respected"
+    );
 }

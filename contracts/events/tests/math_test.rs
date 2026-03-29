@@ -65,7 +65,10 @@ fn test_lamport_clock_strict_monotonic_large_batch() {
     }
 
     let clock = client.get_lamport_clock();
-    assert_eq!(clock, 50, "Lamport clock must equal number of published events");
+    assert_eq!(
+        clock, 50,
+        "Lamport clock must equal number of published events"
+    );
 }
 
 // ── Schema version boundary ──────────────────────────────────────────────────
