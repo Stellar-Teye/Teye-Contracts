@@ -78,9 +78,9 @@ fn test_aggregate_records() {
         time_bucket: 1_700_000_000,
     };
 
-    // Initial value should be zeroed.
+    // Initial value should be zeroed (version 0 means non-existent or stale).
     let initial = client.get_metric(&kind, &dims);
-    assert_eq!(initial, MetricValue { count: 0, sum: 0 });
+    assert_eq!(initial, MetricValue { count: 0, sum: 0, version: 0 });
 
     // Encrypt some records
     let c1 = client.encrypt(&10);
@@ -147,4 +147,90 @@ fn test_trend_over_time_buckets() {
     assert_eq!(v1.count, 1);
     assert_eq!(t2, 2);
     assert_eq!(v2.count, 1);
+}
+
+#[test]
+fn test_stale_data_invalidation() {
+    let (env, client, admin, aggregator) = setup();
+
+    let kind = symbol_short!("STALE");
+    let dims = MetricDimensions {
+        region: None,
+        age_band: None,
+        condition: None,
+        time_bucket: 100,
+    };
+
+    // 1. Aggregate some data (Ver 1)
+    let mut recs = Vec::new(&env);
+    recs.push_back(client.encrypt(&100));
+    client.aggregate_records(&aggregator, &kind, &dims, &recs);
+
+    let val1 = client.get_metric(&kind, &dims);
+    assert_eq!(val1.count, 1);
+    assert_eq!(val1.version, 1);
+
+    // 2. Change aggregator (Increments version to 2)
+    let new_aggregator = Address::generate(&env);
+    client.set_aggregator(&new_aggregator);
+    assert_eq!(client.get_dep_ver(), 2);
+
+    // 3. Verify data is now stale (returns 0)
+    let val2 = client.get_metric(&kind, &dims);
+    assert_eq!(val2.count, 0);
+    assert_eq!(val2.sum, 0);
+    assert_eq!(val2.version, 0);
+
+    // 4. Aggregate more data (New Aggregator, Ver 2)
+    // Note: client.mock_all_auths() is on, so we can use new_aggregator
+    client.aggregate_records(&new_aggregator, &kind, &dims, &recs);
+
+    let val3 = client.get_metric(&kind, &dims);
+    assert_eq!(val3.count, 1); // Reset to 0 then added 1
+    assert_eq!(val3.version, 2);
+}
+
+#[test]
+fn test_paillier_key_update_invalidates_data() {
+    let (env, client, _admin, aggregator) = setup();
+
+    let kind = symbol_short!("KEY_CHG");
+    let dims = MetricDimensions {
+        region: None,
+        age_band: None,
+        condition: None,
+        time_bucket: 200,
+    };
+
+    let mut recs = Vec::new(&env);
+    recs.push_back(client.encrypt(&50));
+    client.aggregate_records(&aggregator, &kind, &dims, &recs);
+
+    // Update keys
+    let new_pub = PaillierPublicKey { n: 55, nn: 3025, g: 56 };
+    let new_priv = PaillierPrivateKey { lambda: 40, mu: 10 };
+    client.set_paillier_keys(&new_pub, &Some(new_priv));
+
+    assert_eq!(client.get_dep_ver(), 2);
+    
+    let val = client.get_metric(&kind, &dims);
+    assert_eq!(val.count, 0);
+}
+
+#[test]
+#[should_panic]
+fn test_unauthorized_dependency_update() {
+    let env = Env::default();
+    let contract_id = env.register(AnalyticsContract, ());
+    let client = AnalyticsContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let aggregator = Address::generate(&env);
+    let mallory = Address::generate(&env);
+
+    let pub_key = PaillierPublicKey { n: 33, nn: 1089, g: 34 };
+    client.initialize(&admin, &aggregator, &pub_key, &None);
+
+    // Mallory tries to change aggregator
+    client.set_aggregator(&mallory); // This should panic because Mallory is calling but admin is required
 }

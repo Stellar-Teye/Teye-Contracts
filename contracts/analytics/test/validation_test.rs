@@ -91,7 +91,7 @@ fn test_aggregate_records_rejects_empty_ciphertext_vector() {
         client.try_aggregate_records(&aggregator, &kind, &dims, &empty_records),
         Err(Ok(ContractError::InvalidInput))
     );
-    assert_eq!(client.get_metric(&kind, &dims), MetricValue { count: 0, sum: 0 });
+    assert_eq!(client.get_metric(&kind, &dims), MetricValue { count: 0, sum: 0, version: 0 });
 }
 
 #[test]
@@ -107,7 +107,7 @@ fn test_aggregate_records_in_window_rejects_empty_ciphertext_vector() {
         client.try_aggregate_records_in_window(&aggregator, &kind, &dims, &empty_records, &5, &20),
         Err(Ok(ContractError::InvalidInput))
     );
-    assert_eq!(client.get_metric(&kind, &dims), MetricValue { count: 0, sum: 0 });
+    assert_eq!(client.get_metric(&kind, &dims), MetricValue { count: 0, sum: 0, version: 0 });
 }
 
 #[test]

@@ -1,6 +1,6 @@
 extern crate std;
 
-use analytics::{AnalyticsContract, AnalyticsContractClient, MetricDimensions, ContractError};
+use analytics::{AnalyticsContract, AnalyticsContractClient, MetricDimensions, ContractError, MetricValue};
 use soroban_sdk::{testutils::Address as _, Address, Env, Vec, symbol_short};
 
 fn setup_cross_query_test() -> (Env, AnalyticsContractClient<'static>, Address, Address) {
@@ -29,7 +29,7 @@ fn setup_cross_query_test() -> (Env, AnalyticsContractClient<'static>, Address, 
 fn test_cross_tenant_data_access_prevention() {
     let (env, client, _admin, aggregator) = setup_cross_query_test();
 
-    let kind = symbol_short!("PATIENT_DATA");
+    let kind = symbol_short!("PAT_DATA");
     let time_bucket = 1_700_000_000;
 
     // Set up data for two different tenants
@@ -49,12 +49,12 @@ fn test_cross_tenant_data_access_prevention() {
 
     // Add sensitive data for Tenant A
     let mut tenant_a_records = Vec::new(&env);
-    tenant_a_records.push_back(client.encrypt(&1000)); // 1000 patients
+    tenant_a_records.push_back(client.encrypt(&1000i128)); // 1000 patients
     client.aggregate_records(&aggregator, &kind, &tenant_a_dims, &tenant_a_records);
 
     // Add sensitive data for Tenant B
     let mut tenant_b_records = Vec::new(&env);
-    tenant_b_records.push_back(client.encrypt(&500)); // 500 patients
+    tenant_b_records.push_back(client.encrypt(&500i128)); // 500 patients
     client.aggregate_records(&aggregator, &kind, &tenant_b_dims, &tenant_b_records);
 
     // Attempt 1: Try to access Tenant A data using Tenant B's region
@@ -71,7 +71,7 @@ fn test_cross_tenant_data_access_prevention() {
 
     // Attempt 2: Try to access non-existent tenant data
     let non_existent_tenant_dims = MetricDimensions {
-        region: Some(symbol_short!("NON_EXISTENT")),
+        region: Some(symbol_short!("NONEXIST")),
         age_band: Some(symbol_short!("A40_64")),
         condition: Some(symbol_short!("DIABETES")),
         time_bucket,
@@ -80,6 +80,7 @@ fn test_cross_tenant_data_access_prevention() {
     let non_existent_result = client.get_metric(&kind, &non_existent_tenant_dims);
     assert_eq!(non_existent_result.count, 0); // No data for non-existent tenant
     assert_eq!(non_existent_result.sum, 0);
+    assert_eq!(non_existent_result.version, 0);
 
     // Attempt 3: Try to use wildcard/None region to access all data
     let wildcard_dims = MetricDimensions {
@@ -92,26 +93,27 @@ fn test_cross_tenant_data_access_prevention() {
     let wildcard_result = client.get_metric(&kind, &wildcard_dims);
     assert_eq!(wildcard_result.count, 0); // No data because no data was stored with None region
     assert_eq!(wildcard_result.sum, 0);
+    assert_eq!(wildcard_result.version, 0);
 }
 
 #[test]
 fn test_cross_condition_data_leakage_prevention() {
     let (env, client, _admin, aggregator) = setup_cross_query_test();
 
-    let kind = symbol_short!("CONDITION_DATA");
+    let kind = symbol_short!("COND_DATA");
     let time_bucket = 1_700_000_000;
-    let region = symbol_short!("HOSPITAL_X");
+    let region = symbol_short!("HOSP_X");
 
     // Set up data for different conditions within same tenant
     let hiv_dims = MetricDimensions {
-        region: Some(region),
+        region: Some(region.clone()),
         age_band: Some(symbol_short!("A40_64")),
         condition: Some(symbol_short!("HIV")),
         time_bucket,
     };
 
     let diabetes_dims = MetricDimensions {
-        region: Some(region),
+        region: Some(region.clone()),
         age_band: Some(symbol_short!("A40_64")),
         condition: Some(symbol_short!("DIABETES")),
         time_bucket,
@@ -119,17 +121,17 @@ fn test_cross_condition_data_leakage_prevention() {
 
     // Add highly sensitive HIV data
     let mut hiv_records = Vec::new(&env);
-    hiv_records.push_back(client.encrypt(&25)); // 25 patients
+    hiv_records.push_back(client.encrypt(&25i128)); // 25 patients
     client.aggregate_records(&aggregator, &kind, &hiv_dims, &hiv_records);
 
     // Add less sensitive diabetes data
     let mut diabetes_records = Vec::new(&env);
-    diabetes_records.push_back(client.encrypt(&150)); // 150 patients
+    diabetes_records.push_back(client.encrypt(&150i128)); // 150 patients
     client.aggregate_records(&aggregator, &kind, &diabetes_dims, &diabetes_records);
 
     // Attempt to cross-query: Try to access HIV data using diabetes dimensions
     let cross_query_dims = MetricDimensions {
-        region: Some(region),
+        region: Some(region.clone()),
         age_band: Some(symbol_short!("A40_64")),
         condition: Some(symbol_short!("HIV")), // Correctly specifying HIV
         time_bucket,
@@ -140,7 +142,7 @@ fn test_cross_condition_data_leakage_prevention() {
 
     // Attempt to access HIV data with wrong condition
     let wrong_condition_dims = MetricDimensions {
-        region: Some(region),
+        region: Some(region.clone()),
         age_band: Some(symbol_short!("A40_64")),
         condition: Some(symbol_short!("CANCER")), // Wrong condition
         time_bucket,
@@ -149,6 +151,7 @@ fn test_cross_condition_data_leakage_prevention() {
     let wrong_condition_result = client.get_metric(&kind, &wrong_condition_dims);
     assert_eq!(wrong_condition_result.count, 0); // No data for wrong condition
     assert_eq!(wrong_condition_result.sum, 0);
+    assert_eq!(wrong_condition_result.version, 0);
 
     // Verify conditions are properly isolated
     let diabetes_result = client.get_metric(&kind, &diabetes_dims);
@@ -162,20 +165,20 @@ fn test_cross_condition_data_leakage_prevention() {
 fn test_cross_age_band_data_isolation() {
     let (env, client, _admin, aggregator) = setup_cross_query_test();
 
-    let kind = symbol_short!("AGE_BAND_DATA");
+    let kind = symbol_short!("AGE_DATA");
     let time_bucket = 1_700_000_000;
     let region = symbol_short!("CLINIC_Y");
 
     // Set up data for different age bands
     let minor_dims = MetricDimensions {
-        region: Some(region),
+        region: Some(region.clone()),
         age_band: Some(symbol_short!("A0_17")), // Minors
         condition: Some(symbol_short!("MYOPIA")),
         time_bucket,
     };
 
     let adult_dims = MetricDimensions {
-        region: Some(region),
+        region: Some(region.clone()),
         age_band: Some(symbol_short!("A18_39")), // Adults
         condition: Some(symbol_short!("MYOPIA")),
         time_bucket,
@@ -183,12 +186,12 @@ fn test_cross_age_band_data_isolation() {
 
     // Add sensitive minor data
     let mut minor_records = Vec::new(&env);
-    minor_records.push_back(client.encrypt(&45)); // 45 minor patients
+    minor_records.push_back(client.encrypt(&45i128)); // 45 minor patients
     client.aggregate_records(&aggregator, &kind, &minor_dims, &minor_records);
 
     // Add adult data
     let mut adult_records = Vec::new(&env);
-    adult_records.push_back(client.encrypt(&120)); // 120 adult patients
+    adult_records.push_back(client.encrypt(&120i128)); // 120 adult patients
     client.aggregate_records(&aggregator, &kind, &adult_dims, &adult_records);
 
     // Attempt to access minor data using adult dimensions
@@ -204,7 +207,7 @@ fn test_cross_age_band_data_isolation() {
 
     // Attempt to access data with wrong age band
     let wrong_age_dims = MetricDimensions {
-        region: Some(region),
+        region: Some(region.clone()),
         age_band: Some(symbol_short!("A65P")), // Senior citizens
         condition: Some(symbol_short!("MYOPIA")),
         time_bucket,
@@ -213,28 +216,29 @@ fn test_cross_age_band_data_isolation() {
     let wrong_age_result = client.get_metric(&kind, &wrong_age_dims);
     assert_eq!(wrong_age_result.count, 0); // No data for this age band
     assert_eq!(wrong_age_result.sum, 0);
+    assert_eq!(wrong_age_result.version, 0);
 }
 
 #[test]
 fn test_cross_time_bucket_data_isolation() {
     let (env, client, _admin, aggregator) = setup_cross_query_test();
 
-    let kind = symbol_short!("TIME_ISOLATION_TEST");
-    let region = symbol_short!("HOSPITAL_Z");
+    let kind = symbol_short!("TIME_ISO");
+    let region = symbol_short!("HOSP_Z");
 
     let time_bucket_jan = 1_700_000_000; // January 2023
     let time_bucket_feb = 1_700_259_200; // February 2023
 
     // Set up data for different time periods
     let jan_dims = MetricDimensions {
-        region: Some(region),
+        region: Some(region.clone()),
         age_band: Some(symbol_short!("A40_64")),
         condition: Some(symbol_short!("CATARACT")),
         time_bucket: time_bucket_jan,
     };
 
     let feb_dims = MetricDimensions {
-        region: Some(region),
+        region: Some(region.clone()),
         age_band: Some(symbol_short!("A40_64")),
         condition: Some(symbol_short!("CATARACT")),
         time_bucket: time_bucket_feb,
@@ -242,12 +246,12 @@ fn test_cross_time_bucket_data_isolation() {
 
     // Add January data
     let mut jan_records = Vec::new(&env);
-    jan_records.push_back(client.encrypt(&30)); // 30 procedures in January
+    jan_records.push_back(client.encrypt(&30i128)); // 30 procedures in January
     client.aggregate_records(&aggregator, &kind, &jan_dims, &jan_records);
 
     // Add February data
     let mut feb_records = Vec::new(&env);
-    feb_records.push_back(client.encrypt(&45)); // 45 procedures in February
+    feb_records.push_back(client.encrypt(&45i128)); // 45 procedures in February
     client.aggregate_records(&aggregator, &kind, &feb_dims, &feb_records);
 
     // Attempt to access January data using February time bucket
@@ -263,7 +267,7 @@ fn test_cross_time_bucket_data_isolation() {
 
     // Attempt to access data with wrong time bucket
     let wrong_time_dims = MetricDimensions {
-        region: Some(region),
+        region: Some(region.clone()),
         age_band: Some(symbol_short!("A40_64")),
         condition: Some(symbol_short!("CATARACT")),
         time_bucket: 1_699_000_000, // Wrong time
@@ -272,63 +276,64 @@ fn test_cross_time_bucket_data_isolation() {
     let wrong_time_result = client.get_metric(&kind, &wrong_time_dims);
     assert_eq!(wrong_time_result.count, 0); // No data for wrong time
     assert_eq!(wrong_time_result.sum, 0);
+    assert_eq!(wrong_time_result.version, 0);
 }
 
 #[test]
 fn test_complex_cross_query_attempts() {
     let (env, client, _admin, aggregator) = setup_cross_query_test();
 
-    let kind = symbol_short!("COMPLEX_ISOLATION");
+    let kind = symbol_short!("CMPLX_ISO");
     let time_bucket = 1_700_000_000;
 
     // Create a complex multi-dimensional dataset
     let base_dims = MetricDimensions {
-        region: Some(symbol_short!("HOSPITAL_SECURE")),
+        region: Some(symbol_short!("HOSP_SEC")),
         age_band: Some(symbol_short!("A40_64")),
-        condition: Some(symbol_short!("MENTAL_HEALTH")),
+        condition: Some(symbol_short!("MENT_HLTH")),
         time_bucket,
     };
 
     // Add sensitive mental health data
     let mut sensitive_records = Vec::new(&env);
-    sensitive_records.push_back(client.encrypt(&15)); // 15 patients
+    sensitive_records.push_back(client.encrypt(&15i128)); // 15 patients
     client.aggregate_records(&aggregator, &kind, &base_dims, &sensitive_records);
 
     // Attempt 1: Change one dimension at a time to try to access data
     let mut cross_attempts = vec![
         // Wrong region, same other dimensions
         MetricDimensions {
-            region: Some(symbol_short!("WRONG_HOSPITAL")),
+            region: Some(symbol_short!("WRONG_HSP")),
             age_band: Some(symbol_short!("A40_64")),
-            condition: Some(symbol_short!("MENTAL_HEALTH")),
+            condition: Some(symbol_short!("MENT_HLTH")),
             time_bucket,
         },
         // Wrong age band, same other dimensions
         MetricDimensions {
-            region: Some(symbol_short!("HOSPITAL_SECURE")),
+            region: Some(symbol_short!("HOSP_SEC")),
             age_band: Some(symbol_short!("A18_39")),
-            condition: Some(symbol_short!("MENTAL_HEALTH")),
+            condition: Some(symbol_short!("MENT_HLTH")),
             time_bucket,
         },
         // Wrong condition, same other dimensions
         MetricDimensions {
-            region: Some(symbol_short!("HOSPITAL_SECURE")),
+            region: Some(symbol_short!("HOSP_SEC")),
             age_band: Some(symbol_short!("A40_64")),
-            condition: Some(symbol_short!("PHYSICAL_HEALTH")),
+            condition: Some(symbol_short!("PHYS_HLTH")),
             time_bucket,
         },
         // Wrong time bucket, same other dimensions
         MetricDimensions {
-            region: Some(symbol_short!("HOSPITAL_SECURE")),
+            region: Some(symbol_short!("HOSP_SEC")),
             age_band: Some(symbol_short!("A40_64")),
-            condition: Some(symbol_short!("MENTAL_HEALTH")),
+            condition: Some(symbol_short!("MENT_HLTH")),
             time_bucket: 1_699_000_000,
         },
         // All dimensions wrong
         MetricDimensions {
-            region: Some(symbol_short!("WRONG_HOSPITAL")),
+            region: Some(symbol_short!("WRONG_HSP")),
             age_band: Some(symbol_short!("A18_39")),
-            condition: Some(symbol_short!("PHYSICAL_HEALTH")),
+            condition: Some(symbol_short!("PHYS_HLTH")),
             time_bucket: 1_699_000_000,
         },
     ];
@@ -339,6 +344,7 @@ fn test_complex_cross_query_attempts() {
         // All cross-query attempts should return no data
         assert_eq!(result.count, 0, "Cross-query attempt {} should return no data", i);
         assert_eq!(result.sum, 0, "Cross-query attempt {} should return no sum", i);
+        assert_eq!(result.version, 0);
     }
 
     // Verify the original data is still accessible with correct dimensions
@@ -350,43 +356,43 @@ fn test_complex_cross_query_attempts() {
 fn test_trend_cross_query_isolation() {
     let (env, client, _admin, aggregator) = setup_cross_query_test();
 
-    let kind = symbol_short!("TREND_ISOLATION");
-    let region_a = symbol_short!("HOSPITAL_A");
-    let region_b = symbol_short!("HOSPITAL_B");
+    let kind = symbol_short!("TRND_ISO");
+    let region_a = symbol_short!("HOSP_A");
+    let region_b = symbol_short!("HOSP_B");
 
     // Create trend data for two different tenants
     for time_bucket in 1..=5 {
         // Tenant A data
         let dims_a = MetricDimensions {
-            region: Some(region_a),
+            region: Some(region_a.clone()),
             age_band: Some(symbol_short!("A40_64")),
-            condition: Some(symbol_short!("HEART_DISEASE")),
+            condition: Some(symbol_short!("HEART_DIS")),
             time_bucket,
         };
 
         let mut records_a = Vec::new(&env);
-        records_a.push_back(client.encrypt(&(time_bucket * 10)));
+        records_a.push_back(client.encrypt(&( (time_bucket * 10) as i128 )));
         client.aggregate_records(&aggregator, &kind, &dims_a, &records_a);
 
         // Tenant B data
         let dims_b = MetricDimensions {
-            region: Some(region_b),
+            region: Some(region_b.clone()),
             age_band: Some(symbol_short!("A40_64")),
-            condition: Some(symbol_short!("HEART_DISEASE")),
+            condition: Some(symbol_short!("HEART_DIS")),
             time_bucket,
         };
 
         let mut records_b = Vec::new(&env);
-        records_b.push_back(client.encrypt(&(time_bucket * 5)));
+        records_b.push_back(client.encrypt(&( (time_bucket * 5) as i128 )));
         client.aggregate_records(&aggregator, &kind, &dims_b, &records_b);
     }
 
     // Attempt to get trend for Tenant A using Tenant B's region
     let malicious_trend = client.get_trend(
         &kind,
-        &Some(region_b), // Trying to get A's data but specifying B's region
+        &Some(region_b.clone()), // Trying to get A's data but specifying B's region
         &Some(symbol_short!("A40_64")),
-        &Some(symbol_short!("HEART_DISEASE")),
+        &Some(symbol_short!("HEART_DIS")),
         &1,
         &5,
     );
@@ -402,18 +408,18 @@ fn test_trend_cross_query_isolation() {
     // Get legitimate trends for comparison
     let legitimate_trend_a = client.get_trend(
         &kind,
-        &Some(region_a),
+        &Some(region_a.clone()),
         &Some(symbol_short!("A40_64")),
-        &Some(symbol_short!("HEART_DISEASE")),
+        &Some(symbol_short!("HEART_DIS")),
         &1,
         &5,
     );
 
     let legitimate_trend_b = client.get_trend(
         &kind,
-        &Some(region_b),
+        &Some(region_b.clone()),
         &Some(symbol_short!("A40_64")),
-        &Some(symbol_short!("HEART_DISEASE")),
+        &Some(symbol_short!("HEART_DIS")),
         &1,
         &5,
     );
@@ -436,14 +442,14 @@ fn test_trend_cross_query_isolation() {
 fn test_null_dimension_cross_queries() {
     let (env, client, _admin, aggregator) = setup_cross_query_test();
 
-    let kind = symbol_short!("NULL_DIMENSION_TEST");
+    let kind = symbol_short!("NUL_D_T");
     let time_bucket = 1_700_000_000;
 
     // Create data with specific dimensions
     let specific_dims = MetricDimensions {
-        region: Some(symbol_short!("SPECIFIC_HOSPITAL")),
+        region: Some(symbol_short!("SPEC_HOSP")),
         age_band: Some(symbol_short!("A40_64")),
-        condition: Some(symbol_short!("SPECIFIC_CONDITION")),
+        condition: Some(symbol_short!("SPEC_COND")),
         time_bucket,
     };
 
@@ -451,32 +457,35 @@ fn test_null_dimension_cross_queries() {
     let null_region_dims = MetricDimensions {
         region: None,
         age_band: Some(symbol_short!("A40_64")),
-        condition: Some(symbol_short!("SPECIFIC_CONDITION")),
+        condition: Some(symbol_short!("SPEC_COND")),
         time_bucket,
     };
 
     let null_age_dims = MetricDimensions {
-        region: Some(symbol_short!("SPECIFIC_HOSPITAL")),
+        region: Some(symbol_short!("SPEC_HOSP")),
         age_band: None,
-        condition: Some(symbol_short!("SPECIFIC_CONDITION")),
+        condition: Some(symbol_short!("SPEC_COND")),
         time_bucket,
     };
 
     let null_condition_dims = MetricDimensions {
-        region: Some(symbol_short!("SPECIFIC_HOSPITAL")),
+        region: Some(symbol_short!("SPEC_HOSP")),
         age_band: Some(symbol_short!("A40_64")),
         condition: None,
         time_bucket,
     };
 
     // Add data to all dimension combinations
-    let mut records = Vec::new(&env);
-    records.push_back(client.encrypt(&10));
+    let records = {
+        let mut r = Vec::new(&env);
+        r.push_back(client.encrypt(&10i128));
+        r
+    };
 
-    client.aggregate_records(&aggregator, &kind, &specific_dims, &records.clone());
-    client.aggregate_records(&aggregator, &kind, &null_region_dims, &records.clone());
-    client.aggregate_records(&aggregator, &kind, &null_age_dims, &records.clone());
-    client.aggregate_records(&aggregator, &kind, &null_condition_dims, &records.clone());
+    client.aggregate_records(&aggregator, &kind, &specific_dims, &records);
+    client.aggregate_records(&aggregator, &kind, &null_region_dims, &records);
+    client.aggregate_records(&aggregator, &kind, &null_age_dims, &records);
+    client.aggregate_records(&aggregator, &kind, &null_condition_dims, &records);
 
     // Attempt cross-queries between null and specific dimensions
     let cross_queries = vec![
@@ -510,4 +519,5 @@ fn test_null_dimension_cross_queries() {
     let wrong_null_result = client.get_metric(&kind, &wrong_null_dims);
     assert_eq!(wrong_null_result.count, 0); // No data stored with all null dimensions
     assert_eq!(wrong_null_result.sum, 0);
+    assert_eq!(wrong_null_result.version, 0);
 }

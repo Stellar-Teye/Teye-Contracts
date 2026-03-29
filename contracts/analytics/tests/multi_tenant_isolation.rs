@@ -29,19 +29,19 @@ fn setup_multi_tenant() -> (Env, AnalyticsContractClient<'static>, Address, Addr
 fn test_tenant_data_isolation_by_region() {
     let (env, client, _admin, aggregator) = setup_multi_tenant();
 
-    let kind = symbol_short!("PATIENT_COUNT");
+    let kind = symbol_short!("PAT_CNT");
     let time_bucket = 1_700_000_000;
 
     // Create data for two different tenants (regions)
     let tenant_a_dims = MetricDimensions {
-        region: Some(symbol_short!("HOSPITAL_A")),
+        region: Some(symbol_short!("HOSP_A")),
         age_band: Some(symbol_short!("A40_64")),
         condition: Some(symbol_short!("MYOPIA")),
         time_bucket,
     };
 
     let tenant_b_dims = MetricDimensions {
-        region: Some(symbol_short!("HOSPITAL_B")),
+        region: Some(symbol_short!("HOSP_B")),
         age_band: Some(symbol_short!("A40_64")),
         condition: Some(symbol_short!("MYOPIA")),
         time_bucket,
@@ -49,12 +49,12 @@ fn test_tenant_data_isolation_by_region() {
 
     // Add data for Tenant A
     let mut tenant_a_records = Vec::new(&env);
-    tenant_a_records.push_back(client.encrypt(&100)); // 100 patients
+    tenant_a_records.push_back(client.encrypt(&100i128)); // 100 patients
     client.aggregate_records(&aggregator, &kind, &tenant_a_dims, &tenant_a_records);
 
     // Add data for Tenant B
     let mut tenant_b_records = Vec::new(&env);
-    tenant_b_records.push_back(client.encrypt(&50)); // 50 patients
+    tenant_b_records.push_back(client.encrypt(&50i128)); // 50 patients
     client.aggregate_records(&aggregator, &kind, &tenant_b_dims, &tenant_b_records);
 
     // Verify isolation: each tenant should only see their own data
@@ -71,7 +71,7 @@ fn test_tenant_data_isolation_by_region() {
 
     // Query with Tenant A's dimensions should not include Tenant B's data
     let cross_check_dims_a = MetricDimensions {
-        region: Some(symbol_short!("HOSPITAL_A")),
+        region: Some(symbol_short!("HOSP_A")),
         age_band: Some(symbol_short!("A40_64")),
         condition: Some(symbol_short!("MYOPIA")),
         time_bucket,
@@ -82,7 +82,7 @@ fn test_tenant_data_isolation_by_region() {
 
     // Query with Tenant B's dimensions should not include Tenant A's data
     let cross_check_dims_b = MetricDimensions {
-        region: Some(symbol_short!("HOSPITAL_B")),
+        region: Some(symbol_short!("HOSP_B")),
         age_band: Some(symbol_short!("A40_64")),
         condition: Some(symbol_short!("MYOPIA")),
         time_bucket,
@@ -96,38 +96,34 @@ fn test_tenant_data_isolation_by_region() {
 fn test_cross_tenant_query_prevention() {
     let (env, client, _admin, aggregator) = setup_multi_tenant();
 
-    let kind = symbol_short!("SENSITIVE_DATA");
+    let kind = symbol_short!("SENS_DATA");
     let time_bucket = 1_700_000_000;
 
     // Create data for multiple tenants
     let tenants = vec![
-        symbol_short!("HOSPITAL_A"),
-        symbol_short!("HOSPITAL_B"),
+        symbol_short!("HOSP_A"),
+        symbol_short!("HOSP_B"),
         symbol_short!("CLINIC_C"),
     ];
 
-    let mut expected_counts = std::collections::HashMap::new();
-
     for (i, tenant) in tenants.iter().enumerate() {
         let dims = MetricDimensions {
-            region: Some(*tenant),
+            region: Some(tenant.clone()),
             age_band: Some(symbol_short!("A40_64")),
             condition: Some(symbol_short!("GLAUCOMA")),
             time_bucket,
         };
 
         let mut records = Vec::new(&env);
-        let patient_count = (i + 1) * 25; // 25, 50, 75 patients
+        let patient_count = ((i + 1) * 25) as i128; // 25, 50, 75 patients
         records.push_back(client.encrypt(&patient_count));
         client.aggregate_records(&aggregator, &kind, &dims, &records);
-
-        expected_counts.insert(*tenant, patient_count);
     }
 
     // Verify that each tenant's data is isolated
     for tenant in &tenants {
         let dims = MetricDimensions {
-            region: Some(*tenant),
+            region: Some(tenant.clone()),
             age_band: Some(symbol_short!("A40_64")),
             condition: Some(symbol_short!("GLAUCOMA")),
             time_bucket,
@@ -138,7 +134,7 @@ fn test_cross_tenant_query_prevention() {
 
         // Ensure no cross-tenant data contamination
         let other_tenant_dims = MetricDimensions {
-            region: Some(symbol_short!("UNAUTHORIZED_TENANT")),
+            region: Some(symbol_short!("UNAUTH_T")),
             age_band: Some(symbol_short!("A40_64")),
             condition: Some(symbol_short!("GLAUCOMA")),
             time_bucket,
@@ -147,6 +143,7 @@ fn test_cross_tenant_query_prevention() {
         let unauthorized_metrics = client.get_metric(&kind, &other_tenant_dims);
         assert_eq!(unauthorized_metrics.count, 0); // No data for unauthorized tenant
         assert_eq!(unauthorized_metrics.sum, 0);
+        assert_eq!(unauthorized_metrics.version, 0);
     }
 }
 
@@ -154,21 +151,21 @@ fn test_cross_tenant_query_prevention() {
 fn test_tenant_isolation_with_different_dimensions() {
     let (env, client, _admin, aggregator) = setup_multi_tenant();
 
-    let kind = symbol_short!("TREATMENT_OUTCOMES");
+    let kind = symbol_short!("TREAT_OUT");
     let time_bucket = 1_700_000_000;
 
     // Same region, different age bands - should be isolated
-    let region = symbol_short!("REGION_X");
+    let region = symbol_short!("REG_X");
     
     let age_band_young = MetricDimensions {
-        region: Some(region),
+        region: Some(region.clone()),
         age_band: Some(symbol_short!("A18_39")),
         condition: Some(symbol_short!("MYOPIA")),
         time_bucket,
     };
 
     let age_band_older = MetricDimensions {
-        region: Some(region),
+        region: Some(region.clone()),
         age_band: Some(symbol_short!("A40_64")),
         condition: Some(symbol_short!("MYOPIA")),
         time_bucket,
@@ -176,12 +173,12 @@ fn test_tenant_isolation_with_different_dimensions() {
 
     // Add data for young age band
     let mut young_records = Vec::new(&env);
-    young_records.push_back(client.encrypt(&30));
+    young_records.push_back(client.encrypt(&30i128));
     client.aggregate_records(&aggregator, &kind, &age_band_young, &young_records);
 
     // Add data for older age band
     let mut older_records = Vec::new(&env);
-    older_records.push_back(client.encrypt(&45));
+    older_records.push_back(client.encrypt(&45i128));
     client.aggregate_records(&aggregator, &kind, &age_band_older, &older_records);
 
     // Verify isolation between age bands within same region
@@ -199,21 +196,21 @@ fn test_tenant_isolation_with_different_dimensions() {
 fn test_tenant_isolation_with_time_buckets() {
     let (env, client, _admin, aggregator) = setup_multi_tenant();
 
-    let kind = symbol_short!("MONTHLY_REPORTS");
-    let region = symbol_short!("HOSPITAL_A");
+    let kind = symbol_short!("MON_REPT");
+    let region = symbol_short!("HOSP_A");
 
     let time_bucket_1 = 1_700_000_000; // January
     let time_bucket_2 = 1_700_259_200; // February (approx)
 
     let dims_jan = MetricDimensions {
-        region: Some(region),
+        region: Some(region.clone()),
         age_band: Some(symbol_short!("A40_64")),
         condition: Some(symbol_short!("CATARACT")),
         time_bucket: time_bucket_1,
     };
 
     let dims_feb = MetricDimensions {
-        region: Some(region),
+        region: Some(region.clone()),
         age_band: Some(symbol_short!("A40_64")),
         condition: Some(symbol_short!("CATARACT")),
         time_bucket: time_bucket_2,
@@ -221,12 +218,12 @@ fn test_tenant_isolation_with_time_buckets() {
 
     // Add data for January
     let mut jan_records = Vec::new(&env);
-    jan_records.push_back(client.encrypt(&20));
+    jan_records.push_back(client.encrypt(&20i128));
     client.aggregate_records(&aggregator, &kind, &dims_jan, &jan_records);
 
     // Add data for February
     let mut feb_records = Vec::new(&env);
-    feb_records.push_back(client.encrypt(&35));
+    feb_records.push_back(client.encrypt(&35i128));
     client.aggregate_records(&aggregator, &kind, &dims_feb, &feb_records);
 
     // Verify time-based isolation
@@ -242,7 +239,7 @@ fn test_tenant_isolation_with_time_buckets() {
 
     // Querying a non-existent time bucket should return zero
     let dims_nonexistent = MetricDimensions {
-        region: Some(region),
+        region: Some(region.clone()),
         age_band: Some(symbol_short!("A40_64")),
         condition: Some(symbol_short!("CATARACT")),
         time_bucket: 1_699_000_000, // Before January
@@ -251,17 +248,18 @@ fn test_tenant_isolation_with_time_buckets() {
     let nonexistent_metrics = client.get_metric(&kind, &dims_nonexistent);
     assert_eq!(nonexistent_metrics.count, 0);
     assert_eq!(nonexistent_metrics.sum, 0);
+    assert_eq!(nonexistent_metrics.version, 0);
 }
 
 #[test]
 fn test_aggregate_tenant_isolation() {
     let (env, client, _admin, aggregator) = setup_multi_tenant();
 
-    let kind = symbol_short!("AGGREGATE_TEST");
+    let kind = symbol_short!("AGG_TEST");
     let time_bucket = 1_700_000_000;
 
     // Create multiple entries for the same tenant
-    let tenant_a_region = symbol_short!("HOSPITAL_A");
+    let tenant_a_region = symbol_short!("HOSP_A");
     
     let conditions = vec![
         symbol_short!("MYOPIA"),
@@ -271,23 +269,23 @@ fn test_aggregate_tenant_isolation() {
 
     for condition in &conditions {
         let dims = MetricDimensions {
-            region: Some(tenant_a_region),
+            region: Some(tenant_a_region.clone()),
             age_band: Some(symbol_short!("A40_64")),
-            condition: Some(*condition),
+            condition: Some(condition.clone()),
             time_bucket,
         };
 
         let mut records = Vec::new(&env);
-        records.push_back(client.encrypt(&10)); // 10 patients per condition
+        records.push_back(client.encrypt(&10i128)); // 10 patients per condition
         client.aggregate_records(&aggregator, &kind, &dims, &records);
     }
 
     // Verify that all entries for the same tenant are accessible
     for condition in &conditions {
         let dims = MetricDimensions {
-            region: Some(tenant_a_region),
+            region: Some(tenant_a_region.clone()),
             age_band: Some(symbol_short!("A40_64")),
-            condition: Some(*condition),
+            condition: Some(condition.clone()),
             time_bucket,
         };
 
@@ -297,7 +295,7 @@ fn test_aggregate_tenant_isolation() {
 
     // Verify that another tenant has no access to this data
     let tenant_b_dims = MetricDimensions {
-        region: Some(symbol_short!("HOSPITAL_B")),
+        region: Some(symbol_short!("HOSP_B")),
         age_band: Some(symbol_short!("A40_64")),
         condition: Some(symbol_short!("MYOPIA")),
         time_bucket,
@@ -306,47 +304,48 @@ fn test_aggregate_tenant_isolation() {
     let tenant_b_metrics = client.get_metric(&kind, &tenant_b_dims);
     assert_eq!(tenant_b_metrics.count, 0);
     assert_eq!(tenant_b_metrics.sum, 0);
+    assert_eq!(tenant_b_metrics.version, 0);
 }
 
 #[test]
 fn test_trend_isolation_across_tenants() {
     let (env, client, _admin, aggregator) = setup_multi_tenant();
 
-    let kind = symbol_short!("TREND_TEST");
-    let region_a = symbol_short!("HOSPITAL_A");
-    let region_b = symbol_short!("HOSPITAL_B");
+    let kind = symbol_short!("TRND_TEST");
+    let region_a = symbol_short!("HOSP_A");
+    let region_b = symbol_short!("HOSP_B");
 
     // Create trend data for two tenants
     for time_bucket in 1..=3 {
         // Tenant A data
         let dims_a = MetricDimensions {
-            region: Some(region_a),
+            region: Some(region_a.clone()),
             age_band: Some(symbol_short!("A40_64")),
             condition: Some(symbol_short!("MYOPIA")),
             time_bucket,
         };
 
         let mut records_a = Vec::new(&env);
-        records_a.push_back(client.encrypt(&(time_bucket * 10))); // 10, 20, 30
+        records_a.push_back(client.encrypt(&( (time_bucket * 10) as i128 ))); // 10, 20, 30
         client.aggregate_records(&aggregator, &kind, &dims_a, &records_a);
 
         // Tenant B data
         let dims_b = MetricDimensions {
-            region: Some(region_b),
+            region: Some(region_b.clone()),
             age_band: Some(symbol_short!("A40_64")),
             condition: Some(symbol_short!("MYOPIA")),
             time_bucket,
         };
 
         let mut records_b = Vec::new(&env);
-        records_b.push_back(client.encrypt(&(time_bucket * 5))); // 5, 10, 15
+        records_b.push_back(client.encrypt(&( (time_bucket * 5) as i128 ))); // 5, 10, 15
         client.aggregate_records(&aggregator, &kind, &dims_b, &records_b);
     }
 
     // Get trends for each tenant
     let trend_a = client.get_trend(
         &kind,
-        &Some(region_a),
+        &Some(region_a.clone()),
         &Some(symbol_short!("A40_64")),
         &Some(symbol_short!("MYOPIA")),
         &1,
@@ -355,7 +354,7 @@ fn test_trend_isolation_across_tenants() {
 
     let trend_b = client.get_trend(
         &kind,
-        &Some(region_b),
+        &Some(region_b.clone()),
         &Some(symbol_short!("A40_64")),
         &Some(symbol_short!("MYOPIA")),
         &1,
@@ -385,7 +384,7 @@ fn test_trend_isolation_across_tenants() {
 fn test_null_region_tenant_isolation() {
     let (env, client, _admin, aggregator) = setup_multi_tenant();
 
-    let kind = symbol_short!("NULL_REGION_TEST");
+    let kind = symbol_short!("NUL_RG_T");
     let time_bucket = 1_700_000_000;
 
     // Test with null region (should be isolated from specific regions)
@@ -397,7 +396,7 @@ fn test_null_region_tenant_isolation() {
     };
 
     let specific_region_dims = MetricDimensions {
-        region: Some(symbol_short!("HOSPITAL_A")),
+        region: Some(symbol_short!("HOSP_A")),
         age_band: Some(symbol_short!("A40_64")),
         condition: Some(symbol_short!("MYOPIA")),
         time_bucket,
@@ -405,12 +404,12 @@ fn test_null_region_tenant_isolation() {
 
     // Add data to null region
     let mut null_records = Vec::new(&env);
-    null_records.push_back(client.encrypt(&100));
+    null_records.push_back(client.encrypt(&100i128));
     client.aggregate_records(&aggregator, &kind, &null_region_dims, &null_records);
 
     // Add data to specific region
     let mut specific_records = Vec::new(&env);
-    specific_records.push_back(client.encrypt(&50));
+    specific_records.push_back(client.encrypt(&50i128));
     client.aggregate_records(&aggregator, &kind, &specific_region_dims, &specific_records);
 
     // Verify isolation

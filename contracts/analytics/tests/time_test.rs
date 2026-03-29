@@ -59,7 +59,7 @@ fn test_aggregate_records_in_window_rejects_before_timelock() {
         client.try_aggregate_records_in_window(&aggregator, &kind, &dims, &records, &1_050, &1_100),
         Err(Ok(ContractError::TimelockNotMet))
     );
-    assert_eq!(client.get_metric(&kind, &dims), MetricValue { count: 0, sum: 0 });
+    assert_eq!(client.get_metric(&kind, &dims), MetricValue { count: 0, sum: 0, version: 0 });
 }
 
 #[test]
@@ -91,7 +91,7 @@ fn test_aggregate_records_in_window_rejects_after_expiry() {
         client.try_aggregate_records_in_window(&aggregator, &kind, &dims, &records, &1_050, &1_100),
         Err(Ok(ContractError::SubmissionExpired))
     );
-    assert_eq!(client.get_metric(&kind, &dims), MetricValue { count: 0, sum: 0 });
+    assert_eq!(client.get_metric(&kind, &dims), MetricValue { count: 0, sum: 0, version: 0 });
 }
 
 #[test]

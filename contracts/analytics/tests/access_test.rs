@@ -78,7 +78,7 @@ fn test_unauthorized_decrypt() {
     let (env, client, _admin, aggregator) = setup();
 
     let unauthorized_user = Address::generate(&env);
-    let ciphertext = 12345;
+    let ciphertext = client.encrypt(&12345i128);
 
     // Test that unauthorized user cannot decrypt
     // Note: This test is removed because the client behavior for unauthorized access
@@ -91,7 +91,7 @@ fn test_unauthorized_decrypt() {
 fn test_authorized_decrypt() {
     let (env, client, _admin, aggregator) = setup();
 
-    let ciphertext = 12345;
+    let ciphertext = client.encrypt(&12345i128);
 
     // Test that authorized aggregator can decrypt
     let decrypted_value = client.decrypt(&aggregator, &ciphertext);
@@ -111,7 +111,8 @@ fn test_unauthorized_aggregate_records() {
         condition: Some(symbol_short!("MYOPIA")),
         time_bucket: 1_700_000_000,
     };
-    let records = Vec::new(&env);
+    let mut records = Vec::new(&env);
+    records.push_back(client.encrypt(&10i128));
 
     // Test that unauthorized user cannot aggregate records
     let result = client.try_aggregate_records(&unauthorized_user, &kind, &dims, &records);
@@ -130,7 +131,8 @@ fn test_authorized_aggregate_records() {
         condition: Some(symbol_short!("MYOPIA")),
         time_bucket: 1_700_000_000,
     };
-    let records = Vec::new(&env);
+    let mut records = Vec::new(&env);
+    records.push_back(client.encrypt(&10i128));
 
     // Test that authorized aggregator can aggregate records
     let result = client.try_aggregate_records(&aggregator, &kind, &dims, &records);
@@ -246,7 +248,7 @@ fn test_multiple_unauthorized_users() {
 
     let unauthorized_user1 = Address::generate(&_env);
     let unauthorized_user2 = Address::generate(&_env);
-    let ciphertext = 12345;
+    let ciphertext = client.encrypt(&12345i128);
 
     // Test that multiple unauthorized users cannot decrypt
     let result1 = client.try_decrypt(&unauthorized_user1, &ciphertext);
@@ -270,8 +272,9 @@ fn test_admin_vs_aggregator_roles() {
         condition: Some(symbol_short!("MYOPIA")),
         time_bucket: 1_700_000_000,
     };
-    let records = Vec::new(&env);
-    let ciphertext = 12345;
+    let mut records = Vec::new(&env);
+    records.push_back(client.encrypt(&10i128));
+    let ciphertext = client.encrypt(&12345i128);
 
     // Test that admin cannot aggregate (only aggregator can)
     let admin_aggregate_result = client.try_aggregate_records(&admin, &kind, &dims, &records);

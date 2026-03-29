@@ -63,13 +63,15 @@ fn test_encrypt_handles_i128_max_message_without_panicking() {
 
 #[test]
 fn test_differential_privacy_stays_within_i128_bounds() {
-    let env = Env::default();
+    let (env, client) = setup();
 
-    let high = DifferentialPrivacy::add_laplace_noise(&env, i128::MAX, 1, 1);
-    let low = DifferentialPrivacy::add_laplace_noise(&env, i128::MIN, 1, 1);
+    env.as_contract(&client.address, || {
+        let high = DifferentialPrivacy::add_laplace_noise(&env, i128::MAX, 1, 1);
+        let low = DifferentialPrivacy::add_laplace_noise(&env, i128::MIN, 1, 1);
 
-    assert!(high <= i128::MAX);
-    assert!(low >= i128::MIN);
+        assert!(high <= i128::MAX);
+        assert!(low >= i128::MIN);
+    });
 }
 
 #[test]

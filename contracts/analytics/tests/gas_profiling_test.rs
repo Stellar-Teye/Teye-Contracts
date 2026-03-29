@@ -344,7 +344,7 @@ fn bench_get_trend_cold_storage_52_buckets() {
         );
         assert_eq!(trend.len(), 52);
         for point in trend.iter() {
-            assert_eq!(point.value, MetricValue { count: 0, sum: 0 });
+            assert_eq!(point.value, MetricValue { count: 0, sum: 0, version: 0 });
         }
     });
 
