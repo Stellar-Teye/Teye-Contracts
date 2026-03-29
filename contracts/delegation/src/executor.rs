@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, Env, Symbol, symbol_short};
+use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -19,7 +19,9 @@ pub fn register_executor(env: &Env, executor: Address) {
         tasks_completed: 0,
         last_active: env.ledger().timestamp(),
     };
-    env.storage().persistent().set(&(EXECUTORS, executor), &info);
+    env.storage()
+        .persistent()
+        .set(&(EXECUTORS, executor), &info);
 }
 
 pub fn get_executor(env: &Env, executor: Address) -> Option<ExecutorInfo> {
@@ -27,7 +29,9 @@ pub fn get_executor(env: &Env, executor: Address) -> Option<ExecutorInfo> {
 }
 
 pub fn update_executor(env: &Env, info: ExecutorInfo) {
-    env.storage().persistent().set(&(EXECUTORS, info.address.clone()), &info);
+    env.storage()
+        .persistent()
+        .set(&(EXECUTORS, info.address.clone()), &info);
 }
 
 pub fn set_min_stake(env: &Env, amount: i128) {

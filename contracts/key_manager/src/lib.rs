@@ -125,19 +125,20 @@ pub struct AuditEntry {
 #[repr(u32)]
 pub enum ContractError {
     NotInitialized = 1,
-    Unauthorized = 2,
-    KeyNotFound = 3,
-    InvalidHierarchy = 4,
-    InvalidPolicy = 5,
-    PolicyViolation = 6,
-    RotationNotDue = 7,
-    RecoveryAlreadyActive = 8,
-    RecoveryNotActive = 9,
-    NotAGuardian = 10,
-    AlreadyApproved = 11,
-    InsufficientApprovals = 12,
-    CooldownNotExpired = 13,
-    KeyRevoked = 14,
+    AlreadyInitialized = 2,
+    Unauthorized = 3,
+    KeyNotFound = 4,
+    InvalidHierarchy = 5,
+    InvalidPolicy = 6,
+    PolicyViolation = 7,
+    RotationNotDue = 8,
+    RecoveryAlreadyActive = 9,
+    RecoveryNotActive = 10,
+    NotAGuardian = 11,
+    AlreadyApproved = 12,
+    InsufficientApprovals = 13,
+    CooldownNotExpired = 14,
+    KeyRevoked = 15,
 }
 
 #[contract]
@@ -146,13 +147,18 @@ pub struct KeyManagerContract;
 #[contractimpl]
 #[allow(clippy::too_many_arguments)]
 impl KeyManagerContract {
-    pub fn initialize(env: Env, admin: Address, identity_contract: Address) {
+    pub fn initialize(
+        env: Env,
+        admin: Address,
+        identity_contract: Address,
+    ) -> Result<(), ContractError> {
         if env.storage().instance().has(&ADMIN) {
-            return;
+            return Err(ContractError::AlreadyInitialized);
         }
         admin.require_auth();
         env.storage().instance().set(&ADMIN, &admin);
         env.storage().instance().set(&IDENTITY, &identity_contract);
+        Ok(())
     }
 
     pub fn set_identity_contract(
@@ -472,7 +478,7 @@ impl KeyManagerContract {
     ) -> Result<u32, ContractError> {
         caller.require_auth();
         let record = Self::load_key_record(&env, &key_id)?;
-        let (_guardians, threshold) = Self::load_guardians(&env, &record.owner)?;
+        let (guardians, threshold) = Self::load_guardians(&env, &record.owner)?;
 
         let key = (RECOVERY, key_id.clone());
         let request: RecoveryRequest = env
@@ -481,7 +487,22 @@ impl KeyManagerContract {
             .get(&key)
             .ok_or(ContractError::RecoveryNotActive)?;
 
-        if request.approvals.len() < threshold {
+        // Revalidate approvals against the *current* guardian set so that
+        // stale approvals are invalidated when guardian membership changes.
+        if threshold == 0 || guardians.len() == 0 {
+            return Err(ContractError::InsufficientApprovals);
+        }
+
+        let mut valid_approvals: u32 = 0;
+        for i in 0..request.approvals.len() {
+            if let Some(approver) = request.approvals.get(i) {
+                if guardians.contains(&approver) {
+                    valid_approvals = valid_approvals.saturating_add(1);
+                }
+            }
+        }
+
+        if valid_approvals < threshold {
             return Err(ContractError::InsufficientApprovals);
         }
 

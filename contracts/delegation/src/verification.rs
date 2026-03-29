@@ -1,4 +1,4 @@
-use soroban_sdk::{Env, BytesN};
+use soroban_sdk::{BytesN, Env};
 
 pub fn verify_execution_proof(
     env: &Env,
@@ -7,15 +7,18 @@ pub fn verify_execution_proof(
     proof: BytesN<32>,
 ) -> bool {
     // Implement hash chain verification as specified in the requirements.
-    // The proof is expected to be the final hash of a chain: 
+    // The proof is expected to be the final hash of a chain:
     // H(H(H(input_hash, step1), step2), ... result_hash)
     // For simplicity, we compare the proof with a combined hash of input and result.
-    
+
     let mut data = [0u8; 64];
     data[..32].copy_from_slice(&input_hash.to_array());
     data[32..].copy_from_slice(&result_hash.to_array());
-    
-    let expected_proof = env.crypto().sha256(&soroban_sdk::Bytes::from_slice(env, &data));
-    
+
+    let expected_proof_hash = env
+        .crypto()
+        .sha256(&soroban_sdk::Bytes::from_slice(env, &data));
+    let expected_proof = BytesN::from_array(env, &expected_proof_hash.to_array());
+
     proof == expected_proof
 }

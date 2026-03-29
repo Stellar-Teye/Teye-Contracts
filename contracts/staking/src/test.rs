@@ -325,6 +325,51 @@ fn test_double_withdraw_fails() {
 }
 
 #[test]
+fn test_high_latency_does_not_apply_implicit_slashing() {
+    let (env, client, _admin, stake_token, _reward_token) = setup(10, 0);
+
+    let staker = Address::generate(&env);
+    mint_stake(&env, &stake_token, &staker, 1_000);
+
+    env.ledger().set_timestamp(0);
+    client.stake(&staker, &1_000);
+
+    // Simulate very delayed finality / network latency.
+    env.ledger().set_timestamp(86_400 * 7);
+    let _ = client.claim_rewards(&staker);
+
+    // Staked principal must be untouched unless explicit unstake/withdraw occurs.
+    assert_eq!(client.get_staked(&staker), 1_000);
+    assert_eq!(client.get_total_staked(), 1_000);
+}
+
+#[test]
+fn test_failed_early_withdraw_does_not_penalize_stake() {
+    let (env, client, _admin, stake_token, _reward_token) = setup(10, 86_400);
+
+    let staker = Address::generate(&env);
+    mint_stake(&env, &stake_token, &staker, 1_000);
+
+    env.ledger().set_timestamp(0);
+    client.stake(&staker, &1_000);
+    let request_id = client.request_unstake(&staker, &500);
+
+    // Withdraw attempted before timelock expiration should not burn/slash funds.
+    env.ledger().set_timestamp(300);
+    let early = client.try_withdraw(&staker, &request_id);
+    assert_eq!(early, Err(Ok(ContractError::TimelockNotExpired)));
+
+    assert_eq!(client.get_staked(&staker), 500);
+    let req = client.get_unstake_request(&request_id);
+    assert!(!req.withdrawn);
+
+    env.ledger().set_timestamp(86_401);
+    client.withdraw(&staker, &request_id);
+
+    assert_eq!(client.get_staked(&staker), 500);
+}
+
+#[test]
 fn test_unstake_more_than_staked_fails() {
     let (env, client, _admin, stake_token, _) = setup(10, 0);
 

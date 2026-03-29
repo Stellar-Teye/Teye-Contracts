@@ -822,3 +822,87 @@ fn test_full_workflow() {
         assert!(curr.lamport_ts < next.lamport_ts);
     }
 }
+
+// ── Concurrency / race-condition simulation tests ────────────────────────────
+//
+// Soroban executes contract calls sequentially, but integrators can still be
+// exposed to mempool ordering and "interleaving" effects across operations.
+// These tests validate key invariants under rapid sequences of operations that
+// would be concurrent in an off-chain system.
+
+#[test]
+fn test_state_consistency_under_interleaved_ops() {
+    let (env, client, admin) = setup();
+
+    // Register schema once.
+    register_schema(&env, &client, &admin, "records.vision.create", 1);
+
+    // Interleave subscriptions with publishing.
+    let s1 = Address::generate(&env);
+    let s2 = Address::generate(&env);
+    let patt = String::from_str(&env, "records.vision.*");
+    client.subscribe(&s1, &patt);
+
+    // Publish 1
+    let e1 = publish_test_event(&env, &client, &admin, "records.vision.create", 1, "p1");
+    assert_eq!(e1, 1);
+    assert_eq!(client.get_event_count(), 1);
+    assert_eq!(client.get_lamport_clock(), 1);
+
+    // Subscribe another, publish again, unsubscribe first, publish again.
+    client.subscribe(&s2, &patt);
+    let e2 = publish_test_event(&env, &client, &admin, "records.vision.create", 1, "p2");
+    assert_eq!(e2, 2);
+
+    // Unsubscribe s1 (deactivate its only subscription id = 1)
+    client.unsubscribe(&s1, &1);
+
+    let e3 = publish_test_event(&env, &client, &admin, "records.vision.create", 1, "p3");
+    assert_eq!(e3, 3);
+
+    // Invariants: counter == lamport == last event_id, replay returns all, strict ordering.
+    assert_eq!(client.get_event_count(), 3);
+    assert_eq!(client.get_lamport_clock(), 3);
+
+    let events = client.replay_events(&1, &10);
+    assert_eq!(events.len(), 3);
+    for i in 0..(events.len() - 1) {
+        let a = events.get(i).unwrap();
+        let b = events.get(i + 1).unwrap();
+        assert!(a.event_id < b.event_id);
+        assert!(a.lamport_ts < b.lamport_ts);
+    }
+}
+
+#[test]
+fn test_consumer_group_offset_consistency_under_rapid_publishes() {
+    let (env, client, admin) = setup();
+    register_schema(&env, &client, &admin, "records.vision.create", 1);
+
+    let owner = Address::generate(&env);
+    let name = String::from_str(&env, "race-group");
+    let pattern = String::from_str(&env, "records.vision.*");
+
+    let m1 = Address::generate(&env);
+    let m2 = Address::generate(&env);
+    let mut members = Vec::new(&env);
+    members.push_back(m1.clone());
+    members.push_back(m2.clone());
+
+    let gid = client.create_consumer_group(&owner, &name, &pattern, &members);
+
+    // Rapid publishes to simulate "simultaneous" producers.
+    for i in 0..25u32 {
+        let payload = String::from_str(&env, "p");
+        let topic = String::from_str(&env, "records.vision.create");
+        let _ = client.publish_event(&admin, &topic, &1, &payload);
+        // Each publish should advance group offset by 1 via dispatch.
+        let group = client.get_consumer_group(&gid);
+        assert_eq!(group.offset, (i as u64) + 1);
+    }
+
+    // Ack the last event as either member should be authorized and stable.
+    let last = client.get_event_count();
+    client.ack_event(&m1, &gid, &last);
+    client.ack_event(&m2, &gid, &last);
+}

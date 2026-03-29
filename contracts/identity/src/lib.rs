@@ -1,5 +1,4 @@
 #![no_std]
-#![allow(clippy::too_many_arguments)]
 
 pub mod credential;
 pub mod events;
@@ -63,6 +62,7 @@ impl IdentityContract {
         env.storage().instance().set(&ADMIN, &owner);
         env.storage().instance().set(&INITIALIZED, &true);
         recovery::set_owner_active(&env, &owner);
+        events::emit_owner_status_changed(&env, owner, true);
 
         Ok(())
     }
@@ -140,7 +140,9 @@ impl IdentityContract {
         caller.require_auth();
         let result = recovery::execute_recovery(&env, &owner);
         if let Ok(ref new_addr) = result {
-            events::emit_recovery_executed(&env, owner, new_addr.clone());
+            events::emit_recovery_executed(&env, owner.clone(), new_addr.clone());
+            events::emit_owner_status_changed(&env, owner, false);
+            events::emit_owner_status_changed(&env, new_addr.clone(), true);
         }
         result
     }
@@ -437,6 +439,7 @@ impl IdentityContract {
     /// Delegates verification to the configured `zk_verifier` contract via a
     /// cross-contract call. Only the verification result and a privacy-preserving
     /// event (user + resource hash) are recorded.
+    #[allow(clippy::too_many_arguments)]
     pub fn verify_zk_credential(
         env: Env,
         user: Address,

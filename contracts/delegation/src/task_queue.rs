@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, BytesN, Env, Symbol, Vec, symbol_short};
+use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env, Symbol};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -16,9 +16,9 @@ pub struct Task {
     pub id: u64,
     pub creator: Address,
     pub executor: Option<Address>,
-    pub input_data: BytesN<32>, // Hash of input data or small input
+    pub input_data: BytesN<32>,     // Hash of input data or small input
     pub result: Option<BytesN<32>>, // Hash of result
-    pub proof: Option<BytesN<32>>, // Hash of execution proof
+    pub proof: Option<BytesN<32>>,  // Hash of execution proof
     pub status: TaskStatus,
     pub priority: u32,
     pub deadline: u64,

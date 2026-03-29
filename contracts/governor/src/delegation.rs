@@ -124,7 +124,5 @@ fn increment_count(env: &Env, delegate: &Address) {
 fn decrement_count(env: &Env, delegate: &Address) {
     let key = del_cnt_key(delegate);
     let n: u32 = env.storage().instance().get(&key).unwrap_or(0u32);
-    env.storage()
-        .instance()
-        .set(&key, &n.saturating_sub(1));
+    env.storage().instance().set(&key, &n.saturating_sub(1));
 }

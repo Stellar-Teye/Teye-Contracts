@@ -603,3 +603,121 @@ fn test_verify_sync_nonexistent_exchange_fails() {
         &discrepancies,
     );
 }
+
+// ── Front-running / delayed execution simulation tests ───────────────────────
+
+#[test]
+fn test_verify_sync_requires_in_progress_status() {
+    let (env, client, admin) = setup_env();
+
+    // Register + activate provider
+    let provider_id = String::from_str(&env, "epic-001");
+    let name = String::from_str(&env, "City Hospital");
+    let endpoint = String::from_str(&env, "https://epic.city.org/fhir");
+
+    client.register_provider(
+        &admin,
+        &provider_id,
+        &name,
+        &EmrSystem::EpicFhir,
+        &endpoint,
+        &DataFormat::FhirR4,
+    );
+    client.activate_provider(&admin, &provider_id);
+
+    // Create exchange. It starts as Pending.
+    let exchange_id = String::from_str(&env, "ex-early-verify");
+    let patient_id = String::from_str(&env, "pat-123");
+    let resource_type = String::from_str(&env, "Patient");
+    let record_hash = String::from_str(&env, "abc123hash");
+    client.record_data_exchange(
+        &admin,
+        &exchange_id,
+        &provider_id,
+        &patient_id,
+        &ExchangeDirection::Import,
+        &DataFormat::FhirR4,
+        &resource_type,
+        &record_hash,
+    );
+
+    // Simulate a mempool front-run / mis-ordered execution:
+    // verification arrives before the exchange has been marked InProgress.
+    let verification_id = String::from_str(&env, "ver-early");
+    let source_hash = String::from_str(&env, "hash_abc");
+    let target_hash = String::from_str(&env, "hash_abc");
+    let discrepancies: Vec<String> = Vec::new(&env);
+
+    let result = client.try_verify_sync(
+        &admin,
+        &verification_id,
+        &exchange_id,
+        &source_hash,
+        &target_hash,
+        &discrepancies,
+    );
+    match result {
+        Err(Ok(e)) => assert_eq!(e, crate::EmrBridgeError::InvalidSyncState),
+        _ => panic!("Expected InvalidSyncState error"),
+    }
+
+    // Exchange should remain Pending.
+    let exchange = client.get_exchange(&exchange_id);
+    assert_eq!(exchange.status, SyncStatus::Pending);
+}
+
+#[test]
+fn test_verify_sync_after_delayed_in_progress_succeeds() {
+    let (env, client, admin) = setup_env();
+
+    // Register + activate provider
+    let provider_id = String::from_str(&env, "epic-001");
+    let name = String::from_str(&env, "City Hospital");
+    let endpoint = String::from_str(&env, "https://epic.city.org/fhir");
+    client.register_provider(
+        &admin,
+        &provider_id,
+        &name,
+        &EmrSystem::EpicFhir,
+        &endpoint,
+        &DataFormat::FhirR4,
+    );
+    client.activate_provider(&admin, &provider_id);
+
+    // Create exchange.
+    let exchange_id = String::from_str(&env, "ex-delayed");
+    let patient_id = String::from_str(&env, "pat-123");
+    let resource_type = String::from_str(&env, "Patient");
+    let record_hash = String::from_str(&env, "abc123hash");
+    client.record_data_exchange(
+        &admin,
+        &exchange_id,
+        &provider_id,
+        &patient_id,
+        &ExchangeDirection::Import,
+        &DataFormat::FhirR4,
+        &resource_type,
+        &record_hash,
+    );
+
+    // Simulate delayed execution of the "start sync" transaction.
+    client.update_exchange_status(&admin, &exchange_id, &SyncStatus::InProgress);
+
+    // Now verification should succeed.
+    let verification_id = String::from_str(&env, "ver-delayed");
+    let source_hash = String::from_str(&env, "hash_abc");
+    let target_hash = String::from_str(&env, "hash_abc");
+    let discrepancies: Vec<String> = Vec::new(&env);
+    let verification = client.verify_sync(
+        &admin,
+        &verification_id,
+        &exchange_id,
+        &source_hash,
+        &target_hash,
+        &discrepancies,
+    );
+
+    assert!(verification.is_consistent);
+    let exchange = client.get_exchange(&exchange_id);
+    assert_eq!(exchange.status, SyncStatus::Completed);
+}
