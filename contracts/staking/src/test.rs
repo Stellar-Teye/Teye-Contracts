@@ -1,12 +1,23 @@
 extern crate std;
 
 use soroban_sdk::{
-    testutils::{Address as _, Ledger as _},
+    symbol_short,
+    testutils::{Address as _, Events, Ledger as _},
     token::{Client as TokenClient, StellarAssetClient},
-    Address, Env,
+    xdr::{ContractEventBody, ScVal},
+    Address, Env, IntoVal, Val, Vec, String,
 };
 
-use crate::{rewards, ContractError, StakingContract, StakingContractClient};
+use crate::{
+    events::{
+        AccessViolationEvent, AdminTransferAcceptedEvent, AdminTransferCancelledEvent,
+        AdminTransferProposedEvent, InitializedEvent, LockPeriodSetEvent,
+        RateChangeDelaySetEvent, RewardClaimedEvent, RewardRateAppliedEvent,
+        RewardRateProposedEvent, RewardRateSetEvent, SlashedEvent, SlippageExceededEvent,
+        StakedEvent, UnstakeRequestedEvent, WithdrawnEvent,
+    },
+    rewards, ContractError, StakingContract, StakingContractClient,
+};
 
 // ── Test helpers ─────────────────────────────────────────────────────────────
 
@@ -60,7 +71,36 @@ fn setup(
 fn mint_stake(env: &Env, stake_token: &Address, recipient: &Address, amount: i128) {
     StellarAssetClient::new(env, stake_token).mint(recipient, &amount);
 }
+fn assert_event_at<T>(env: &Env, index: usize, expected_topics: Vec<Val>, expected_data: &T)
+where
+    T: Clone + IntoVal<Env, Val>,
+{
+    let events = env.events().all();
+    let event = events
+        .events()
+        .get(index)
+        .unwrap_or_else(|| panic!("No event at index {}", index));
+    let ContractEventBody::V0(body) = &event.body;
 
+    let mut expected_topics_scval = std::vec::Vec::new();
+    for topic in expected_topics.iter() {
+        expected_topics_scval.push(ScVal::try_from_val(env, &topic).unwrap());
+    }
+    assert_eq!(body.topics.as_slice(), expected_topics_scval.as_slice());
+
+    let expected_val: Val = expected_data.clone().into_val(env);
+    let expected_data_scval = ScVal::try_from_val(env, &expected_val).unwrap();
+    assert_eq!(body.data, expected_data_scval);
+}
+
+fn assert_last_event<T>(env: &Env, expected_topics: Vec<Val>, expected_data: &T)
+where
+    T: Clone + IntoVal<Env, Val>,
+{
+    let len = env.events().all().events().len();
+    assert!(len > 0, "No events emitted");
+    assert_event_at(env, len - 1, expected_topics, expected_data);
+}
 // ── Initialisation ────────────────────────────────────────────────────────────
 
 #[test]
@@ -79,6 +119,226 @@ fn test_initialize() {
         Err(Ok(e)) => assert_eq!(e, ContractError::AlreadyInitialized),
         _ => unreachable!("Expected AlreadyInitialized error"),
     }
+}
+
+#[test]
+fn test_initialize_emits_initialized_event() {
+    let (env, client, admin, stake_token, reward_token) = setup(10, 86_400);
+
+    assert!(client.is_initialized());
+
+    let expected_topics: Vec<Val> = (symbol_short!("INIT"),).into_val(&env);
+    let expected_data = InitializedEvent {
+        admin: admin.clone(),
+        stake_token: stake_token.clone(),
+        reward_token: reward_token.clone(),
+        reward_rate: 10,
+        lock_period: 86_400,
+        timestamp: env.ledger().timestamp(),
+    };
+
+    assert_last_event(&env, expected_topics, &expected_data);
+}
+
+#[test]
+fn test_stake_emits_staked_event() {
+    let (env, client, _admin, stake_token, _) = setup(10, 86_400);
+    let staker = Address::generate(&env);
+    mint_stake(&env, &stake_token, &staker, 1_000);
+    env.ledger().set_timestamp(1);
+
+    client.stake(&staker, &1_000);
+
+    // Initialize + 2 staked events because stake currently publishes twice.
+    let events_len = env.events().all().events().len();
+    assert_eq!(events_len, 3);
+
+    let expected_topics: Vec<Val> = (symbol_short!("STAKED"), staker.clone()).into_val(&env);
+    let expected_data = StakedEvent {
+        staker: staker.clone(),
+        amount: 1_000,
+        new_total_staked: 1_000,
+        timestamp: env.ledger().timestamp(),
+    };
+
+    assert_last_event(&env, expected_topics, &expected_data);
+
+    // First staked event should be identical too.
+    assert_event_at(&env, 1, expected_topics, &expected_data);
+}
+
+#[test]
+fn test_request_unstake_and_withdraw_emit_events() {
+    let (env, client, _admin, stake_token, _) = setup(10, 86_400);
+    let staker = Address::generate(&env);
+    mint_stake(&env, &stake_token, &staker, 1_000);
+    env.ledger().set_timestamp(0);
+    client.stake(&staker, &1_000);
+
+    let request_id = client.request_unstake(&staker, &500);
+    let expected_unstake_topics: Vec<Val> = (symbol_short!("UNSTK_REQ"), staker.clone()).into_val(&env);
+    let expected_unstake_data = UnstakeRequestedEvent {
+        request_id,
+        staker: staker.clone(),
+        amount: 500,
+        unlock_at: 86_400,
+        timestamp: env.ledger().timestamp(),
+    };
+
+    assert_last_event(&env, expected_unstake_topics, &expected_unstake_data);
+
+    env.ledger().set_timestamp(86_401);
+    client.withdraw(&staker, &request_id);
+
+    let expected_withdraw_topics: Vec<Val> = (symbol_short!("WITHDRAWN"), staker.clone()).into_val(&env);
+    let expected_withdraw_data = WithdrawnEvent {
+        request_id,
+        staker: staker.clone(),
+        amount: 500,
+        timestamp: env.ledger().timestamp(),
+    };
+
+    assert_last_event(&env, expected_withdraw_topics, &expected_withdraw_data);
+}
+
+#[test]
+fn test_claim_rewards_emits_reward_claimed_event() {
+    let (env, client, _admin, stake_token, reward_token) = setup(10, 0);
+    let staker = Address::generate(&env);
+    mint_stake(&env, &stake_token, &staker, 1_000);
+
+    env.ledger().set_timestamp(0);
+    client.stake(&staker, &1_000);
+    env.ledger().set_timestamp(100);
+
+    let claimed = client.claim_rewards(&staker);
+    assert_eq!(claimed, 1_000);
+
+    let expected_topics: Vec<Val> = (symbol_short!("CLMD"), staker.clone()).into_val(&env);
+    let expected_data = RewardClaimedEvent {
+        staker: staker.clone(),
+        amount: 1_000,
+        timestamp: env.ledger().timestamp(),
+    };
+    assert_last_event(&env, expected_topics, &expected_data);
+
+    assert_eq!(TokenClient::new(&env, &reward_token).balance(&staker), 1_000);
+}
+
+#[test]
+fn test_set_reward_rate_sets_event_direct_and_delayed() {
+    let (env, client, admin, stake_token, _) = setup(10, 3_600);
+    let staker = Address::generate(&env);
+    mint_stake(&env, &stake_token, &staker, 1_000);
+
+    env.ledger().set_timestamp(0);
+    client.stake(&staker, &1_000);
+
+    // With delay configured, set_reward_rate should produce RATE_PROP
+    env.ledger().set_timestamp(100);
+    client.set_reward_rate(&admin, &20, &0);
+
+    let expected_topics_prop: Vec<Val> = (symbol_short!("RATE_PROP"),).into_val(&env);
+    let expected_prop_data = RewardRateProposedEvent {
+        new_rate: 20,
+        effective_at: 3_700,
+        timestamp: env.ledger().timestamp(),
+    };
+    assert_last_event(&env, expected_topics_prop, &expected_prop_data);
+
+    // Trying to apply before time should fail and not emit apply event.
+    env.ledger().set_timestamp(3_699);
+    let result = client.try_apply_reward_rate(&admin);
+    assert_eq!(result, Err(Ok(ContractError::RateChangeNotReady)));
+
+    // Apply after delay.
+    env.ledger().set_timestamp(3_701);
+    client.apply_reward_rate(&admin);
+
+    let expected_topics_aply: Vec<Val> = (symbol_short!("RATE_APLY"),).into_val(&env);
+    let expected_aply_data = RewardRateAppliedEvent {
+        new_rate: 20,
+        timestamp: env.ledger().timestamp(),
+    };
+    assert_last_event(&env, expected_topics_aply, &expected_aply_data);
+}
+
+#[test]
+fn test_rate_change_delay_and_lock_period_events() {
+    let (env, client, admin, _, _) = setup(10, 0);
+
+    client.set_rate_change_delay(&admin, &3_600);
+    let expected_delay_topics: Vec<Val> = (symbol_short!("RATE_DLY"),).into_val(&env);
+    assert_last_event(&env, expected_delay_topics, &RateChangeDelaySetEvent { delay: 3_600, timestamp: env.ledger().timestamp() });
+
+    client.set_lock_period(&admin, &172_800, &0);
+    let expected_lock_topics: Vec<Val> = (symbol_short!("LOCK_SET"),).into_val(&env);
+    assert_last_event(&env, expected_lock_topics, &LockPeriodSetEvent { new_period: 172_800, timestamp: env.ledger().timestamp() });
+}
+
+#[test]
+fn test_admin_transfer_lifecycle_emits_events() {
+    let (env, client, admin, _, _) = setup(10, 0);
+    let candidate = Address::generate(&env);
+
+    client.propose_admin(&admin, &candidate);
+    assert_last_event(&env, (symbol_short!("ADM_PROP"), admin.clone()).into_val(&env), &AdminTransferProposedEvent { current_admin: admin.clone(), proposed_admin: candidate.clone(), timestamp: env.ledger().timestamp() });
+
+    // Accept as proposed admin
+    env.ledger().set_timestamp(env.ledger().timestamp() + 1);
+    client.accept_admin(&candidate);
+    assert_last_event(&env, (symbol_short!("ADM_ACPT"), candidate.clone()).into_val(&env), &AdminTransferAcceptedEvent { old_admin: admin.clone(), new_admin: candidate.clone(), timestamp: env.ledger().timestamp() });
+
+    // Set pending admin again so we can cancel it.
+    env.ledger().set_timestamp(env.ledger().timestamp() + 1);
+    let new_candidate = Address::generate(&env);
+    client.propose_admin(&candidate, &new_candidate);
+    client.cancel_admin_transfer(&candidate);
+    assert_last_event(&env, (symbol_short!("ADM_CNCL"), candidate.clone()).into_val(&env), &AdminTransferCancelledEvent { admin: candidate.clone(), cancelled_proposed: new_candidate.clone(), timestamp: env.ledger().timestamp() });
+}
+
+#[test]
+fn test_slash_emits_slashed_and_unauthorized_emits_access_violation() {
+    let (env, client, admin, stake_token, _) = setup(10, 0);
+    let validator = Address::generate(&env);
+    mint_stake(&env, &stake_token, &validator, 1_000);
+
+    env.ledger().set_timestamp(0);
+    client.stake(&validator, &1_000);
+
+    // Run authorized slash
+    let slash_amount = client.slash(&admin, &validator, &500).unwrap();
+    assert_eq!(slash_amount, 500);
+    assert_last_event(&env, (symbol_short!("SLASHED"), validator.clone()).into_val(&env), &SlashedEvent { admin: admin.clone(), validator: validator.clone(), amount: 500, new_validator_stake: 500, new_total_staked: 500, timestamp: env.ledger().timestamp() });
+
+    // unauthorized slash should emit access violation event
+    let intruder = Address::generate(&env);
+    let res = client.try_slash(&intruder, &validator, &100);
+    assert_eq!(res, Err(Ok(ContractError::SlashingUnauthorized)));
+
+    let expected_topics: Vec<Val> = (symbol_short!("ACC_VIOL"), intruder.clone(), String::from_str(&env, "slash")).into_val(&env);
+    assert_last_event(&env, expected_topics, &AccessViolationEvent { caller: intruder.clone(), action: String::from_str(&env, "slash"), required_permission: String::from_str(&env, "admin_tier:ContractAdmin"), timestamp: env.ledger().timestamp() });
+}
+
+#[test]
+fn test_stake_with_tolerance_slippage_exceeded_emits_event() {
+    let (env, client, _admin, stake_token, _) = setup(10, 0);
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+
+    mint_stake(&env, &stake_token, &alice, 100);
+    mint_stake(&env, &stake_token, &bob, 9_900);
+
+    env.ledger().set_timestamp(0);
+    client.stake(&alice, &100);
+    client.stake(&bob, &9_900);
+
+    // Alice stakes 100 again with strict min share > 2000 bps (actual 2000)
+    let res = client.try_stake_with_tolerance(&alice, &100, &2_001);
+    assert_eq!(res, Err(Ok(ContractError::SlippageExceeded)));
+
+    let expected_topics: Vec<Val> = (symbol_short!("SLIP_EXC"), alice.clone()).into_val(&env);
+    assert_last_event(&env, expected_topics, &SlippageExceededEvent { staker: alice.clone(), expected_share_bps: 2_001, actual_share_bps: 2000, timestamp: env.ledger().timestamp() });
 }
 
 // ── Staking ───────────────────────────────────────────────────────────────────
