@@ -136,6 +136,16 @@ pub struct SlashedEvent {
     pub timestamp: u64,
 }
 
+/// Fired when a stake-with-tolerance call exceeds the slippage bound.
+#[soroban_sdk::contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SlippageExceededEvent {
+    pub staker: Address,
+    pub expected_share_bps: i128,
+    pub actual_share_bps: i128,
+    pub timestamp: u64,
+}
+
 /// Fired when an unauthorized action is attempted.
 #[soroban_sdk::contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -323,6 +333,23 @@ pub fn publish_slashed(
             amount,
             new_validator_stake,
             new_total_staked,
+            timestamp: env.ledger().timestamp(),
+        },
+    );
+}
+
+pub fn publish_slippage_exceeded(
+    env: &Env,
+    staker: Address,
+    expected_share_bps: i128,
+    actual_share_bps: i128,
+) {
+    env.events().publish(
+        (symbol_short!("SLIP_EXC"), staker.clone()),
+        SlippageExceededEvent {
+            staker,
+            expected_share_bps,
+            actual_share_bps,
             timestamp: env.ledger().timestamp(),
         },
     );

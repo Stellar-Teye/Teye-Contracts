@@ -81,6 +81,7 @@ pub enum ContractError {
     MultisigRequired = 13,
     MultisigError = 14,
     Paused = 15,
+    SlippageExceeded = 16,
 }
 
 // ── Public-facing types (re-exported for test consumers) ─────────────────────
@@ -248,6 +249,101 @@ impl StakingContract {
         }
 
         events::publish_staked(&env, staker, amount, new_total);
+
+        Ok(())
+    }
+
+    /// Deposit `amount` stake tokens with slippage protection.
+    ///
+    /// `min_share_bps` specifies the minimum share of the total pool (in basis
+    /// points, where 10 000 = 100 %) the staker expects to hold after the
+    /// deposit.  If the resulting share is below this threshold — e.g. because
+    /// a large deposit was front-run — the transaction reverts with
+    /// `SlippageExceeded`.
+    ///
+    /// Passing `0` disables the check (equivalent to calling `stake` directly).
+    pub fn stake_with_tolerance(
+        env: Env,
+        staker: Address,
+        amount: i128,
+        min_share_bps: i128,
+    ) -> Result<(), ContractError> {
+        let _guard = common::ReentrancyGuard::new(&env);
+        Self::require_not_paused(&env)?;
+        Self::require_initialized(&env)?;
+        staker.require_auth();
+
+        if amount <= 0 {
+            return Err(ContractError::InvalidInput);
+        }
+        if min_share_bps < 0 || min_share_bps > 10_000 {
+            return Err(ContractError::InvalidInput);
+        }
+
+        // 1. Flush global accumulator then snapshot for this user.
+        Self::update_reward(&env, &staker);
+
+        // 2. Pull tokens from the staker into the contract.
+        let stake_token: Address = env
+            .storage()
+            .instance()
+            .get(&STAKE_TOKEN)
+            .ok_or(ContractError::NotInitialized)?;
+        token::Client::new(&env, &stake_token).transfer(
+            &staker,
+            env.current_contract_address(),
+            &amount,
+        );
+
+        // 3. Increase the user's staked balance and the global total.
+        let user_stake_key = (USER_STAKE, staker.clone());
+        let prev_stake: i128 = env
+            .storage()
+            .persistent()
+            .get(&user_stake_key)
+            .unwrap_or(0i128);
+        let new_stake = prev_stake.saturating_add(amount);
+        env.storage().persistent().set(&user_stake_key, &new_stake);
+
+        let prev_total: i128 = env.storage().instance().get(&TOTAL_STAKED).unwrap_or(0);
+        let new_total = prev_total.saturating_add(amount);
+        env.storage().instance().set(&TOTAL_STAKED, &new_total);
+
+        // 4. Slippage check: verify the staker's share meets the minimum.
+        if min_share_bps > 0 && new_total > 0 {
+            let actual_share_bps = new_stake
+                .saturating_mul(10_000)
+                .checked_div(new_total)
+                .unwrap_or(0);
+            if actual_share_bps < min_share_bps {
+                events::publish_slippage_exceeded(
+                    &env,
+                    staker.clone(),
+                    min_share_bps,
+                    actual_share_bps,
+                );
+                // Revert all state changes by returning an error.
+                // In Soroban, returning Err rolls back the transaction.
+                return Err(ContractError::SlippageExceeded);
+            }
+        }
+
+        // 5. Record the first-stake timestamp for loyalty age tracking.
+        let since_key = (USER_SINCE, staker.clone());
+        if !env.storage().persistent().has(&since_key) {
+            let now = env.ledger().timestamp();
+            env.storage().persistent().set(&since_key, &now);
+        }
+
+        events::publish_staked(&env, staker.clone(), amount, new_total);
+
+        audit::AuditManager::log_event(
+            &env,
+            staker,
+            "staking.stake_tolerant",
+            soroban_sdk::String::from_str(&env, &amount.to_string()),
+            "ok",
+        );
 
         Ok(())
     }
@@ -1340,3 +1436,6 @@ mod test_multisig;
 #[cfg(test)]
 mod test_late_quorum;
 mod test_reward_multiplier;
+
+#[cfg(test)]
+mod test_slippage;
