@@ -12,9 +12,9 @@ use audit::{
 // ── LogSegmentId boundary tests ───────────────────────────────────────────────
 
 #[test]
-fn test_segment_id_empty_string_is_valid() {
-    // An empty label is 0 bytes which is ≤ 64 — must be accepted.
-    assert!(LogSegmentId::new("").is_ok());
+fn test_segment_id_empty_string_is_rejected() {
+    // An empty label has no identity and must be rejected.
+    assert!(LogSegmentId::new("").is_err());
 }
 
 #[test]
@@ -42,7 +42,7 @@ fn test_append_with_zero_timestamp() {
     let seg = LogSegmentId::new("zero-ts").unwrap();
     let mut log = MerkleLog::new(seg);
     // timestamp = 0 is a valid edge case; must be accepted without panic.
-    let seq = log.append(0, "actor", "action", "target", "ok");
+    let seq = log.append(0, "actor", "action", "target", "ok").unwrap();
     assert_eq!(seq, 1, "first entry must have sequence 1");
 }
 
@@ -50,7 +50,7 @@ fn test_append_with_zero_timestamp() {
 fn test_append_with_u64_max_timestamp() {
     let seg = LogSegmentId::new("max-ts").unwrap();
     let mut log = MerkleLog::new(seg);
-    let seq = log.append(u64::MAX, "actor", "action", "target", "ok");
+    let seq = log.append(u64::MAX, "actor", "action", "target", "ok").unwrap();
     assert_eq!(seq, 1);
     // Inclusion proof must still be constructable.
     assert!(log.inclusion_proof(seq).is_ok());
@@ -61,7 +61,7 @@ fn test_append_with_empty_actor_and_action() {
     let seg = LogSegmentId::new("empty-fields").unwrap();
     let mut log = MerkleLog::new(seg);
     // All string fields empty — must be accepted without panic.
-    let seq = log.append(1000, "", "", "", "");
+    let seq = log.append(1000, "", "", "", "").unwrap();
     assert_eq!(seq, 1);
     assert!(log.get_entry(seq).is_ok());
 }
@@ -70,9 +70,9 @@ fn test_append_with_empty_actor_and_action() {
 fn test_append_increments_sequence_correctly() {
     let seg = LogSegmentId::new("seq-check").unwrap();
     let mut log = MerkleLog::new(seg);
-    let s1 = log.append(0, "", "", "", "");
-    let s2 = log.append(0, "", "", "", "");
-    let s3 = log.append(0, "", "", "", "");
+    let s1 = log.append(0, "", "", "", "").unwrap();
+    let s2 = log.append(0, "", "", "", "").unwrap();
+    let s3 = log.append(0, "", "", "", "").unwrap();
     assert_eq!(s1, 1);
     assert_eq!(s2, 2);
     assert_eq!(s3, 3);
@@ -96,7 +96,7 @@ fn test_get_entry_nonexistent_returns_error() {
 fn test_get_entry_sequence_zero_returns_error() {
     let seg = LogSegmentId::new("seq-zero").unwrap();
     let mut log = MerkleLog::new(seg);
-    log.append(1000, "actor", "action", "target", "ok");
+    log.append(1000, "actor", "action", "target", "ok").unwrap();
     // Sequence 0 is never a valid entry (sequences start at 1).
     let result = log.get_entry(0);
     assert!(result.is_err());

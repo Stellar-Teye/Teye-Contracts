@@ -35,7 +35,7 @@
 //! let mut log = MerkleLog::new(seg);
 //!
 //! // Append entries.
-//! let seq = log.append(1_700_000_000, "alice", "record.read", "patient:42", "ok");
+//! let seq = log.append(1_700_000_000, "alice", "record.read", "patient:42", "ok").unwrap();
 //!
 //! // Generate and verify a Merkle inclusion proof.
 //! let root  = log.current_root();

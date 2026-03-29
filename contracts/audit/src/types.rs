@@ -240,6 +240,17 @@ pub enum AuditError {
 
     /// Search key has not been set for this segment.
     SearchKeyNotSet,
+
+    /// An entry's timestamp is earlier than the previous entry's timestamp.
+    /// All entries must be appended in non-decreasing chronological order.
+    OutOfOrderTimestamp {
+        /// Sequence number of the rejected entry.
+        sequence: u64,
+        /// Timestamp supplied by the caller.
+        supplied: u64,
+        /// Minimum acceptable timestamp (last stored entry's timestamp).
+        minimum: u64,
+    },
 }
 
 impl core::fmt::Display for AuditError {
@@ -274,6 +285,10 @@ impl core::fmt::Display for AuditError {
             AuditError::InternalError(msg) => write!(f, "internal error: {msg}"),
             AuditError::SegmentNotFound => write!(f, "segment not found"),
             AuditError::SearchKeyNotSet => write!(f, "search key not set for segment"),
+            AuditError::OutOfOrderTimestamp { sequence, supplied, minimum } => write!(
+                f,
+                "entry {sequence} timestamp {supplied} is before minimum {minimum}"
+            ),
         }
     }
 }

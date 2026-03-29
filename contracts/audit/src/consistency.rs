@@ -402,7 +402,7 @@ mod tests {
     fn build_log(n: u64) -> MerkleLog {
         let mut log = MerkleLog::new(seg());
         for i in 0..n {
-            log.append(i, "actor", "action", "target", "ok");
+            log.append(i, "actor", "action", "target", "ok").unwrap();
         }
         log
     }
@@ -431,7 +431,7 @@ mod tests {
         let root_4 = log.publish_root(1000);
 
         for i in 4..8u64 {
-            log.append(i, "actor", "action", "target", "ok");
+            log.append(i, "actor", "action", "target", "ok").unwrap();
         }
         let all_hashes = get_hashes(&log, 8);
 
@@ -449,7 +449,7 @@ mod tests {
         let root_4 = log.publish_root(1000);
 
         for i in 4..8u64 {
-            log.append(i, "actor", "action", "target", "ok");
+            log.append(i, "actor", "action", "target", "ok").unwrap();
         }
         let all_hashes = get_hashes(&log, 8);
 
@@ -466,14 +466,14 @@ mod tests {
         let mut all_hashes: Vec<Digest> = Vec::new();
 
         for i in 0..3u64 {
-            log.append(i, "u", "a", "t", "ok");
+            log.append(i, "u", "a", "t", "ok").unwrap();
         }
         let r3 = log.publish_root(1000);
         all_hashes.extend(get_hashes(&log, 3));
         history.push(3, r3);
 
         for i in 3..7u64 {
-            log.append(i, "u", "a", "t", "ok");
+            log.append(i, "u", "a", "t", "ok").unwrap();
         }
         let r7 = log.publish_root(2000);
         all_hashes.extend((4..=7).map(|s| log.get_entry(s).unwrap().entry_hash));
@@ -489,7 +489,7 @@ mod tests {
         let root_1 = log.publish_root(1000);
 
         for i in 1..5u64 {
-            log.append(i, "u", "a", "t", "ok");
+            log.append(i, "u", "a", "t", "ok").unwrap();
         }
         let hashes = get_hashes(&log, 5);
         let prover = ConsistencyProver::new(hashes);

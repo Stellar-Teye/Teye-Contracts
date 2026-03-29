@@ -1,21 +1,23 @@
 #![allow(clippy::unwrap_used)]
-use soroban_sdk::{testutils::{Accounts}, Env, Symbol, Address};
 use audit::contract::{AuditContract, AuditContractClient};
+use soroban_sdk::{testutils::Address as _, Address, Env, Symbol};
 
 #[test]
 fn test_create_segment_unauthenticated_fails() {
     let env = Env::default();
-    env.mock_all_auths();
-    let admin = env.accounts().generate();
-    let contract_id = env.register_contract(None, AuditContract);
-    let client = AuditContractClient::new(&env, &contract_id);
-    client.initialize(&admin);
-    let segment = Symbol::short("UNAUTH");
+    // Do NOT mock auths — only the admin's auth will be set up manually.
+    let id = env.register(AuditContract, ());
+    let client = AuditContractClient::new(&env, &id);
+    let admin = Address::generate(&env);
 
-    // Try to call as a random address (not admin)
-    let random_user = env.accounts().generate();
-    // Remove all auths to simulate unauthenticated call
-    env.reset_auths();
-    let result = client.create_segment(&segment);
-    assert!(result.is_err(), "Unauthenticated create_segment should fail");
+    // Initialize with mock_all_auths so initialize itself passes.
+    env.mock_all_auths();
+    client.initialize(&admin);
+
+    // Now clear auths so the next call has no authorization.
+    env.set_auths(&[]);
+
+    let segment = Symbol::short("UNAUTH");
+    let result = client.try_create_segment(&segment);
+    assert!(result.is_err(), "create_segment without admin auth must fail");
 }
