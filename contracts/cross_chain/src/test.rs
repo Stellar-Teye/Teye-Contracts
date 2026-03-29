@@ -1,5 +1,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
+extern crate std;
+
 use crate::{CrossChainContract, CrossChainContractClient, CrossChainError, CrossChainMessage};
+use proptest::prelude::*;
 use soroban_sdk::{
     contract, contractimpl, symbol_short, testutils::Address as _, Address, Bytes, BytesN, Env,
     String,
@@ -168,6 +171,18 @@ fn setup_process_message_env() -> (
     let local_patient = Address::generate(&env);
     client.map_identity(&admin, &foreign_chain, &foreign_address, &local_patient);
 
+    (env, client, relayer, vision_contract, admin)
+}
+
+fn malformed_process_message_env() -> (
+    Env,
+    CrossChainContractClient<'static>,
+    Address,
+    Address,
+    Address,
+) {
+    let (env, client, relayer, vision_contract, admin) = setup_process_message_env();
+    let _ = admin;
     (env, client, relayer, vision_contract, admin)
 }
 
@@ -344,4 +359,121 @@ fn test_unauthorized_attacker_role_escalation_attempts() {
         client.try_map_identity(&attacker, &foreign_chain, &foreign_address, &attacker),
         Err(Ok(CrossChainError::Unauthorized))
     );
+}
+
+#[test]
+fn test_map_identity_empty_foreign_chain_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(CrossChainContract, ());
+    let client = CrossChainContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let local_patient = Address::generate(&env);
+    client.initialize(&admin);
+
+    let result = client.try_map_identity(
+        &admin,
+        &String::from_str(&env, ""),
+        &String::from_str(&env, "0xabc123"),
+        &local_patient,
+    );
+    assert_eq!(result, Err(Ok(CrossChainError::InvalidInput)));
+}
+
+#[test]
+fn test_process_message_empty_message_id_rejected() {
+    let (env, client, relayer, vision_contract, _admin) = malformed_process_message_env();
+
+    let message = CrossChainMessage {
+        source_chain: String::from_str(&env, "ethereum"),
+        source_address: String::from_str(&env, "0xabc123"),
+        target_action: symbol_short!("GRANT"),
+        payload: Bytes::from_slice(&env, &[1]),
+    };
+
+    let result =
+        client.try_process_message(&relayer, &Bytes::new(&env), &message, &vision_contract);
+    assert_eq!(result, Err(Ok(CrossChainError::InvalidInput)));
+}
+
+#[test]
+fn test_process_message_empty_identity_fields_rejected() {
+    let (env, client, relayer, vision_contract, _admin) = malformed_process_message_env();
+
+    for (source_chain, source_address) in [("", "0xabc123"), ("ethereum", ""), ("", "")] {
+        let message = CrossChainMessage {
+            source_chain: String::from_str(&env, source_chain),
+            source_address: String::from_str(&env, source_address),
+            target_action: symbol_short!("GRANT"),
+            payload: Bytes::from_slice(&env, &[1]),
+        };
+
+        let result = client.try_process_message(
+            &relayer,
+            &Bytes::from_slice(&env, b"msg"),
+            &message,
+            &vision_contract,
+        );
+        assert_eq!(result, Err(Ok(CrossChainError::InvalidInput)));
+    }
+}
+
+proptest! {
+    #[test]
+    fn fuzz_map_identity_rejects_empty_foreign_identifiers(
+        empty_chain in prop_oneof![Just(true), Just(false)],
+        empty_address in prop_oneof![Just(true), Just(false)],
+    ) {
+        prop_assume!(empty_chain || empty_address);
+
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(CrossChainContract, ());
+        let client = CrossChainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let local_patient = Address::generate(&env);
+        client.initialize(&admin);
+
+        let chain = if empty_chain { "" } else { "ethereum" };
+        let addr = if empty_address { "" } else { "0xabc123" };
+
+        let result = client.try_map_identity(
+            &admin,
+            &String::from_str(&env, chain),
+            &String::from_str(&env, addr),
+            &local_patient,
+        );
+
+        prop_assert_eq!(result, Err(Ok(CrossChainError::InvalidInput)));
+    }
+
+    #[test]
+    fn fuzz_process_message_rejects_malformed_required_fields(
+        empty_message_id in prop_oneof![Just(true), Just(false)],
+        empty_chain in prop_oneof![Just(true), Just(false)],
+        empty_address in prop_oneof![Just(true), Just(false)],
+    ) {
+        prop_assume!(empty_message_id || empty_chain || empty_address);
+
+        let (env, client, relayer, vision_contract, _admin) = malformed_process_message_env();
+
+        let message_id = if empty_message_id {
+            Bytes::new(&env)
+        } else {
+            Bytes::from_slice(&env, b"msg-id")
+        };
+
+        let message = CrossChainMessage {
+            source_chain: String::from_str(&env, if empty_chain { "" } else { "ethereum" }),
+            source_address: String::from_str(&env, if empty_address { "" } else { "0xabc123" }),
+            target_action: symbol_short!("GRANT"),
+            payload: Bytes::from_slice(&env, &[1]),
+        };
+
+        let result = client.try_process_message(&relayer, &message_id, &message, &vision_contract);
+
+        prop_assert_eq!(result, Err(Ok(CrossChainError::InvalidInput)));
+    }
 }
