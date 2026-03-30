@@ -562,3 +562,38 @@ impl IdentityContract {
         Ok(())
     }
 }
+
+#[ink(storage)]
+pub struct Identity {
+    owner: AccountId,
+    attributes: Mapping<String, String>,
+    version: u32,
+}
+
+impl Identity {
+    #[ink(constructor)]
+    pub fn new(owner: AccountId) -> Self {
+        Self {
+            owner,
+            attributes: Mapping::default(),
+            version: 1,
+        }
+    }
+
+    #[ink(message)]
+    pub fn upgrade(&mut self, new_version: u32) {
+        // Ensure upgrade does not reset attributes or owner
+        assert!(new_version > self.version, "New version must be greater");
+        self.version = new_version;
+    }
+
+    #[ink(message)]
+    pub fn get_attribute(&self, key: String) -> Option<String> {
+        self.attributes.get(key)
+    }
+
+    #[ink(message)]
+    pub fn set_attribute(&mut self, key: String, value: String) {
+        self.attributes.insert(key, &value);
+    }
+}

@@ -237,3 +237,15 @@ fn setup_fhir_migrations(env: &Env) {
 
 #[cfg(test)]
 mod test;
+
+
+pub fn process_patient_data(patient_id: Option<String>, age: Option<u32>) -> Result<(), String> {
+    if patient_id.is_none() || patient_id.as_ref().unwrap().is_empty() {
+        return Err("Invalid patient_id".into());
+    }
+    if age.unwrap_or(0) == 0 {
+        return Err("Invalid age".into());
+    }
+    // Normal processing logic...
+    Ok(())
+}

@@ -155,3 +155,32 @@ fn test_register_resource_empty_id_or_payload_fails_with_invalid_payload() {
     let r2 = client.try_register_resource(&admin, &nonempty, &payload_empty);
     assert!(r2.is_err());
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_null_patient_id() {
+        let result = process_patient_data(None, Some(30));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_empty_patient_id() {
+        let result = process_patient_data(Some("".into()), Some(30));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_zero_age() {
+        let result = process_patient_data(Some("patient123".into()), Some(0));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_valid_data() {
+        let result = process_patient_data(Some("patient123".into()), Some(30));
+        assert!(result.is_ok());
+    }
+}

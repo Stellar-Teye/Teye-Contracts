@@ -93,3 +93,41 @@ fn test_zk_verification_with_empty_proofs() {
 
     assert!(result.is_err());
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[ink::test]
+    fn test_upgrade_preserves_owner() {
+        let accounts = ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+        let mut contract = Identity::new(accounts.alice);
+
+        contract.set_attribute("email".into(), "alice@example.com".into());
+        contract.upgrade(2);
+
+        assert_eq!(contract.owner, accounts.alice);
+        assert_eq!(contract.get_attribute("email".into()), Some("alice@example.com".into()));
+    }
+
+    #[ink::test]
+    fn test_upgrade_does_not_clear_attributes() {
+        let accounts = ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+        let mut contract = Identity::new(accounts.bob);
+
+        contract.set_attribute("phone".into(), "123456".into());
+        contract.upgrade(2);
+
+        assert_eq!(contract.get_attribute("phone".into()), Some("123456".into()));
+    }
+
+    #[ink::test]
+    fn test_upgrade_increments_version_only() {
+        let accounts = ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+        let mut contract = Identity::new(accounts.charlie);
+
+        contract.upgrade(2);
+        assert_eq!(contract.version, 2);
+        assert_eq!(contract.owner, accounts.charlie);
+    }
+}
