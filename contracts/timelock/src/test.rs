@@ -304,3 +304,247 @@ fn test_double_initialize_rejected() {
     let result = client.try_initialize(&admin);
     assert_eq!(result, Err(Ok(TimelockError::AlreadyInitialized)));
 }
+
+// ── Branch 2: Stack-Overflow / Depth-Limit Guard Tests (#570) ────────────────
+//
+// These tests verify that the contract never panics or causes runaway
+// recursion when presented with maximally or illegally deep nested payloads.
+// Each limit is probed at exactly the boundary (accepted) and one beyond
+// (rejected), plus the u32::MAX sentinel case.
+
+/// A node at exactly `MAX_PAYLOAD_DEPTH` is accepted — sits at the boundary.
+#[test]
+fn test_payload_node_at_max_depth_accepted() {
+    let env = Env::default();
+    let (client, _) = setup(&env);
+    let caller = Address::generate(&env);
+    let target = Address::generate(&env);
+    let id = make_id(&env, 20);
+
+    env.ledger().set_timestamp(0);
+    let payload = single_node_payload(&env, MAX_PAYLOAD_DEPTH, 1);
+    let entry = client.queue_tx(&caller, &id, &target, &100, &payload);
+    assert_eq!(entry.payload.nodes.get(0).unwrap().depth, MAX_PAYLOAD_DEPTH);
+}
+
+/// A node with depth `MAX_PAYLOAD_DEPTH + 1` is rejected with `PayloadTooDeep`
+/// before any ledger write occurs.
+#[test]
+fn test_payload_node_exceeds_max_depth_rejected() {
+    let env = Env::default();
+    let (client, _) = setup(&env);
+    let caller = Address::generate(&env);
+    let target = Address::generate(&env);
+    let id = make_id(&env, 21);
+
+    env.ledger().set_timestamp(0);
+    let payload = single_node_payload(&env, MAX_PAYLOAD_DEPTH + 1, 1);
+    let result = client.try_queue_tx(&caller, &id, &target, &100, &payload);
+    assert_eq!(result, Err(Ok(TimelockError::PayloadTooDeep)));
+}
+
+/// A node with `depth = u32::MAX` is rejected without triggering a panic or
+/// integer overflow in the depth-comparison logic.
+#[test]
+fn test_payload_node_at_u32_max_depth_rejected_without_panic() {
+    let env = Env::default();
+    let (client, _) = setup(&env);
+    let caller = Address::generate(&env);
+    let target = Address::generate(&env);
+    let id = make_id(&env, 22);
+
+    env.ledger().set_timestamp(0);
+    let payload = single_node_payload(&env, u32::MAX, 1);
+    let result = client.try_queue_tx(&caller, &id, &target, &100, &payload);
+    assert_eq!(result, Err(Ok(TimelockError::PayloadTooDeep)));
+}
+
+/// A node with exactly `MAX_LEAF_COUNT` leaves is accepted.
+#[test]
+fn test_payload_node_at_max_leaf_count_accepted() {
+    let env = Env::default();
+    let (client, _) = setup(&env);
+    let caller = Address::generate(&env);
+    let target = Address::generate(&env);
+    let id = make_id(&env, 23);
+
+    env.ledger().set_timestamp(0);
+    let payload = single_node_payload(&env, 1, MAX_LEAF_COUNT);
+    let entry = client.queue_tx(&caller, &id, &target, &100, &payload);
+    assert_eq!(
+        entry.payload.nodes.get(0).unwrap().leaves.len(),
+        MAX_LEAF_COUNT
+    );
+}
+
+/// A node with `MAX_LEAF_COUNT + 1` leaves is rejected with `PayloadTooWide`.
+#[test]
+fn test_payload_node_exceeds_max_leaf_count_rejected() {
+    let env = Env::default();
+    let (client, _) = setup(&env);
+    let caller = Address::generate(&env);
+    let target = Address::generate(&env);
+    let id = make_id(&env, 24);
+
+    env.ledger().set_timestamp(0);
+    let payload = single_node_payload(&env, 1, MAX_LEAF_COUNT + 1);
+    let result = client.try_queue_tx(&caller, &id, &target, &100, &payload);
+    assert_eq!(result, Err(Ok(TimelockError::PayloadTooWide)));
+}
+
+/// A payload with exactly `MAX_PAYLOAD_WIDTH` nodes is accepted.
+#[test]
+fn test_payload_at_max_width_accepted() {
+    let env = Env::default();
+    let (client, _) = setup(&env);
+    let caller = Address::generate(&env);
+    let target = Address::generate(&env);
+    let id = make_id(&env, 25);
+
+    env.ledger().set_timestamp(0);
+    let mut nodes: Vec<PayloadNode> = Vec::new(&env);
+    for i in 0..MAX_PAYLOAD_WIDTH {
+        nodes.push_back(PayloadNode {
+            depth: 1,
+            data: Bytes::new(&env),
+            leaves: {
+                let mut l: Vec<LeafData> = Vec::new(&env);
+                l.push_back(make_leaf(&env, i as u8));
+                l
+            },
+        });
+    }
+    let payload = NestedPayload { version: 1, nodes };
+    let entry = client.queue_tx(&caller, &id, &target, &100, &payload);
+    assert_eq!(entry.payload.nodes.len(), MAX_PAYLOAD_WIDTH);
+}
+
+/// A payload with `MAX_PAYLOAD_WIDTH + 1` nodes is rejected with `PayloadTooWide`.
+#[test]
+fn test_payload_exceeds_max_width_rejected() {
+    let env = Env::default();
+    let (client, _) = setup(&env);
+    let caller = Address::generate(&env);
+    let target = Address::generate(&env);
+    let id = make_id(&env, 26);
+
+    env.ledger().set_timestamp(0);
+    let mut nodes: Vec<PayloadNode> = Vec::new(&env);
+    for i in 0..(MAX_PAYLOAD_WIDTH + 1) {
+        nodes.push_back(PayloadNode {
+            depth: 1,
+            data: Bytes::new(&env),
+            leaves: {
+                let mut l: Vec<LeafData> = Vec::new(&env);
+                l.push_back(make_leaf(&env, i as u8));
+                l
+            },
+        });
+    }
+    let payload = NestedPayload { version: 1, nodes };
+    let result = client.try_queue_tx(&caller, &id, &target, &100, &payload);
+    assert_eq!(result, Err(Ok(TimelockError::PayloadTooWide)));
+}
+
+/// A single node at `MAX_PAYLOAD_DEPTH` with `MAX_LEAF_COUNT` leaves is
+/// accepted — worst-case combination that stays within both limits.
+#[test]
+fn test_max_depth_and_max_leaf_count_simultaneously_accepted() {
+    let env = Env::default();
+    let (client, _) = setup(&env);
+    let caller = Address::generate(&env);
+    let target = Address::generate(&env);
+    let id = make_id(&env, 27);
+
+    env.ledger().set_timestamp(0);
+    let payload = single_node_payload(&env, MAX_PAYLOAD_DEPTH, MAX_LEAF_COUNT);
+    let entry = client.queue_tx(&caller, &id, &target, &100, &payload);
+    let node = entry.payload.nodes.get(0).unwrap();
+    assert_eq!(node.depth, MAX_PAYLOAD_DEPTH);
+    assert_eq!(node.leaves.len(), MAX_LEAF_COUNT);
+}
+
+/// In a mixed payload where one node is valid and one exceeds the depth
+/// limit, the entire queue_tx call is rejected.
+#[test]
+fn test_mixed_payload_one_over_depth_node_rejects_whole_tx() {
+    let env = Env::default();
+    let (client, _) = setup(&env);
+    let caller = Address::generate(&env);
+    let target = Address::generate(&env);
+    let id = make_id(&env, 28);
+
+    env.ledger().set_timestamp(0);
+    let mut nodes: Vec<PayloadNode> = Vec::new(&env);
+    // First node is valid
+    nodes.push_back(PayloadNode {
+        depth: 2,
+        data: Bytes::new(&env),
+        leaves: Vec::new(&env),
+    });
+    // Second node violates the depth limit
+    nodes.push_back(PayloadNode {
+        depth: MAX_PAYLOAD_DEPTH + 5,
+        data: Bytes::new(&env),
+        leaves: Vec::new(&env),
+    });
+    let payload = NestedPayload { version: 1, nodes };
+    let result = client.try_queue_tx(&caller, &id, &target, &100, &payload);
+    assert_eq!(result, Err(Ok(TimelockError::PayloadTooDeep)));
+}
+
+/// A depth-zero node (root level) combined with any valid leaf count is accepted.
+#[test]
+fn test_depth_zero_root_node_accepted() {
+    let env = Env::default();
+    let (client, _) = setup(&env);
+    let caller = Address::generate(&env);
+    let target = Address::generate(&env);
+    let id = make_id(&env, 29);
+
+    env.ledger().set_timestamp(0);
+    let payload = single_node_payload(&env, 0, 5);
+    let entry = client.queue_tx(&caller, &id, &target, &50, &payload);
+    assert_eq!(entry.payload.nodes.get(0).unwrap().depth, 0);
+}
+
+/// Nodes with depth exactly `MAX_PAYLOAD_DEPTH - 1` through `MAX_PAYLOAD_DEPTH`
+/// are all accepted without panic (boundary sweep).
+#[test]
+fn test_depth_boundary_sweep_all_accepted() {
+    let env = Env::default();
+    let (client, _) = setup(&env);
+    let caller = Address::generate(&env);
+    let target = Address::generate(&env);
+
+    env.ledger().set_timestamp(0);
+    for depth in (MAX_PAYLOAD_DEPTH - 1)..=MAX_PAYLOAD_DEPTH {
+        let id = make_id(&env, (50 + depth) as u8);
+        let payload = single_node_payload(&env, depth, 1);
+        let entry = client.queue_tx(&caller, &id, &target, &100, &payload);
+        assert_eq!(entry.payload.nodes.get(0).unwrap().depth, depth);
+    }
+}
+
+/// Depths `MAX_PAYLOAD_DEPTH + 1` through `MAX_PAYLOAD_DEPTH + 3` are all
+/// rejected (boundary-plus sweep) to confirm the guard has no off-by-one flaw.
+#[test]
+fn test_depth_boundary_plus_sweep_all_rejected() {
+    let env = Env::default();
+    let (client, _) = setup(&env);
+    let caller = Address::generate(&env);
+    let target = Address::generate(&env);
+
+    env.ledger().set_timestamp(0);
+    for depth in (MAX_PAYLOAD_DEPTH + 1)..=(MAX_PAYLOAD_DEPTH + 3) {
+        let id = make_id(&env, (60 + depth) as u8);
+        let payload = single_node_payload(&env, depth, 1);
+        let result = client.try_queue_tx(&caller, &id, &target, &100, &payload);
+        assert_eq!(
+            result,
+            Err(Ok(TimelockError::PayloadTooDeep)),
+            "depth {} should be rejected",
+            depth
+        );
+    }
+}
