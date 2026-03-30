@@ -5,7 +5,7 @@ use crate::{
     FhirContract, FhirContractClient,
 };
 use proptest::prelude::*;
-use soroban_sdk::{Address, Bytes, Env, String};
+use soroban_sdk::{testutils::Address as _, Address, Bytes, Env, String};
 
 #[test]
 fn test_initialize() {

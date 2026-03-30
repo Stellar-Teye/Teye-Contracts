@@ -1,8 +1,8 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, panic_with_error, symbol_short, Address, Bytes, Env, IntoVal, Map,
-    String, Symbol, Vec,
+    contract, contractimpl, panic_with_error, symbol_short, Address, Bytes, Env, Map, String,
+    Symbol, Vec,
 };
 
 pub mod types;
@@ -52,10 +52,10 @@ impl FhirContract {
         }
 
         let mut data = Map::new(&env);
-        data.set(symbol_short!("payload"), payload.into_val(&env));
+        data.set(symbol_short!("payload"), payload);
         data.set(
             symbol_short!("updated"),
-            env.ledger().timestamp().into_val(&env),
+            Bytes::from_slice(&env, &env.ledger().timestamp().to_be_bytes()),
         );
 
         env.storage().persistent().set(&key, &data);
@@ -137,7 +137,7 @@ impl FhirContract {
         data.set(symbol_short!("payload"), payload);
         data.set(
             symbol_short!("updated"),
-            env.ledger().timestamp().into_val(&env),
+            Bytes::from_slice(&env, &env.ledger().timestamp().to_be_bytes()),
         );
 
         env.storage().persistent().set(&key, &data);
@@ -233,6 +233,26 @@ fn setup_fhir_migrations(env: &Env) {
         },
     };
     let _ = migration::register_migration(env, m1);
+
+    let m2 = Migration {
+        from_version: 2,
+        to_version: 3,
+        description: String::from_str(env, "Add audit field to resource"),
+        forward: {
+            let mut v = Vec::new(env);
+            v.push_back(FieldTransform::AddField(
+                symbol_short!("audit"),
+                Bytes::new(env),
+            ));
+            v
+        },
+        reverse: {
+            let mut v = Vec::new(env);
+            v.push_back(FieldTransform::RemoveField(symbol_short!("audit")));
+            v
+        },
+    };
+    let _ = migration::register_migration(env, m2);
 }
 
 #[cfg(test)]

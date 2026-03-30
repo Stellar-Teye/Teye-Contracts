@@ -877,6 +877,7 @@ dependencies = [
 name = "fhir"
 version = "1.2.2"
 dependencies = [
+ "common",
  "proptest",
  "soroban-sdk",
 ]
