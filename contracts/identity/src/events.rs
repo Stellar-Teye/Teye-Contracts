@@ -144,17 +144,3 @@ pub fn emit_zk_credential_verified(env: &Env, user: Address, verified: bool) {
         },
     );
 }
-
-#[ink::test]
-fn test_upgrade_event_emitted_without_data_loss() {
-    let accounts = ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
-    let mut contract = Identity::new(accounts.django);
-
-    contract.set_attribute("role".into(), "admin".into());
-    contract.upgrade(2);
-
-    // assert event emitted (pseudo-code)
-    let emitted = ink::env::test::recorded_events().collect::<Vec<_>>();
-    assert!(emitted.iter().any(|e| e.contains("Upgraded")));
-    assert_eq!(contract.get_attribute("role".into()), Some("admin".into()));
-}

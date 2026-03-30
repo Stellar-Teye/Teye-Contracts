@@ -1,0 +1,1 @@
+OrchestratorContract::initialize(env.clone(), admin.clone(), None).unwrap();

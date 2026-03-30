@@ -760,39 +760,5 @@ impl KeyManagerContract {
         data.extend_from_array(&request.approvals.len().to_be_bytes());
         env.crypto().sha256(&data).into()
     }
-
-    
-}
-#[ink(storage)]
-pub struct KeyManager {
-    roles: Mapping<AccountId, Vec<String>>,
-}
-
-impl KeyManager {
-    #[ink(constructor)]
-    pub fn new() -> Self {
-        Self { roles: Mapping::default() }
-    }
-
-    #[ink(message)]
-    pub fn assign_role(&mut self, account: AccountId, role: String) {
-        let mut current = self.roles.get(account).unwrap_or_default();
-        if !current.contains(&role) {
-            current.push(role);
-            self.roles.insert(account, &current);
-        }
-    }
-
-    #[ink(message)]
-    pub fn has_role(&self, account: AccountId, role: String) -> bool {
-        self.roles.get(account).unwrap_or_default().contains(&role)
-    }
-
-    #[ink(message)]
-    pub fn can_perform_admin_action(&self, account: AccountId) -> bool {
-        let roles = self.roles.get(account).unwrap_or_default();
-        // Example rule: restricted role overrides admin
-        roles.contains(&"admin".to_string()) && !roles.contains(&"restricted".to_string())
-    }
 }
 
