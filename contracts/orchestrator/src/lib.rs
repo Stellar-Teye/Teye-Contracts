@@ -371,3 +371,6 @@ mod test_orchestrator;
 
 #[cfg(test)]
 mod test_gas_benchmarks;
+
+#[cfg(test)]
+mod test_rbac_interactions;

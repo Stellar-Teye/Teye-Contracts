@@ -496,6 +496,7 @@ dependencies = [
 name = "cross_chain"
 version = "1.2.2"
 dependencies = [
+ "proptest",
  "soroban-sdk",
 ]
 
