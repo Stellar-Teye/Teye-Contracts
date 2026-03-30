@@ -906,3 +906,200 @@ fn test_consumer_group_offset_consistency_under_rapid_publishes() {
     client.ack_event(&m1, &gid, &last);
     client.ack_event(&m2, &gid, &last);
 }
+
+// ── Nonce / message-ID replay-attack prevention tests ────────────────────────
+//
+// The contract assigns a strictly-monotonic event_id (nonce) and lamport_ts to
+// every published event.  These tests verify that:
+//   1. Identical payloads always receive distinct, never-reused IDs.
+//   2. Event IDs are gapless and never wrap or repeat.
+//   3. A stored event cannot be overwritten by re-publishing the same content.
+//   4. Replaying the log does not mint new IDs or mutate existing envelopes.
+//   5. Checkpoints capture the nonce at a point in time; events published after
+//      a checkpoint have strictly higher IDs than the checkpoint value.
+
+/// Two publishes with identical topic + payload must receive different event IDs.
+/// This is the core replay-attack invariant: the same message cannot be
+/// re-submitted and treated as a new event with the same identity.
+#[test]
+fn test_identical_payload_gets_unique_event_ids() {
+    let (env, client, admin) = setup();
+    register_schema(&env, &client, &admin, "records.vision.create", 1);
+
+    let id1 = publish_test_event(&env, &client, &admin, "records.vision.create", 1, "same_hash");
+    let id2 = publish_test_event(&env, &client, &admin, "records.vision.create", 1, "same_hash");
+
+    assert_ne!(id1, id2, "identical payloads must receive distinct event IDs");
+
+    let e1 = client.get_event(&id1);
+    let e2 = client.get_event(&id2);
+    assert_ne!(e1.event_id, e2.event_id);
+    assert_ne!(e1.lamport_ts, e2.lamport_ts);
+}
+
+/// Event IDs must be strictly monotonic with no gaps: 1, 2, 3, …
+#[test]
+fn test_event_ids_are_strictly_monotonic() {
+    let (env, client, admin) = setup();
+    register_schema(&env, &client, &admin, "records.vision.create", 1);
+
+    let ids: Vec<u64> = {
+        let mut v = Vec::new(&env);
+        for _ in 0..5u32 {
+            let id = publish_test_event(
+                &env,
+                &client,
+                &admin,
+                "records.vision.create",
+                1,
+                "payload",
+            );
+            v.push_back(id);
+        }
+        v
+    };
+
+    for i in 0..(ids.len() - 1) {
+        let a = ids.get(i).unwrap();
+        let b = ids.get(i + 1).unwrap();
+        assert_eq!(b, a + 1, "event IDs must increment by exactly 1");
+    }
+    assert_eq!(ids.get(0).unwrap(), 1u64, "first event ID must be 1");
+}
+
+/// Lamport timestamps must be strictly monotonic alongside event IDs.
+#[test]
+fn test_lamport_timestamps_are_strictly_monotonic() {
+    let (env, client, admin) = setup();
+    register_schema(&env, &client, &admin, "records.vision.create", 1);
+
+    let mut prev_lamport = 0u64;
+    for _ in 0..5u32 {
+        let id = publish_test_event(
+            &env,
+            &client,
+            &admin,
+            "records.vision.create",
+            1,
+            "payload",
+        );
+        let evt = client.get_event(&id);
+        assert!(
+            evt.lamport_ts > prev_lamport,
+            "lamport_ts must strictly increase"
+        );
+        prev_lamport = evt.lamport_ts;
+    }
+}
+
+/// A stored event envelope must be immutable: re-publishing the same payload
+/// must not overwrite the original event's stored data.
+#[test]
+fn test_stored_event_is_immutable_after_publish() {
+    let (env, client, admin) = setup();
+    register_schema(&env, &client, &admin, "records.vision.create", 1);
+
+    let id1 = publish_test_event(&env, &client, &admin, "records.vision.create", 1, "hash_abc");
+    let snapshot = client.get_event(&id1);
+
+    // Publish again with the same payload — must not touch the first envelope.
+    publish_test_event(&env, &client, &admin, "records.vision.create", 1, "hash_abc");
+
+    let after = client.get_event(&id1);
+    assert_eq!(after.event_id, snapshot.event_id);
+    assert_eq!(after.lamport_ts, snapshot.lamport_ts);
+    assert_eq!(after.payload_hash, snapshot.payload_hash);
+}
+
+/// Replaying the event log must return the same envelopes without creating new
+/// events or advancing the nonce counters.
+#[test]
+fn test_replay_does_not_advance_nonce() {
+    let (env, client, admin) = setup();
+    register_schema(&env, &client, &admin, "records.vision.create", 1);
+
+    publish_test_event(&env, &client, &admin, "records.vision.create", 1, "p1");
+    publish_test_event(&env, &client, &admin, "records.vision.create", 1, "p2");
+
+    let count_before = client.get_event_count();
+    let lamport_before = client.get_lamport_clock();
+
+    // Replay must be a read-only operation.
+    let replayed = client.replay_events(&1, &10);
+    assert_eq!(replayed.len(), 2);
+
+    assert_eq!(
+        client.get_event_count(),
+        count_before,
+        "replay must not increment event counter"
+    );
+    assert_eq!(
+        client.get_lamport_clock(),
+        lamport_before,
+        "replay must not advance lamport clock"
+    );
+}
+
+/// Events published after a checkpoint must have IDs strictly greater than the
+/// checkpoint's recorded event ID, preventing any "pre-checkpoint" replay.
+#[test]
+fn test_post_checkpoint_events_have_higher_ids() {
+    let (env, client, admin) = setup();
+    register_schema(&env, &client, &admin, "records.vision.create", 1);
+
+    publish_test_event(&env, &client, &admin, "records.vision.create", 1, "pre");
+
+    let chkpt_id = client.create_checkpoint(&admin);
+    let checkpoint_event_id = client.get_checkpoint(&chkpt_id);
+
+    let post_id =
+        publish_test_event(&env, &client, &admin, "records.vision.create", 1, "post");
+
+    assert!(
+        post_id > checkpoint_event_id,
+        "post-checkpoint event ID ({post_id}) must exceed checkpoint event ID ({checkpoint_event_id})"
+    );
+}
+
+/// A non-admin / non-registered caller must not be able to publish any event,
+/// ensuring the nonce space cannot be polluted by unauthorized actors.
+#[test]
+fn test_unauthorized_caller_cannot_consume_nonce() {
+    let (env, client, admin) = setup();
+    register_schema(&env, &client, &admin, "records.vision.create", 1);
+
+    let attacker = Address::generate(&env);
+    let topic = String::from_str(&env, "records.vision.create");
+    let payload = String::from_str(&env, "attack_payload");
+
+    let result = client.try_publish_event(&attacker, &topic, &1, &payload);
+    assert!(result.is_err(), "unauthorized publish must be rejected");
+
+    // Nonce counters must remain untouched.
+    assert_eq!(client.get_event_count(), 0);
+    assert_eq!(client.get_lamport_clock(), 0);
+}
+
+/// Verifies that event IDs returned by get_event_count() always equal the
+/// highest event_id in the log, keeping the nonce and log in sync.
+#[test]
+fn test_event_count_matches_highest_event_id() {
+    let (env, client, admin) = setup();
+    register_schema(&env, &client, &admin, "records.vision.create", 1);
+
+    for n in 1u64..=4 {
+        let id = publish_test_event(
+            &env,
+            &client,
+            &admin,
+            "records.vision.create",
+            1,
+            "payload",
+        );
+        assert_eq!(
+            id,
+            client.get_event_count(),
+            "event_id must equal event_count after publish #{n}"
+        );
+    }
+}
