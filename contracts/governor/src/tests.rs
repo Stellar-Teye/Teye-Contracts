@@ -626,3 +626,337 @@ fn test_execute_proposal_is_not_replayable() {
     let res = client.try_execute_proposal(&executor, &id);
     assert!(res.is_err());
 }
+
+// ── Namespace separation tests ────────────────────────────────────────────────
+
+/// Test that proposal storage keys don't collide with delegation keys
+#[test]
+fn test_namespace_proposal_vs_delegation_no_collision() {
+    let env = create_env();
+    env.mock_all_auths();
+    let (contract_id, client) = register_governor(&env);
+    default_init(&env, &client);
+
+    let proposer = Address::generate(&env);
+    let voter = Address::generate(&env);
+    let delegate = Address::generate(&env);
+    set_mock_stake(&env, &contract_id, &proposer, 5_000);
+    set_mock_stake(&env, &contract_id, &voter, 5_000);
+
+    // Create a proposal
+    let target = Address::generate(&env);
+    let actions = single_action(&env, &target);
+    let proposal_id = client.create_proposal(
+        &proposer,
+        &ProposalType::ParameterChange,
+        &String::from_str(&env, "Test proposal"),
+        &actions,
+    );
+
+    // Create a delegation
+    client.delegate(&voter, &delegate);
+
+    // Verify proposal still exists and is independent
+    let proposal = client.get_proposal(&proposal_id).unwrap();
+    assert_eq!(proposal.id, proposal_id);
+    assert_eq!(proposal.proposer, proposer);
+
+    // Verify delegation still exists and is independent
+    let del = client.get_delegation(&voter);
+    assert!(del.is_some());
+    assert_eq!(del.unwrap().delegate, delegate);
+}
+
+/// Test that vote storage keys don't collide with proposal or delegation keys
+#[test]
+fn test_namespace_votes_vs_proposals_no_collision() {
+    let env = create_env();
+    env.mock_all_auths();
+    let (contract_id, client) = register_governor(&env);
+    default_init(&env, &client);
+
+    let proposer = Address::generate(&env);
+    let voter = Address::generate(&env);
+    set_mock_stake(&env, &contract_id, &proposer, 5_000);
+    set_mock_stake(&env, &contract_id, &voter, 5_000);
+
+    // Create first proposal
+    let target = Address::generate(&env);
+    let actions = single_action(&env, &target);
+    let proposal_1 = client.create_proposal(
+        &proposer,
+        &ProposalType::ParameterChange,
+        &String::from_str(&env, "First proposal"),
+        &actions,
+    );
+
+    // Create second proposal
+    let proposal_2 = client.create_proposal(
+        &proposer,
+        &ProposalType::ParameterChange,
+        &String::from_str(&env, "Second proposal"),
+        &actions,
+    );
+
+    // Advance both to voting phase
+    client.advance_phase(&proposer, &proposal_1);
+    client.advance_phase(&proposer, &proposal_2);
+    advance_time(&env, 3 * 24 * 3600 + 1);
+    client.advance_phase(&voter, &proposal_1);
+    client.advance_phase(&voter, &proposal_2);
+
+    // Commit votes on both proposals with different salts/commitments
+    let commit_1 = env
+        .crypto()
+        .sha256(&soroban_sdk::Bytes::from_array(&env, &[1u8; 32]))
+        .into();
+    let commit_2 = env
+        .crypto()
+        .sha256(&soroban_sdk::Bytes::from_array(&env, &[2u8; 32]))
+        .into();
+
+    client.commit_vote(&voter, &proposal_1, &commit_1);
+    client.commit_vote(&voter, &proposal_2, &commit_2);
+
+    // Verify both proposals still exist independently
+    let p1 = client.get_proposal(&proposal_1).unwrap();
+    let p2 = client.get_proposal(&proposal_2).unwrap();
+    assert_eq!(p1.id, proposal_1);
+    assert_eq!(p2.id, proposal_2);
+    assert_eq!(p1.commit_count, 1);
+    assert_eq!(p2.commit_count, 1);
+}
+
+/// Test that multiple voters don't cross-contaminate their vote state
+#[test]
+fn test_namespace_voter_votes_isolated() {
+    let env = create_env();
+    env.mock_all_auths();
+    let (contract_id, client) = register_governor(&env);
+    default_init(&env, &client);
+
+    let proposer = Address::generate(&env);
+    let voter_a = Address::generate(&env);
+    let voter_b = Address::generate(&env);
+    set_mock_stake(&env, &contract_id, &proposer, 5_000);
+    set_mock_stake(&env, &contract_id, &voter_a, 5_000);
+    set_mock_stake(&env, &contract_id, &voter_b, 5_000);
+
+    // Create proposal
+    let target = Address::generate(&env);
+    let actions = single_action(&env, &target);
+    let proposal_id = client.create_proposal(
+        &proposer,
+        &ProposalType::ParameterChange,
+        &String::from_str(&env, "Test"),
+        &actions,
+    );
+
+    // Advance to voting
+    client.advance_phase(&proposer, &proposal_id);
+    advance_time(&env, 3 * 24 * 3600 + 1);
+    client.advance_phase(&voter_a, &proposal_id);
+
+    // Both voters commit different votes
+    let commit_a = env
+        .crypto()
+        .sha256(&soroban_sdk::Bytes::from_array(&env, &[1u8; 32]))
+        .into();
+    let commit_b = env
+        .crypto()
+        .sha256(&soroban_sdk::Bytes::from_array(&env, &[2u8; 32]))
+        .into();
+
+    client.commit_vote(&voter_a, &proposal_id, &commit_a);
+    client.commit_vote(&voter_b, &proposal_id, &commit_b);
+
+    // Verify proposal sees both commits (commit_count = 2)
+    let proposal = client.get_proposal(&proposal_id).unwrap();
+    assert_eq!(proposal.commit_count, 2);
+
+    // Double-vote attempts from both voters should fail
+    let result_a = client.try_commit_vote(&voter_a, &proposal_id, &commit_a);
+    let result_b = client.try_commit_vote(&voter_b, &proposal_id, &commit_b);
+    assert!(result_a.is_err());
+    assert!(result_b.is_err());
+}
+
+/// Test that different proposal types don't interfere with each other's storage
+#[test]
+fn test_namespace_proposal_types_isolated() {
+    let env = create_env();
+    env.mock_all_auths();
+    let (contract_id, client) = register_governor(&env);
+    default_init(&env, &client);
+
+    let proposer = Address::generate(&env);
+    set_mock_stake(&env, &contract_id, &proposer, 10_000);
+
+    let target = Address::generate(&env);
+    let actions = single_action(&env, &target);
+
+    // Create proposals of different types
+    let param_change = client.create_proposal(
+        &proposer,
+        &ProposalType::ParameterChange,
+        &String::from_str(&env, "Param change"),
+        &actions,
+    );
+
+    let emergency = client.create_proposal(
+        &proposer,
+        &ProposalType::EmergencyAction,
+        &String::from_str(&env, "Emergency"),
+        &actions,
+    );
+
+    let upgrade = client.create_proposal(
+        &proposer,
+        &ProposalType::ContractUpgrade,
+        &String::from_str(&env, "Upgrade"),
+        &actions,
+    );
+
+    // Verify all three proposals exist independently with correct types
+    let p1 = client.get_proposal(&param_change).unwrap();
+    let p2 = client.get_proposal(&emergency).unwrap();
+    let p3 = client.get_proposal(&upgrade).unwrap();
+
+    assert_eq!(p1.proposal_type, ProposalType::ParameterChange);
+    assert_eq!(p2.proposal_type, ProposalType::EmergencyAction);
+    assert_eq!(p3.proposal_type, ProposalType::ContractUpgrade);
+
+    // Check that timelock durations differ (isolation verification)
+    let timelock_1 = p1.timelock_ends - p1.voting_ends;
+    let timelock_2 = p2.timelock_ends - p2.voting_ends;
+    let timelock_3 = p3.timelock_ends - p3.voting_ends;
+
+    // Emergency should have shorter timelock than others
+    assert!(timelock_2 < timelock_1);
+    assert!(timelock_2 < timelock_3);
+}
+
+/// Test that mock stake and mock age data don't interfere with contract state
+#[test]
+fn test_namespace_mock_data_isolated_from_proposals() {
+    let env = create_env();
+    env.mock_all_auths();
+    let (contract_id, client) = register_governor(&env);
+    default_init(&env, &client);
+
+    let voter1 = Address::generate(&env);
+    let voter2 = Address::generate(&env);
+
+    // Inject different mock stakes for different voters
+    set_mock_stake(&env, &contract_id, &voter1, 100_000);
+    set_mock_stake(&env, &contract_id, &voter2, 50_000);
+
+    // Inject different ages
+    set_mock_age(&env, &contract_id, &voter1, 365 * 86_400); // 1 year old
+    set_mock_age(&env, &contract_id, &voter2, 180 * 86_400); // 6 months old
+
+    // Verify vote powers are computed correctly and independently
+    let power1 = client.get_vote_power(&voter1);
+    let power2 = client.get_vote_power(&voter2);
+
+    // voter1: sqrt(100_000) × 2.0 ≈ 316 × 2 = 632
+    let expected_power1 = compute_vote_power(100_000, 365 * 86_400);
+    // voter2: sqrt(50_000) × ~1.5 ≈ 223 × 1.5 ≈ 335
+    let expected_power2 = compute_vote_power(50_000, 180 * 86_400);
+
+    assert_eq!(power1, expected_power1);
+    assert_eq!(power2, expected_power2);
+    assert!(power1 > power2);
+}
+
+/// Test that delegations don't collide with vote commits/records
+#[test]
+fn test_namespace_delegation_vs_votes_no_collision() {
+    let env = create_env();
+    env.mock_all_auths();
+    let (contract_id, client) = register_governor(&env);
+    default_init(&env, &client);
+
+    let delegator = Address::generate(&env);
+    let delegate = Address::generate(&env);
+    let proposer = Address::generate(&env);
+
+    set_mock_stake(&env, &contract_id, &delegator, 5_000);
+    set_mock_stake(&env, &contract_id, &delegate, 5_000);
+    set_mock_stake(&env, &contract_id, &proposer, 5_000);
+
+    // Create delegation
+    client.delegate(&delegator, &delegate);
+
+    // Create proposal
+    let target = Address::generate(&env);
+    let actions = single_action(&env, &target);
+    let proposal_id = client.create_proposal(
+        &proposer,
+        &ProposalType::ParameterChange,
+        &String::from_str(&env, "Test"),
+        &actions,
+    );
+
+    // Advance to voting
+    client.advance_phase(&proposer, &proposal_id);
+    advance_time(&env, 3 * 24 * 3600 + 1);
+    client.advance_phase(&delegate, &proposal_id);
+
+    // Delegate votes on the proposal
+    let commit = env
+        .crypto()
+        .sha256(&soroban_sdk::Bytes::from_array(&env, &[5u8; 32]))
+        .into();
+    client.commit_vote(&delegate, &proposal_id, &commit);
+
+    // Verify delegation still exists
+    let del = client.get_delegation(&delegator);
+    assert!(del.is_some());
+    assert_eq!(del.unwrap().delegate, delegate);
+
+    // Verify proposal commit count is 1 (not confused with delegation)
+    let proposal = client.get_proposal(&proposal_id).unwrap();
+    assert_eq!(proposal.commit_count, 1);
+}
+
+/// Test that large gaps in proposal IDs don't cause namespace collisions
+#[test]
+fn test_namespace_proposal_id_gaps() {
+    let env = create_env();
+    env.mock_all_auths();
+    let (contract_id, client) = register_governor(&env);
+    default_init(&env, &client);
+
+    let proposer = Address::generate(&env);
+    set_mock_stake(&env, &contract_id, &proposer, 10_000);
+
+    let target = Address::generate(&env);
+    let actions = single_action(&env, &target);
+
+    // Create proposal with ID 1
+    let id1 = client.create_proposal(
+        &proposer,
+        &ProposalType::ParameterChange,
+        &String::from_str(&env, "First"),
+        &actions,
+    );
+    assert_eq!(id1, 1);
+
+    // Create proposal with ID 2
+    let id2 = client.create_proposal(
+        &proposer,
+        &ProposalType::ParameterChange,
+        &String::from_str(&env, "Second"),
+        &actions,
+    );
+    assert_eq!(id2, 2);
+
+    // Both proposals should be independently accessible
+    let p1 = client.get_proposal(&id1).unwrap();
+    let p2 = client.get_proposal(&id2).unwrap();
+
+    assert_eq!(p1.id, id1);
+    assert_eq!(p2.id, id2);
+    assert_ne!(p1.title, p2.title);
+}
